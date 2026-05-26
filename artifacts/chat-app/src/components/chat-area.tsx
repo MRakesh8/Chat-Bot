@@ -25,7 +25,7 @@ export function ChatArea() {
     query: { enabled: !!conversationId, queryKey: getListGeminiMessagesQueryKey(conversationId!) }
   });
 
-  const { sendMessage, isStreaming, streamingContent } = useChatStream();
+  const { sendMessage, isStreaming, streamingContent, stopStreaming } = useChatStream();
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [files, setFiles] = useState<{file: File, id?: number, uploading: boolean}[]>([]);
@@ -261,6 +261,7 @@ export function ChatArea() {
               {isStreaming ? (
                 <Button 
                   size="icon" 
+                  onClick={stopStreaming}
                   className="h-8 w-8 rounded-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                 >
                   <StopCircle className="w-4 h-4" />

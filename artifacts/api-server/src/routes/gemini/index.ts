@@ -257,10 +257,24 @@ router.post("/conversations/:id/messages", async (req, res) => {
       fileIds: null,
     });
 
-    // Update conversation timestamp
+    // Count total messages to detect first exchange (user + assistant = 2)
+    const allMessages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId));
+
+    const updateData: { updatedAt: Date; title?: string } = { updatedAt: new Date() };
+
+    if (allMessages.length === 2 && conversation.title === "New Chat") {
+      // Auto-title from first user message (truncate to 60 chars)
+      const autoTitle = content.trim().slice(0, 60) + (content.trim().length > 60 ? "…" : "");
+      updateData.title = autoTitle;
+    }
+
+    // Update conversation timestamp (and title if first message)
     await db
       .update(conversations)
-      .set({ updatedAt: new Date() })
+      .set(updateData)
       .where(eq(conversations.id, conversationId));
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
