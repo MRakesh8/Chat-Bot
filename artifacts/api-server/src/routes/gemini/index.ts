@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { eq, desc, like, inArray } from "drizzle-orm";
 import fs from "fs";
+import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
 import { conversations, messages, uploadedFiles } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -174,7 +175,49 @@ router.get("/conversations/:id/messages", async (req, res) => {
   }
 });
 
-const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content. When files are shared with you, analyze and describe their content fully and helpfully.`;
+const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content. When files are shared with you, analyze and describe their content fully and helpfully. When a YouTube transcript is provided in the context, use it to answer questions about the video accurately and in detail.`;
+
+// Extract YouTube video ID from any YouTube URL format
+function extractYouTubeId(text: string): string[] {
+  const pattern =
+    /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+  const ids: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (!ids.includes(match[1])) ids.push(match[1]);
+  }
+  return ids;
+}
+
+async function fetchYouTubeTranscripts(text: string): Promise<string> {
+  const ids = extractYouTubeId(text);
+  if (ids.length === 0) return "";
+
+  const parts: string[] = [];
+  for (const id of ids) {
+    try {
+      const transcript = await YoutubeTranscript.fetchTranscript(id, { lang: "en" });
+      const fullText = transcript.map((t) => t.text).join(" ");
+      parts.push(
+        `[YouTube Video ID: ${id}]\nTranscript:\n${fullText.slice(0, 40000)}`
+      );
+    } catch {
+      // Try without language preference as fallback
+      try {
+        const transcript = await YoutubeTranscript.fetchTranscript(id);
+        const fullText = transcript.map((t) => t.text).join(" ");
+        parts.push(
+          `[YouTube Video ID: ${id}]\nTranscript:\n${fullText.slice(0, 40000)}`
+        );
+      } catch {
+        parts.push(
+          `[YouTube Video ID: ${id}]\nNote: This video's transcript is unavailable (disabled by uploader or private video).`
+        );
+      }
+    }
+  }
+  return parts.join("\n\n");
+}
 
 type GeminiPart =
   | { text: string }
@@ -268,9 +311,13 @@ router.post("/conversations/:id/messages", async (req, res) => {
       ? await buildFileParts(fileIds)
       : [];
 
-    // Current user message parts: files first (so model sees them), then text
+    // Fetch YouTube transcripts if any URLs are in the message
+    const youtubeContext = await fetchYouTubeTranscripts(content);
+
+    // Current user message parts: files first, then transcript context, then text
     const currentParts: GeminiPart[] = [
       ...fileParts,
+      ...(youtubeContext ? [{ text: youtubeContext }] : []),
       ...(content.trim() ? [{ text: content }] : []),
     ];
 
