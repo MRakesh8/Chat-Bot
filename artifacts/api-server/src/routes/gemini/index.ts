@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { eq, desc, like, or } from "drizzle-orm";
+import { eq, desc, like, inArray } from "drizzle-orm";
+import fs from "fs";
 import { db } from "@workspace/db";
-import { conversations, messages } from "@workspace/db";
+import { conversations, messages, uploadedFiles } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CreateGeminiConversationBody,
@@ -173,7 +174,49 @@ router.get("/conversations/:id/messages", async (req, res) => {
   }
 });
 
-const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content.`;
+const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content. When files are shared with you, analyze and describe their content fully and helpfully.`;
+
+type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+async function buildFileParts(fileIds: number[]): Promise<GeminiPart[]> {
+  if (!fileIds.length) return [];
+
+  const files = await db
+    .select()
+    .from(uploadedFiles)
+    .where(inArray(uploadedFiles.id, fileIds));
+
+  const parts: GeminiPart[] = [];
+
+  for (const file of files) {
+    if (
+      file.mimeType.startsWith("image/") ||
+      file.mimeType === "application/pdf"
+    ) {
+      try {
+        const data = fs.readFileSync(file.path).toString("base64");
+        parts.push({ inlineData: { mimeType: file.mimeType, data } });
+      } catch {
+        if (file.extractedText) {
+          parts.push({ text: `[File: ${file.originalName}]\n${file.extractedText}` });
+        }
+      }
+    } else if (file.extractedText) {
+      parts.push({ text: `[File: ${file.originalName}]\n${file.extractedText}` });
+    } else {
+      try {
+        const text = fs.readFileSync(file.path, "utf-8").slice(0, 50000);
+        parts.push({ text: `[File: ${file.originalName}]\n${text}` });
+      } catch {
+        parts.push({ text: `[File: ${file.originalName} — could not read content]` });
+      }
+    }
+  }
+
+  return parts;
+}
 
 // POST /gemini/conversations/:id/messages (SSE streaming)
 router.post("/conversations/:id/messages", async (req, res) => {
@@ -207,24 +250,41 @@ router.post("/conversations/:id/messages", async (req, res) => {
       conversationId,
       role: "user",
       content,
-      fileIds: fileIds ? JSON.stringify(fileIds) : null,
+      fileIds: fileIds && fileIds.length > 0 ? JSON.stringify(fileIds) : null,
     });
 
-    // Load chat history for context
+    // Load all previous messages (history before the current one)
     const history = await db
       .select()
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
       .orderBy(messages.createdAt);
 
-    // Build Gemini message contents
-    const chatMessages = [
-      { role: "user" as const, parts: [{ text: SYSTEM_PROMPT }] },
-      { role: "model" as const, parts: [{ text: "Got it! I'm Aria, ready to help. What's on your mind?" }] },
-      ...history.map((m) => ({
+    // All messages except the last (just saved) one = chat history
+    const historyWithoutCurrent = history.slice(0, -1);
+
+    // Build file parts for the current message
+    const fileParts = fileIds && fileIds.length > 0
+      ? await buildFileParts(fileIds)
+      : [];
+
+    // Current user message parts: files first (so model sees them), then text
+    const currentParts: GeminiPart[] = [
+      ...fileParts,
+      ...(content.trim() ? [{ text: content }] : []),
+    ];
+
+    // Build full chat history for Gemini
+    const chatMessages: { role: "user" | "model"; parts: GeminiPart[] }[] = [
+      { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
+      { role: "model", parts: [{ text: "Got it! I'm Aria, ready to help. What's on your mind?" }] },
+      // Previous messages (text only — files already described in prior turns)
+      ...historyWithoutCurrent.map((m) => ({
         role: (m.role === "assistant" ? "model" : "user") as "user" | "model",
         parts: [{ text: m.content }],
       })),
+      // Current user message with full multimodal parts
+      { role: "user", parts: currentParts },
     ];
 
     // SSE headers
@@ -266,12 +326,10 @@ router.post("/conversations/:id/messages", async (req, res) => {
     const updateData: { updatedAt: Date; title?: string } = { updatedAt: new Date() };
 
     if (allMessages.length === 2 && conversation.title === "New Chat") {
-      // Auto-title from first user message (truncate to 60 chars)
       const autoTitle = content.trim().slice(0, 60) + (content.trim().length > 60 ? "…" : "");
       updateData.title = autoTitle;
     }
 
-    // Update conversation timestamp (and title if first message)
     await db
       .update(conversations)
       .set(updateData)
