@@ -3,7 +3,17 @@ import { useParams } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, StopCircle, Loader2, ChevronDown, Bot } from "lucide-react";
+import {
+  Send,
+  StopCircle,
+  Loader2,
+  ChevronDown,
+  Bot,
+  Paperclip,
+  Mic,
+  X,
+  Copy,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -17,6 +27,13 @@ type Message = {
   role: string;
   content: string;
   createdAt: string;
+};
+
+type UploadedFile = {
+  file: File;
+  id?: number;
+  uploading: boolean;
+  preview?: string;
 };
 
 type Project = {
@@ -57,14 +74,17 @@ export default function SharedChatPage() {
   const [convId, setConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const storageKey = `shared_conv_${token}`;
 
@@ -97,7 +117,6 @@ export default function SharedChatPage() {
         const proj = await fetchProject(token);
         setProject(proj);
 
-        // Check for existing conversation in localStorage
         const existingConvId = localStorage.getItem(storageKey);
         let convIdToUse: number | null = null;
 
@@ -129,6 +148,83 @@ export default function SharedChatPage() {
     init();
   }, [token, storageKey, scrollToBottom]);
 
+  // ─── File upload ──────────────────────────────────────────────────────────
+
+  const uploadFile = async (file: File): Promise<number | null> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`${basePath}/api/files/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      return data.id ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    const selected = Array.from(e.target.files);
+    for (const file of selected) {
+      const preview = file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined;
+      setFiles((prev) => [...prev, { file, uploading: true, preview }]);
+      const id = await uploadFile(file);
+      if (id != null) {
+        setFiles((prev) =>
+          prev.map((f) => (f.file === file ? { ...f, id, uploading: false } : f))
+        );
+      } else {
+        toast({ title: "Upload failed", description: file.name, variant: "destructive" });
+        setFiles((prev) => prev.filter((f) => f.file !== file));
+      }
+    }
+    e.target.value = "";
+  };
+
+  const removeFile = (file: File) => {
+    setFiles((prev) => {
+      const entry = prev.find((f) => f.file === file);
+      if (entry?.preview) URL.revokeObjectURL(entry.preview);
+      return prev.filter((f) => f.file !== file);
+    });
+  };
+
+  // ─── Voice input ──────────────────────────────────────────────────────────
+
+  const startVoiceInput = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast({ title: "Not supported", description: "Voice input isn't available in this browser." });
+      return;
+    }
+    setIsRecording(true);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    let finalTranscript = "";
+    recognition.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; ++i) {
+        if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      setInput(finalTranscript + interim);
+    };
+    recognition.onerror = () => setIsRecording(false);
+    recognition.onend = () => setIsRecording(false);
+    recognition.start();
+  };
+
+  // ─── Send message ─────────────────────────────────────────────────────────
+
   const stopStreaming = () => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -137,9 +233,13 @@ export default function SharedChatPage() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || !convId || isStreaming) return;
+    if ((!input.trim() && files.length === 0) || !convId || isStreaming) return;
+
     const content = input.trim();
+    const fileIds = files.filter((f) => f.id).map((f) => f.id!);
+
     setInput("");
+    setFiles([]);
     setIsStreaming(true);
     setStreamingContent("");
 
@@ -162,7 +262,7 @@ export default function SharedChatPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, fileIds }),
           signal: controller.signal,
         }
       );
@@ -227,11 +327,17 @@ export default function SharedChatPage() {
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied!" });
+  };
+
   const startNewChat = async () => {
     if (!token) return;
     localStorage.removeItem(storageKey);
     setMessages([]);
     setInput("");
+    setFiles([]);
     try {
       const conv = await createConversation(token);
       setConvId(conv.id);
@@ -240,6 +346,8 @@ export default function SharedChatPage() {
       toast({ title: "Failed to start new chat", variant: "destructive" });
     }
   };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -265,6 +373,8 @@ export default function SharedChatPage() {
     );
   }
 
+  const canSend = (input.trim().length > 0 || files.length > 0) && !isStreaming;
+
   return (
     <div className="flex flex-col h-[100dvh] bg-background text-foreground">
       <div className="absolute top-[-10%] left-[-5%] w-[35%] h-[35%] bg-primary/15 rounded-full blur-[100px] pointer-events-none" />
@@ -284,7 +394,7 @@ export default function SharedChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-600">Powered by Aria AI</span>
+          <span className="text-xs text-zinc-600 hidden sm:block">Powered by Aria AI</span>
           <Button
             size="sm"
             variant="ghost"
@@ -313,6 +423,9 @@ export default function SharedChatPage() {
                 <p className="text-zinc-500 text-sm mt-1">
                   {project.description ?? "Ask me anything — I'm here to help!"}
                 </p>
+                <p className="text-zinc-600 text-xs mt-3">
+                  You can send text, images, PDFs, files, or paste a YouTube link
+                </p>
               </div>
             </div>
           )}
@@ -321,7 +434,7 @@ export default function SharedChatPage() {
             <div
               key={msg.id}
               className={cn(
-                "flex gap-3",
+                "flex gap-3 group",
                 msg.role === "user" ? "justify-end" : "justify-start"
               )}
             >
@@ -332,18 +445,28 @@ export default function SharedChatPage() {
               )}
               <div
                 className={cn(
-                  "max-w-[80%] rounded-2xl px-4 py-3 text-sm",
+                  "max-w-[80%] rounded-2xl px-4 py-3 text-sm relative",
                   msg.role === "user"
                     ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-white rounded-br-sm"
                     : "bg-white/5 border border-white/8 text-zinc-100 rounded-bl-sm"
                 )}
               >
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  </div>
+                  <>
+                    <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500 hover:text-white"
+                      onClick={() => copyToClipboard(msg.content)}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </Button>
+                  </>
                 ) : (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 )}
@@ -351,15 +474,15 @@ export default function SharedChatPage() {
             </div>
           ))}
 
-          {/* Streaming message */}
+          {/* Streaming */}
           {isStreaming && (
             <div className="flex gap-3 justify-start">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0 mt-1">
-                <Bot className="w-3.5 h-3.5 text-white" />
+                <Bot className="w-3.5 h-3.5 text-white animate-pulse" />
               </div>
               <div className="max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm bg-white/5 border border-white/8 text-zinc-100">
                 {streamingContent ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                       {streamingContent}
                     </ReactMarkdown>
@@ -377,9 +500,9 @@ export default function SharedChatPage() {
         </div>
       </div>
 
-      {/* Scroll to bottom button */}
+      {/* Scroll to bottom */}
       {showScrollBtn && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
           <Button
             size="sm"
             variant="outline"
@@ -395,35 +518,113 @@ export default function SharedChatPage() {
       {/* Input bar */}
       <div className="relative z-10 px-4 py-4 border-t border-white/8 bg-background/80 backdrop-blur-md shrink-0">
         <div className="max-w-2xl mx-auto">
-          <div className="flex items-end gap-2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus-within:border-primary/50 focus-within:bg-white/[0.07] transition-all">
+
+          {/* File previews */}
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {files.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 bg-white/8 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-zinc-300"
+                >
+                  {f.preview ? (
+                    <img src={f.preview} alt={f.file.name} className="w-6 h-6 rounded object-cover" />
+                  ) : (
+                    <Paperclip className="w-3 h-3 text-zinc-500 shrink-0" />
+                  )}
+                  <span className="truncate max-w-[120px]">{f.file.name}</span>
+                  {f.uploading ? (
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0 text-zinc-500" />
+                  ) : (
+                    <button
+                      onClick={() => removeFile(f.file)}
+                      className="hover:text-red-400 shrink-0"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Input box */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden focus-within:border-primary/40 focus-within:bg-white/[0.07] transition-all">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`Message ${project.name}…`}
-              className="flex-1 bg-transparent border-0 p-0 text-sm text-white placeholder:text-zinc-600 resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[24px] max-h-[120px]"
+              placeholder={`Message ${project.name}… (paste a YouTube link, attach files, or type)`}
+              className="w-full bg-transparent border-0 p-4 pb-2 text-sm text-white placeholder:text-zinc-600 resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[52px] max-h-[160px]"
               rows={1}
               disabled={isStreaming}
             />
-            {isStreaming ? (
-              <Button
-                size="icon"
-                onClick={stopStreaming}
-                className="w-8 h-8 shrink-0 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400"
-              >
-                <StopCircle className="w-4 h-4" />
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                onClick={sendMessage}
-                disabled={!input.trim()}
-                className="w-8 h-8 shrink-0 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 border-0 text-white disabled:opacity-40"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-            )}
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-3 pb-3 pt-1">
+              <div className="flex items-center gap-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept="image/*,.pdf,.txt,.doc,.docx,.csv,.json,.md"
+                  onChange={handleFileChange}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title="Attach image, PDF, or file"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-8 w-8 text-zinc-500 hover:text-white hover:bg-white/10 rounded-xl"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title="Voice input"
+                  onClick={startVoiceInput}
+                  disabled={isStreaming}
+                  className={cn(
+                    "h-8 w-8 rounded-xl transition-colors",
+                    isRecording
+                      ? "text-red-400 bg-red-500/10 hover:bg-red-500/20"
+                      : "text-zinc-500 hover:text-white hover:bg-white/10"
+                  )}
+                >
+                  <Mic className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {isStreaming ? (
+                <Button
+                  size="icon"
+                  onClick={stopStreaming}
+                  className="w-8 h-8 shrink-0 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400"
+                >
+                  <StopCircle className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  onClick={sendMessage}
+                  disabled={!canSend}
+                  className={cn(
+                    "w-8 h-8 shrink-0 rounded-xl border-0 transition-all",
+                    canSend
+                      ? "bg-gradient-to-br from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white"
+                      : "bg-white/5 text-zinc-600"
+                  )}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
           </div>
+
           <p className="text-center text-xs text-zinc-700 mt-2">
             Powered by <span className="text-zinc-500">Aria AI</span>
           </p>

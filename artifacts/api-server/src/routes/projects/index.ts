@@ -1,8 +1,10 @@
 import { Router } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import fs from "fs";
+import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
-import { projects, conversations, messages } from "@workspace/db";
+import { projects, conversations, messages, uploadedFiles } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 
 const router = Router();
@@ -227,14 +229,77 @@ router.get("/share/:token/conversations/:convId", async (req, res) => {
   }
 });
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+function extractYouTubeId(text: string): string[] {
+  const pattern =
+    /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+  const ids: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (!ids.includes(match[1])) ids.push(match[1]);
+  }
+  return ids;
+}
+
+async function fetchYouTubeTranscripts(text: string): Promise<string> {
+  const ids = extractYouTubeId(text);
+  if (ids.length === 0) return "";
+  const parts: string[] = [];
+  for (const id of ids) {
+    try {
+      const transcript = await YoutubeTranscript.fetchTranscript(id, { lang: "en" });
+      parts.push(`[YouTube Video ID: ${id}]\nTranscript:\n${transcript.map(t => t.text).join(" ").slice(0, 40000)}`);
+    } catch {
+      try {
+        const transcript = await YoutubeTranscript.fetchTranscript(id);
+        parts.push(`[YouTube Video ID: ${id}]\nTranscript:\n${transcript.map(t => t.text).join(" ").slice(0, 40000)}`);
+      } catch {
+        parts.push(`[YouTube Video ID: ${id}]\nNote: Transcript unavailable.`);
+      }
+    }
+  }
+  return parts.join("\n\n");
+}
+
+async function buildFileParts(fileIds: number[]): Promise<GeminiPart[]> {
+  if (!fileIds.length) return [];
+  const files = await db.select().from(uploadedFiles).where(inArray(uploadedFiles.id, fileIds));
+  const parts: GeminiPart[] = [];
+  for (const file of files) {
+    if (file.mimeType.startsWith("image/") || file.mimeType === "application/pdf") {
+      try {
+        const data = fs.readFileSync(file.path).toString("base64");
+        parts.push({ inlineData: { mimeType: file.mimeType, data } });
+      } catch {
+        if (file.extractedText) parts.push({ text: `[File: ${file.originalName}]\n${file.extractedText}` });
+      }
+    } else if (file.extractedText) {
+      parts.push({ text: `[File: ${file.originalName}]\n${file.extractedText}` });
+    } else {
+      try {
+        const text = fs.readFileSync(file.path, "utf-8").slice(0, 50000);
+        parts.push({ text: `[File: ${file.originalName}]\n${text}` });
+      } catch {
+        parts.push({ text: `[File: ${file.originalName} — could not read content]` });
+      }
+    }
+  }
+  return parts;
+}
+
 // POST /projects/share/:token/conversations/:convId/messages — SSE streaming
 router.post("/share/:token/conversations/:convId/messages", async (req, res) => {
   const convId = Number(req.params.convId);
   if (isNaN(convId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { content } = req.body as { content?: string };
-  if (!content?.trim()) {
-    res.status(400).json({ error: "content is required" });
+  const { content, fileIds } = req.body as { content?: string; fileIds?: number[] };
+  if (!content?.trim() && (!fileIds || fileIds.length === 0)) {
+    res.status(400).json({ error: "content or fileIds is required" });
     return;
   }
 
@@ -254,8 +319,15 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
       return;
     }
 
+    const messageContent = content?.trim() ?? "";
+
     // Save user message
-    await db.insert(messages).values({ conversationId: convId, role: "user", content, fileIds: null });
+    await db.insert(messages).values({
+      conversationId: convId,
+      role: "user",
+      content: messageContent,
+      fileIds: fileIds && fileIds.length > 0 ? JSON.stringify(fileIds) : null,
+    });
 
     // Load chat history
     const history = await db
@@ -266,15 +338,25 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
 
     const historyWithoutCurrent = history.slice(0, -1);
 
-    // Build Gemini chat with project's systemPrompt as knowledge base
-    const chatMessages: { role: "user" | "model"; parts: { text: string }[] }[] = [
+    // Build multimodal parts for current message
+    const fileParts = fileIds && fileIds.length > 0 ? await buildFileParts(fileIds) : [];
+    const youtubeContext = messageContent ? await fetchYouTubeTranscripts(messageContent) : "";
+
+    const currentParts: GeminiPart[] = [
+      ...fileParts,
+      ...(youtubeContext ? [{ text: youtubeContext }] : []),
+      ...(messageContent ? [{ text: messageContent }] : []),
+    ];
+
+    // Build Gemini chat — project's systemPrompt replaces the default Aria prompt
+    const chatMessages: { role: "user" | "model"; parts: GeminiPart[] }[] = [
       { role: "user", parts: [{ text: project.systemPrompt }] },
       { role: "model", parts: [{ text: "Understood! I'm ready to help based on the provided information. What would you like to know?" }] },
       ...historyWithoutCurrent.map((m) => ({
         role: (m.role === "assistant" ? "model" : "user") as "user" | "model",
         parts: [{ text: m.content }],
       })),
-      { role: "user", parts: [{ text: content }] },
+      { role: "user", parts: currentParts },
     ];
 
     // SSE headers
@@ -305,8 +387,8 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
     // Auto-title after first exchange
     const allMsgs = await db.select().from(messages).where(eq(messages.conversationId, convId));
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
-    if (allMsgs.length === 2 && conv.title === "New Chat") {
-      updateData.title = content.trim().slice(0, 60) + (content.trim().length > 60 ? "…" : "");
+    if (allMsgs.length === 2 && conv.title === "New Chat" && messageContent) {
+      updateData.title = messageContent.slice(0, 60) + (messageContent.length > 60 ? "…" : "");
     }
     await db.update(conversations).set(updateData).where(eq(conversations.id, convId));
 
