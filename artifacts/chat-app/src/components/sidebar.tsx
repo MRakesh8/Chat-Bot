@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useUser, useClerk } from "@clerk/react";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban } from "lucide-react";
 import { useListGeminiConversations, useCreateGeminiConversation, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -189,6 +189,12 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
                 </AvatarFallback>
               </Avatar>
               <span className="truncate flex-1">{user?.fullName || 'User'}</span>
+            </div>
+          </Link>
+          <Link href="/admin/projects">
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer" onClick={() => onClose && onClose()}>
+              <FolderKanban className="w-4 h-4 opacity-70" />
+              <span>Projects</span>
             </div>
           </Link>
           <Link href="/settings">

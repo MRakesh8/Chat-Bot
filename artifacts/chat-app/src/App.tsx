@@ -12,6 +12,9 @@ import ChatPage from "./pages/chat";
 import SettingsPage from "./pages/settings";
 import ProfilePage from "./pages/profile";
 import NotFound from "./pages/not-found";
+import AdminProjectsPage from "./pages/admin-projects";
+import AdminProjectEditPage from "./pages/admin-project-edit";
+import SharedChatPage from "./pages/shared-chat";
 
 const queryClient = new QueryClient();
 
@@ -148,6 +151,24 @@ function ClerkProviderWithRoutes() {
             <Route path="/" component={Home} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
+
+            {/* Shared project chat — public, no auth required */}
+            <Route path="/p/:token" component={SharedChatPage} />
+
+            {/* Admin project routes — require auth */}
+            <Route path="/admin/projects">
+              <Show when="signed-in"><AdminProjectsPage /></Show>
+              <Show when="signed-out"><Home /></Show>
+            </Route>
+            <Route path="/admin/projects/new">
+              <Show when="signed-in"><AdminProjectEditPage /></Show>
+              <Show when="signed-out"><Home /></Show>
+            </Route>
+            <Route path="/admin/projects/:id/edit">
+              <Show when="signed-in"><AdminProjectEditPage /></Show>
+              <Show when="signed-out"><Home /></Show>
+            </Route>
+
             <Route path="/chat">
               <Show when="signed-in"><ChatPage /></Show>
               <Show when="signed-out"><Home /></Show>
