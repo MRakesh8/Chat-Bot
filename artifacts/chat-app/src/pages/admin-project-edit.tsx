@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,35 +22,20 @@ type Project = {
   updatedAt: string;
 };
 
-async function fetchProject(id: number): Promise<Project> {
-  const res = await fetch(`${basePath}/api/projects/${id}`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to load project");
-  return res.json();
-}
-
-async function createProject(data: { name: string; description: string; systemPrompt: string }): Promise<Project> {
-  const res = await fetch(`${basePath}/api/projects`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error || "Failed to create project");
-  }
-  return res.json();
-}
-
-async function updateProject(id: number, data: { name: string; description: string; systemPrompt: string }): Promise<Project> {
-  const res = await fetch(`${basePath}/api/projects/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error("Failed to update project");
-  return res.json();
+function useAuthFetch() {
+  const { getToken } = useAuth();
+  return async (url: string, options: RequestInit = {}) => {
+    const token = await getToken();
+    return fetch(url, {
+      ...options,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    });
+  };
 }
 
 export default function AdminProjectEditPage() {
@@ -60,6 +46,7 @@ export default function AdminProjectEditPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const authFetch = useAuthFetch();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -68,7 +55,11 @@ export default function AdminProjectEditPage() {
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["admin-project", projectId],
-    queryFn: () => fetchProject(projectId!),
+    queryFn: async () => {
+      const res = await authFetch(`${basePath}/api/projects/${projectId}`);
+      if (!res.ok) throw new Error("Failed to load project");
+      return res.json() as Promise<Project>;
+    },
     enabled: !isNew && !!projectId,
   });
 
@@ -81,7 +72,17 @@ export default function AdminProjectEditPage() {
   }, [project]);
 
   const createMutation = useMutation({
-    mutationFn: createProject,
+    mutationFn: async (data: { name: string; description: string; systemPrompt: string }) => {
+      const res = await authFetch(`${basePath}/api/projects`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to create project");
+      }
+      return res.json() as Promise<Project>;
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
       setSavedToken(data.shareToken);
@@ -92,8 +93,14 @@ export default function AdminProjectEditPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { name: string; description: string; systemPrompt: string }) =>
-      updateProject(projectId!, data),
+    mutationFn: async (data: { name: string; description: string; systemPrompt: string }) => {
+      const res = await authFetch(`${basePath}/api/projects/${projectId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update project");
+      return res.json() as Promise<Project>;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
       queryClient.invalidateQueries({ queryKey: ["admin-project", projectId] });
@@ -139,7 +146,6 @@ export default function AdminProjectEditPage() {
       <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-blue-500/15 rounded-full blur-[100px] pointer-events-none" />
 
       <div className="relative z-10 max-w-2xl mx-auto px-4 py-8">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-10">
           <Button
             variant="ghost"
@@ -154,7 +160,9 @@ export default function AdminProjectEditPage() {
               {isNew ? "New Project" : "Edit Project"}
             </h1>
             <p className="text-sm text-zinc-500 mt-0.5">
-              {isNew ? "Build a custom AI assistant with your own knowledge" : "Update your project settings and knowledge"}
+              {isNew
+                ? "Build a custom AI assistant with your own knowledge"
+                : "Update your project settings and knowledge"}
             </p>
           </div>
         </div>
@@ -165,7 +173,6 @@ export default function AdminProjectEditPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-300">Project Name *</label>
               <Input
@@ -176,7 +183,6 @@ export default function AdminProjectEditPage() {
               />
             </div>
 
-            {/* Description */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-300">
                 Description <span className="text-zinc-600 font-normal">(optional)</span>
@@ -189,24 +195,21 @@ export default function AdminProjectEditPage() {
               />
             </div>
 
-            {/* Knowledge */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-300">Knowledge &amp; Instructions *</label>
               <p className="text-xs text-zinc-500">
-                Write everything the AI should know — your product info, FAQs, rules, tone of voice, or any specific information. The AI will use this to answer questions.
+                Write everything the AI should know — your product info, FAQs, rules, tone of voice,
+                or any specific information. The AI will use only this to answer questions.
               </p>
               <Textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder={`Example:\nYou are a helpful support assistant for Acme Corp, a SaaS company.\n\nProduct information:\n- Our pricing starts at $29/month for the Basic plan\n- Enterprise plan includes unlimited users and SSO\n- Free 14-day trial, no credit card required\n\nFAQs:\nQ: How do I reset my password?\nA: Go to Settings > Security > Reset Password\n\nTone: Friendly, professional, concise.`}
+                placeholder={`Example:\nYou are a helpful support assistant for Acme Corp.\n\nProduct information:\n- Pricing starts at $29/month\n- Free 14-day trial, no credit card required\n\nFAQs:\nQ: How do I reset my password?\nA: Go to Settings > Security > Reset Password\n\nTone: Friendly, professional, concise.`}
                 className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 focus:border-primary focus:ring-primary/20 min-h-[320px] font-mono text-sm resize-y"
               />
-              <p className="text-xs text-zinc-600">
-                {systemPrompt.length.toLocaleString()} characters
-              </p>
+              <p className="text-xs text-zinc-600">{systemPrompt.length.toLocaleString()} characters</p>
             </div>
 
-            {/* Submit */}
             <div className="flex items-center gap-3 pt-2">
               <Button
                 type="submit"
@@ -230,7 +233,6 @@ export default function AdminProjectEditPage() {
               </Button>
             </div>
 
-            {/* Share link panel (shown after create or when editing) */}
             {shareUrl && (
               <div className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl">
                 <p className="text-green-400 font-medium text-sm mb-2">

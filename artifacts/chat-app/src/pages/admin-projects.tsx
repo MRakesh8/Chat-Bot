@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -42,26 +43,20 @@ type Project = {
   updatedAt: string;
 };
 
-async function fetchProjects(): Promise<Project[]> {
-  const res = await fetch(`${basePath}/api/projects`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to load projects");
-  return res.json();
-}
-
-async function deleteProject(id: number): Promise<void> {
-  const res = await fetch(`${basePath}/api/projects/${id}`, { method: "DELETE", credentials: "include" });
-  if (!res.ok) throw new Error("Failed to delete project");
-}
-
-async function toggleProject(id: number, isActive: boolean): Promise<Project> {
-  const res = await fetch(`${basePath}/api/projects/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ isActive }),
-  });
-  if (!res.ok) throw new Error("Failed to update project");
-  return res.json();
+function useAuthFetch() {
+  const { getToken } = useAuth();
+  return async (url: string, options: RequestInit = {}) => {
+    const token = await getToken();
+    return fetch(url, {
+      ...options,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    });
+  };
 }
 
 export default function AdminProjectsPage() {
@@ -69,14 +64,22 @@ export default function AdminProjectsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const authFetch = useAuthFetch();
 
   const { data: projectList, isLoading } = useQuery({
     queryKey: ["admin-projects"],
-    queryFn: fetchProjects,
+    queryFn: async () => {
+      const res = await authFetch(`${basePath}/api/projects`);
+      if (!res.ok) throw new Error("Failed to load projects");
+      return res.json() as Promise<Project[]>;
+    },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteProject,
+    mutationFn: async (id: number) => {
+      const res = await authFetch(`${basePath}/api/projects/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete project");
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
       toast({ title: "Project deleted" });
@@ -86,7 +89,14 @@ export default function AdminProjectsPage() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => toggleProject(id, isActive),
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      const res = await authFetch(`${basePath}/api/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive }),
+      });
+      if (!res.ok) throw new Error("Failed to update project");
+      return res.json() as Promise<Project>;
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-projects"] }),
     onError: () => toast({ title: "Failed to update project", variant: "destructive" }),
   });
@@ -159,7 +169,6 @@ export default function AdminProjectsPage() {
                 key={project.id}
                 className="group relative bg-white/3 border border-white/8 rounded-2xl p-5 hover:border-white/15 hover:bg-white/5 transition-all"
               >
-                {/* Status badge */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
                     <h3 className="text-white font-semibold text-base truncate">{project.name}</h3>
@@ -179,13 +188,11 @@ export default function AdminProjectsPage() {
                   </Badge>
                 </div>
 
-                {/* Knowledge preview */}
                 <p className="text-zinc-600 text-xs line-clamp-2 mb-4 font-mono bg-black/30 rounded-lg px-3 py-2 border border-white/5">
                   {project.systemPrompt.slice(0, 120)}
                   {project.systemPrompt.length > 120 ? "…" : ""}
                 </p>
 
-                {/* Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     size="sm"
@@ -221,9 +228,7 @@ export default function AdminProjectsPage() {
                     size="sm"
                     variant="outline"
                     className="gap-1.5 border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs h-8"
-                    onClick={() =>
-                      toggleMutation.mutate({ id: project.id, isActive: !project.isActive })
-                    }
+                    onClick={() => toggleMutation.mutate({ id: project.id, isActive: !project.isActive })}
                     disabled={toggleMutation.isPending}
                   >
                     {project.isActive ? (
