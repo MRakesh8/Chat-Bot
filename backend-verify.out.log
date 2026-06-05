@@ -668,3 +668,33 @@
       "statusCode": 304
     }
     [35mresponseTime[39m: 1097
+[15:35:44.780] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 65,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 974
+[15:35:44.849] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 63,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1045
+[15:35:44.850] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 64,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1045
