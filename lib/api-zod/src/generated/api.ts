@@ -34,7 +34,8 @@ export const ListGeminiConversationsResponse = zod.array(ListGeminiConversations
  * @summary Create a new conversation
  */
 export const CreateGeminiConversationBody = zod.object({
-  "title": zod.string()
+  "title": zod.string(),
+  "projectId": zod.string().nullish()
 })
 
 

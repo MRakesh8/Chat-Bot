@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: chat-bot-api
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm --filter @workspace/api-server build
+    startCommand: corepack pnpm --filter @workspace/api-server start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOCAL_DEMO_MODE
+        value: "false"
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: AI_INTEGRATIONS_GEMINI_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta
+      - key: AI_INTEGRATIONS_GEMINI_API_KEY
+        sync: false

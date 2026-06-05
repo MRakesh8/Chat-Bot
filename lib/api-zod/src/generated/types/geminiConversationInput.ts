@@ -8,4 +8,6 @@
 
 export interface GeminiConversationInput {
   title: string;
+  /** @nullable */
+  projectId?: string | null;
 }

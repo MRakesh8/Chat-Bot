@@ -1,0 +1,34 @@
+(node:16888) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:3552) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:33304) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+$ node ./build.mjs
+$ vite --config vite.config.ts --host 0.0.0.0
+[31merror when starting dev server:
+Error: Port 5173 is already in use
+    at Server.onError$1 (file:///D:/Project/Chat-bot/node_modules/.pnpm/vite@7.3.3_@types+node@25.6_ae3e33f3fe335111b5390f6db5b643d9/node_modules/vite/dist/node/chunks/config.js:14949:28)
+    at Server.emit (node:events:508:28)
+    at emitErrorNT (node:net:1984:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m
+
+  dist\index.mjs                  11.9mb
+  dist\pino-worker.mjs           153.4kb
+  dist\pino-file.mjs             142.1kb
+  dist\pino-pretty.mjs           114.6kb
+  dist\thread-stream-worker.mjs    7.3kb
+  ...and 5 more output files...
+
+Done in 925ms
+$ node --enable-source-maps ./dist/index.mjs
+file:///D:/Project/Chat-bot/scripts/dev-backend.mjs:33
+        : reject(new Error(`Command failed with exit code ${code}`));
+                 ^
+
+Error: Command failed with exit code 4294967295
+    at ChildProcess.<anonymous> (file:///D:/Project/Chat-bot/scripts/dev-backend.mjs:33:18)
+    at ChildProcess.emit (node:events:508:28)
+    at ChildProcess._handle.onexit (node:internal/child_process:294:12)
+
+Node.js v24.14.0

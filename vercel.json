@@ -1,0 +1,12 @@
+{
+  "framework": null,
+  "installCommand": "corepack enable && corepack pnpm install --frozen-lockfile",
+  "buildCommand": "corepack pnpm --filter @workspace/chat-app build",
+  "outputDirectory": "frontend/chat-app/dist/public",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
