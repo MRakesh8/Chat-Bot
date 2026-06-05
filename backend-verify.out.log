@@ -698,3 +698,769 @@
       "statusCode": 304
     }
     [35mresponseTime[39m: 1045
+[16:51:12.545] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 68,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1947
+[16:51:12.552] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 66,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1959
+[16:51:12.620] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 67,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 2023
+[18:26:57.597] [31mERROR[39m (26420): [36mError getting project[39m
+    [35mreq[39m: {
+      "id": 69,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    err: {
+      "type": "_DrizzleQueryError",
+      "message": "Failed query: select \"id\", \"user_id\", \"name\", \"description\", \"system_prompt\", \"share_token\", \"is_active\", \"created_at\" from \"projects\" where \"projects\".\"id\" = $1\nparams: fb2194ea-805a-4dae-8212-a33fec65457a: getaddrinfo ENOTFOUND db.dirvyhkvyplwtnenbuqo.supabase.co",
+      "stack":
+          Error: Failed query: select "id", "user_id", "name", "description", "system_prompt", "share_token", "is_active", "created_at" from "projects" where "projects"."id" = $1
+          params: fb2194ea-805a-4dae-8212-a33fec65457a
+              at NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:73:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:84:23)
+          caused by: Error: getaddrinfo ENOTFOUND db.dirvyhkvyplwtnenbuqo.supabase.co
+              at <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\pg-pool@3.13.0_pg@8.20.0\node_modules\pg-pool\index.js:45:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:161:13)
+              at async NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:71:12)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:84:23)
+      "query": "select \"id\", \"user_id\", \"name\", \"description\", \"system_prompt\", \"share_token\", \"is_active\", \"created_at\" from \"projects\" where \"projects\".\"id\" = $1",
+      "params": [
+        "fb2194ea-805a-4dae-8212-a33fec65457a"
+      ]
+    }
+[18:26:57.605] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 69,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 599
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }
+[18:26:57.652] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 71,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 644
+[18:26:57.657] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 70,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 650
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }
+[19:00:20.202] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 74,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1437
+[19:00:20.284] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 72,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 1521
+[19:00:20.352] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 73,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 1588
+[19:15:38.703] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 77,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1840
+[19:15:38.782] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 75,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1922
+[19:15:38.784] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 76,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1922
+[19:15:40.702] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 80,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 971
+[19:15:41.105] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 78,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1420
+[19:15:41.106] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 79,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1375
+[19:15:59.068] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 81,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1227
+[19:15:59.158] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 82,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1316
+[19:15:59.166] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 83,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 1014
+[19:16:03.602] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 84,
+      "method": "GET",
+      "url": "/api/projects/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 638
+[19:16:03.634] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 86,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 668
+[19:16:03.703] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 85,
+      "method": "GET",
+      "url": "/api/reports/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 737
+[19:16:06.205] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 87,
+      "method": "GET",
+      "url": "/api/files/project/fb2194ea-805a-4dae-8212-a33fec65457a"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 346
+[19:16:08.825] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 88,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 137
+[19:16:09.231] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 89,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36/conversations/a8ea7225-82d8-44fb-a8b6-bcaece4fbd02"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 400
+[19:16:19.928] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 91,
+      "method": "POST",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 201
+    }
+    [35mresponseTime[39m: 505
+[19:16:19.946] [32mINFO[39m (26420): [36mrequest aborted[39m
+    [35mreq[39m: {
+      "id": 90,
+      "method": "POST",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36/conversations/a8ea7225-82d8-44fb-a8b6-bcaece4fbd02/messages"
+    }
+    [35mres[39m: {
+      "statusCode": null
+    }
+    [35mresponseTime[39m: 6629
+[19:16:20.194] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 92,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 224
+[19:16:20.428] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 93,
+      "method": "GET",
+      "url": "/api/gemini/conversations/4"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 457
+[19:16:20.511] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 94,
+      "method": "GET",
+      "url": "/api/gemini/conversations/4/messages"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 237
+[19:16:20.956] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 95,
+      "method": "POST",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 201
+    }
+    [35mresponseTime[39m: 279
+[19:16:21.580] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 96,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 296
+[19:16:21.788] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 98,
+      "method": "GET",
+      "url": "/api/gemini/conversations/5/messages"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 503
+[19:16:22.078] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 97,
+      "method": "GET",
+      "url": "/api/gemini/conversations/5"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 793
+[19:16:23.764] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 99,
+      "method": "POST",
+      "url": "/api/gemini/conversations/5/messages"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 228
+[19:16:24.065] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 100,
+      "method": "GET",
+      "url": "/api/gemini/conversations/5/messages"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 294
+[19:16:24.633] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 101,
+      "method": "GET",
+      "url": "/api/gemini/conversations/5"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 244
+[19:16:24.980] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 102,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 331
+[19:16:28.479] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 103,
+      "method": "GET",
+      "url": "/api/projects"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 372
+[19:16:28.668] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 104,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 240
+[19:16:32.060] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 105,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 173
+[19:16:32.391] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 106,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36/conversations/a8ea7225-82d8-44fb-a8b6-bcaece4fbd02"
+    }
+    [35mres[39m: {
+      "statusCode": 200
+    }
+    [35mresponseTime[39m: 322
+[19:53:30.141] [31mERROR[39m (26420): [36mError getting shared project[39m
+    [35mreq[39m: {
+      "id": 107,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    err: {
+      "type": "_DrizzleQueryError",
+      "message": "Failed query: select \"id\", \"name\", \"description\", \"share_token\", \"is_active\" from \"projects\" where \"projects\".\"share_token\" = $1\nparams: 4f9cc897a7ab4f9aac36: password authentication failed for user \"postgres\"",
+      "stack":
+          Error: Failed query: select "id", "name", "description", "share_token", "is_active" from "projects" where "projects"."share_token" = $1
+          params: 4f9cc897a7ab4f9aac36
+              at NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:73:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:160:23)
+          caused by: error: password authentication failed for user "postgres"
+              at <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\pg-pool@3.13.0_pg@8.20.0\node_modules\pg-pool\index.js:45:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:161:13)
+              at async NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:71:12)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:160:23)
+      "query": "select \"id\", \"name\", \"description\", \"share_token\", \"is_active\" from \"projects\" where \"projects\".\"share_token\" = $1",
+      "params": [
+        "4f9cc897a7ab4f9aac36"
+      ]
+    }
+[19:53:30.142] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 107,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 617
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }
+[19:53:32.361] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 109,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 707
+[19:53:32.947] [31mERROR[39m (26420): [36mError listing projects[39m
+    [35mreq[39m: {
+      "id": 108,
+      "method": "GET",
+      "url": "/api/projects"
+    }
+    err: {
+      "type": "_DrizzleQueryError",
+      "message": "Failed query: select \"id\", \"user_id\", \"name\", \"description\", \"system_prompt\", \"share_token\", \"is_active\", \"created_at\" from \"projects\" where \"projects\".\"user_id\" = $1 order by \"projects\".\"created_at\" desc\nparams: b16cd5e5-606e-450d-a369-dd54a256a8b5: password authentication failed for user \"postgres\"",
+      "stack":
+          Error: Failed query: select "id", "user_id", "name", "description", "system_prompt", "share_token", "is_active", "created_at" from "projects" where "projects"."user_id" = $1 order by "projects"."created_at" desc
+          params: b16cd5e5-606e-450d-a369-dd54a256a8b5
+              at NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:73:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:23:20)
+          caused by: error: password authentication failed for user "postgres"
+              at <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\pg-pool@3.13.0_pg@8.20.0\node_modules\pg-pool\index.js:45:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:161:13)
+              at async NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:71:12)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:23:20)
+      "query": "select \"id\", \"user_id\", \"name\", \"description\", \"system_prompt\", \"share_token\", \"is_active\", \"created_at\" from \"projects\" where \"projects\".\"user_id\" = $1 order by \"projects\".\"created_at\" desc",
+      "params": [
+        "b16cd5e5-606e-450d-a369-dd54a256a8b5"
+      ]
+    }
+[19:53:32.948] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 108,
+      "method": "GET",
+      "url": "/api/projects"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 1309
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }
+[20:15:23.897] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 110,
+      "method": "GET",
+      "url": "/api/projects"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 7
+[20:15:23.902] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 111,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 401
+    }
+    [35mresponseTime[39m: 9
+[20:15:23.961] [31mERROR[39m (26420): [36mError getting shared project[39m
+    [35mreq[39m: {
+      "id": 112,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    err: {
+      "type": "_DrizzleQueryError",
+      "message": "Failed query: select \"id\", \"name\", \"description\", \"share_token\", \"is_active\" from \"projects\" where \"projects\".\"share_token\" = $1\nparams: 4f9cc897a7ab4f9aac36: getaddrinfo ENOTFOUND db.dirvyhkvyplwtnenbuqo.supabase.co",
+      "stack":
+          Error: Failed query: select "id", "name", "description", "share_token", "is_active" from "projects" where "projects"."share_token" = $1
+          params: 4f9cc897a7ab4f9aac36
+              at NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:73:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:160:23)
+          caused by: Error: getaddrinfo ENOTFOUND db.dirvyhkvyplwtnenbuqo.supabase.co
+              at <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\pg-pool@3.13.0_pg@8.20.0\node_modules\pg-pool\index.js:45:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:161:13)
+              at async NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:71:12)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:160:23)
+      "query": "select \"id\", \"name\", \"description\", \"share_token\", \"is_active\" from \"projects\" where \"projects\".\"share_token\" = $1",
+      "params": [
+        "4f9cc897a7ab4f9aac36"
+      ]
+    }
+[20:15:23.962] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 112,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 10
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }
+[20:16:12.609] [32mINFO[39m (26420): [36mrequest completed[39m
+    [35mreq[39m: {
+      "id": 114,
+      "method": "GET",
+      "url": "/api/gemini/conversations"
+    }
+    [35mres[39m: {
+      "statusCode": 304
+    }
+    [35mresponseTime[39m: 23262
+[20:16:15.901] [31mERROR[39m (26420): [36mError getting shared project[39m
+    [35mreq[39m: {
+      "id": 115,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    err: {
+      "type": "_DrizzleQueryError",
+      "message": "Failed query: select \"id\", \"name\", \"description\", \"share_token\", \"is_active\" from \"projects\" where \"projects\".\"share_token\" = $1\nparams: 4f9cc897a7ab4f9aac36: password authentication failed for user \"postgres\"",
+      "stack":
+          Error: Failed query: select "id", "name", "description", "share_token", "is_active" from "projects" where "projects"."share_token" = $1
+          params: 4f9cc897a7ab4f9aac36
+              at NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:73:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:160:23)
+          caused by: error: password authentication failed for user "postgres"
+              at <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\pg-pool@3.13.0_pg@8.20.0\node_modules\pg-pool\index.js:45:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:161:13)
+              at async NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:71:12)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:160:23)
+      "query": "select \"id\", \"name\", \"description\", \"share_token\", \"is_active\" from \"projects\" where \"projects\".\"share_token\" = $1",
+      "params": [
+        "4f9cc897a7ab4f9aac36"
+      ]
+    }
+[20:16:15.902] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 115,
+      "method": "GET",
+      "url": "/api/projects/share/4f9cc897a7ab4f9aac36"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 26491
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }
+[20:17:39.883] [31mERROR[39m (26420): [36mError listing projects[39m
+    [35mreq[39m: {
+      "id": 113,
+      "method": "GET",
+      "url": "/api/projects"
+    }
+    err: {
+      "type": "_DrizzleQueryError",
+      "message": "Failed query: select \"id\", \"user_id\", \"name\", \"description\", \"system_prompt\", \"share_token\", \"is_active\", \"created_at\" from \"projects\" where \"projects\".\"user_id\" = $1 order by \"projects\".\"created_at\" desc\nparams: b16cd5e5-606e-450d-a369-dd54a256a8b5: read ECONNRESET",
+      "stack":
+          Error: Failed query: select "id", "user_id", "name", "description", "system_prompt", "share_token", "is_active", "created_at" from "projects" where "projects"."user_id" = $1 order by "projects"."created_at" desc
+          params: b16cd5e5-606e-450d-a369-dd54a256a8b5
+              at NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:73:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:23:20)
+          caused by: Error: read ECONNRESET
+              at <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\pg-pool@3.13.0_pg@8.20.0\node_modules\pg-pool\index.js:45:11)
+              at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:161:13)
+              at async NodePgPreparedQuery.queryWithCache (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\pg-core\session.ts:71:12)
+              at async <anonymous> (D:\Project\Chat-bot\node_modules\.pnpm\drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.20.0\node_modules\src\node-postgres\session.ts:154:19)
+              at async <anonymous> (D:\Project\Chat-bot\backend\api-server\src\routes\projects\index.ts:23:20)
+      "query": "select \"id\", \"user_id\", \"name\", \"description\", \"system_prompt\", \"share_token\", \"is_active\", \"created_at\" from \"projects\" where \"projects\".\"user_id\" = $1 order by \"projects\".\"created_at\" desc",
+      "params": [
+        "b16cd5e5-606e-450d-a369-dd54a256a8b5"
+      ]
+    }
+[20:17:39.884] [32mINFO[39m (26420): [36mrequest errored[39m
+    [35mreq[39m: {
+      "id": 113,
+      "method": "GET",
+      "url": "/api/projects"
+    }
+    [35mres[39m: {
+      "statusCode": 500
+    }
+    [35mresponseTime[39m: 110539
+    err: {
+      "type": "Error",
+      "message": "failed with status code 500",
+      "stack":
+          Error: failed with status code 500
+              at onResFinished (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:115:39)
+              at ServerResponse.onResponseComplete (D:\Project\Chat-bot\node_modules\.pnpm\pino-http@10.5.0\node_modules\pino-http\logger.js:178:14)
+              at ServerResponse.emit (node:events:520:35)
+              at onFinish (node:_http_outgoing:1026:10)
+              at callback (node:internal/streams/writable:764:21)
+              at afterWrite (node:internal/streams/writable:708:5)
+              at afterWriteTick (node:internal/streams/writable:694:10)
+              at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+    }

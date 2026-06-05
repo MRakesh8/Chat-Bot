@@ -28,15 +28,24 @@ app.use(
   }),
 );
 
-const allowedOrigins = (process.env.FRONTEND_ORIGIN ?? "")
+const envOrigins = (process.env.FRONTEND_ORIGIN ?? "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const allowedOrigins = [
+  "https://chatbot-rakesh.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  ...envOrigins,
+];
+
 app.use(
   cors({
+    origin: allowedOrigins,
     credentials: true,
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
   }),
 );
 app.use(express.json());
