@@ -427,12 +427,24 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error in shared chat stream");
+    
+    const status = err?.status || err?.response?.status;
+    const isRateLimited = status === 429 || err?.message?.includes("429");
+
     if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error" });
+      if (isRateLimited) {
+        res.status(429).json({ error: "AI service is busy. Please try again later." });
+      } else {
+        res.status(500).json({ error: "Internal server error" });
+      }
     } else {
-      res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
+      if (isRateLimited) {
+        res.write(`data: ${JSON.stringify({ error: "AI service is busy. Please try again later." })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
+      }
       res.end();
     }
   }
