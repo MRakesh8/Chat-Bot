@@ -1,4 +1,4 @@
-import { db, knowledgeChunks, projectFiles } from "@workspace/db";
+import { db, knowledgeChunks, projectFiles, projects } from "@workspace/db";
 import { supabaseAdmin } from "../lib/supabase";
 import { ai } from "@workspace/integrations-gemini-ai";
 import mammoth from "mammoth";
@@ -33,6 +33,9 @@ export async function processProjectFile(fileId: string) {
   try {
     const [file] = await db.select().from(projectFiles).where(eq(projectFiles.id, fileId));
     if (!file) throw new Error(`File ${fileId} not found`);
+
+    const [project] = await db.select().from(projects).where(eq(projects.id, file.projectId));
+    if (!project) throw new Error(`Project ${file.projectId} not found for file ${fileId}`);
 
     if (file.status === "processed") {
       logger.info(`File ${fileId} is already processed`);
@@ -136,8 +139,12 @@ export async function processProjectFile(fileId: string) {
         const embedding = response.embeddings?.[0]?.values;
         if (embedding) {
           await db.insert(knowledgeChunks).values({
+            userId: project.userId,
             projectFileId: file.id,
             projectId: file.projectId,
+            workspaceId: project.workspaceId,
+            scope: "project",
+            visibility: "admin",
             chunkText: text,
             embedding: embedding,
           });

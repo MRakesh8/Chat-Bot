@@ -17,8 +17,7 @@ const API_KEYS = [
 ].filter(Boolean) as string[];
 
 if (API_KEYS.length === 0) {
-  console.warn("No GEMINI_API_KEY_* or AI_INTEGRATIONS_GEMINI_API_KEY set. Using fallback free key.");
-  API_KEYS.push("YOUR_FREE_GEMINI_API_KEY");
+  throw new Error("No GEMINI_API_KEY_* or AI_INTEGRATIONS_GEMINI_API_KEY environment variables found. At least one valid API key must be provided.");
 }
 
 // Global state for round-robin rotation

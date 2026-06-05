@@ -3,20 +3,31 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+import React, { Suspense } from "react";
 import Home from "./pages/home";
 import ChatPage from "./pages/chat";
-import SettingsPage from "./pages/settings";
-import ProfilePage from "./pages/profile";
-import NotFound from "./pages/not-found";
-import AdminProjectsPage from "./pages/admin-projects";
-import AdminProjectEditPage from "./pages/admin-project-edit";
 import SharedChatPage from "./pages/shared-chat";
+import NotFound from "./pages/not-found";
+
+const SettingsPage = React.lazy(() => import("./pages/settings"));
+const ProfilePage = React.lazy(() => import("./pages/profile"));
+const AdminProjectsPage = React.lazy(() => import("./pages/admin-projects"));
+const AdminProjectEditPage = React.lazy(() => import("./pages/admin-project-edit"));
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { supabase } from "./lib/supabase";
 import { useState } from "react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60, // 60 seconds
+      gcTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // Basic UI for Auth
@@ -121,38 +132,40 @@ export default function App() {
       <AuthProvider>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
-            <Switch>
-              <Route path="/" component={Home} />
-              <Route path="/sign-in"><AuthPage type="login" /></Route>
-              <Route path="/sign-up"><AuthPage type="signup" /></Route>
+            <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
+              <Switch>
+                <Route path="/" component={Home} />
+                <Route path="/sign-in"><AuthPage type="login" /></Route>
+                <Route path="/sign-up"><AuthPage type="signup" /></Route>
 
-              {/* Shared project chat */}
-              <Route path="/p/:token" component={SharedChatPage} />
+                {/* Shared project chat */}
+                <Route path="/p/:token" component={SharedChatPage} />
 
-              <Route path="/admin/projects">
-                <ProtectedRoute><AdminProjectsPage /></ProtectedRoute>
-              </Route>
-              <Route path="/admin/projects/new">
-                <ProtectedRoute><AdminProjectEditPage /></ProtectedRoute>
-              </Route>
-              <Route path="/admin/projects/:id/edit">
-                <ProtectedRoute><AdminProjectEditPage /></ProtectedRoute>
-              </Route>
+                <Route path="/admin/projects">
+                  <ProtectedRoute><AdminProjectsPage /></ProtectedRoute>
+                </Route>
+                <Route path="/admin/projects/new">
+                  <ProtectedRoute><AdminProjectEditPage /></ProtectedRoute>
+                </Route>
+                <Route path="/admin/projects/:id/edit">
+                  <ProtectedRoute><AdminProjectEditPage /></ProtectedRoute>
+                </Route>
 
-              <Route path="/chat">
-                <ProtectedRoute><ChatPage /></ProtectedRoute>
-              </Route>
-              <Route path="/chat/:id">
-                <ProtectedRoute><ChatPage /></ProtectedRoute>
-              </Route>
-              <Route path="/settings">
-                <ProtectedRoute><SettingsPage /></ProtectedRoute>
-              </Route>
-              <Route path="/profile">
-                <ProtectedRoute><ProfilePage /></ProtectedRoute>
-              </Route>
-              <Route component={NotFound} />
-            </Switch>
+                <Route path="/chat">
+                  <ProtectedRoute><ChatPage /></ProtectedRoute>
+                </Route>
+                <Route path="/chat/:id">
+                  <ProtectedRoute><ChatPage /></ProtectedRoute>
+                </Route>
+                <Route path="/settings">
+                  <ProtectedRoute><SettingsPage /></ProtectedRoute>
+                </Route>
+                <Route path="/profile">
+                  <ProtectedRoute><ProfilePage /></ProtectedRoute>
+                </Route>
+                <Route component={NotFound} />
+              </Switch>
+            </Suspense>
             <Toaster />
           </TooltipProvider>
         </QueryClientProvider>

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, desc, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import { YoutubeTranscript } from "youtube-transcript";
@@ -7,6 +7,7 @@ import { db } from "@workspace/db";
 import { projects, chatSessions, messages, projectFiles, knowledgeChunks } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
+import { buildKnowledgeIsolationCondition } from "../../services/knowledge-isolation";
 
 const router = Router();
 
@@ -294,10 +295,17 @@ async function buildProjectKnowledgeContext(projectId: string, query: string): P
     const userVector = embedRes.embeddings?.[0]?.values;
     if (!userVector) return "";
 
+    const isolationCondition = buildKnowledgeIsolationCondition({
+      scope: "project",
+      projectId,
+      userRole: "client",
+    });
+    if (!isolationCondition) return "";
+
     let chunks = await db
       .select()
       .from(knowledgeChunks)
-      .where(and(eq(knowledgeChunks.projectId, projectId), isNotNull(knowledgeChunks.embedding)))
+      .where(and(isolationCondition, isNotNull(knowledgeChunks.embedding)))
       .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
       .limit(6);
 
@@ -305,7 +313,7 @@ async function buildProjectKnowledgeContext(projectId: string, query: string): P
       chunks = await db
         .select()
         .from(knowledgeChunks)
-        .where(eq(knowledgeChunks.projectId, projectId))
+        .where(isolationCondition)
         .orderBy(desc(knowledgeChunks.createdAt))
         .limit(6);
     }

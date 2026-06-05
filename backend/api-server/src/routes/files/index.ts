@@ -4,13 +4,19 @@ import path from "path";
 import fs from "fs";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { projectFiles } from "@workspace/db";
+import { projectFiles, projects } from "@workspace/db";
 import { DeleteFileParams } from "@workspace/api-zod";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
 import { processProjectFile } from "../../services/knowledge";
 
 const router = Router();
+
+async function getOwnedProject(projectId: string, userId: string) {
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+  if (!project || project.userId !== userId) return null;
+  return project;
+}
 
 // Ensure uploads directory exists temporarily
 const uploadsDir = path.resolve(process.cwd(), "uploads");
@@ -41,10 +47,23 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const { originalname, filename, mimetype, path: localPath } = req.file;
     const projectId = req.body.projectId;
+    const userId = (req as any).auth?.userId ?? null;
+
+    if (!userId) {
+      fs.unlinkSync(localPath);
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     if (!projectId) {
       fs.unlinkSync(localPath);
       res.status(400).json({ error: "Missing projectId" });
+      return;
+    }
+    const project = await getOwnedProject(projectId, userId);
+    if (!project) {
+      fs.unlinkSync(localPath);
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -105,8 +124,18 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 router.post("/url", async (req, res) => {
   try {
     const { url, projectId } = req.body;
+    const userId = (req as any).auth?.userId ?? null;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     if (!url || !projectId) {
       res.status(400).json({ error: "Missing url or projectId" });
+      return;
+    }
+    const project = await getOwnedProject(projectId, userId);
+    if (!project) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -143,6 +172,16 @@ router.post("/url", async (req, res) => {
 router.get("/project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
+    const userId = (req as any).auth?.userId ?? null;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const project = await getOwnedProject(projectId, userId);
+    if (!project) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const files = await db
       .select()
       .from(projectFiles)
@@ -174,6 +213,16 @@ router.delete("/:id", async (req, res) => {
       res.status(404).json({ error: "File not found" });
       return;
     }
+    const userId = (req as any).auth?.userId ?? null;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const project = await getOwnedProject(record.projectId, userId);
+    if (!project) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     // Delete from Supabase Storage
     const { error: deleteError } = await supabaseAdmin.storage
@@ -203,15 +252,28 @@ router.post("/:id/reprocess", async (req, res) => {
     }
 
     const [record] = await db
-      .update(projectFiles)
-      .set({ status: "pending" })
-      .where(eq(projectFiles.id, id))
-      .returning();
-
+      .select()
+      .from(projectFiles)
+      .where(eq(projectFiles.id, id));
     if (!record) {
       res.status(404).json({ error: "File not found" });
       return;
     }
+    const userId = (req as any).auth?.userId ?? null;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const project = await getOwnedProject(record.projectId, userId);
+    if (!project) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    await db
+      .update(projectFiles)
+      .set({ status: "pending" })
+      .where(eq(projectFiles.id, id));
 
     processProjectFile(record.id).catch((e) => {
       req.log.error({ err: e }, "Async reprocessing failed");

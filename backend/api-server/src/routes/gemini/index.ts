@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { and, eq, desc, like, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, desc, like, isNotNull, sql } from "drizzle-orm";
 import fs from "fs";
 import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
-import { chatSessions, messages, projectFiles } from "@workspace/db";
+import { chatSessions, messages, projectFiles, knowledgeChunks, projects } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { buildKnowledgeIsolationCondition, type KnowledgeScope } from "../../services/knowledge-isolation";
 import {
   CreateGeminiConversationBody,
   UpdateGeminiConversationBody,
@@ -279,7 +280,6 @@ router.post("/conversations/:id/messages", async (req, res) => {
       return;
     }
 
-    const { projects } = require("@workspace/db");
     let project = null;
     if (conversation.projectId) {
       const [res] = await db
@@ -323,30 +323,48 @@ router.post("/conversations/:id/messages", async (req, res) => {
       });
       const userVector = embedRes.embeddings?.[0]?.values;
       
-      if (userVector && conversation.projectId) {
-        const { sql } = require("drizzle-orm");
-        const { knowledgeChunks } = require("@workspace/db");
-        
-        // Use pgvector cosine distance operator (<=>)
-        let similarChunks = await db
-          .select()
-          .from(knowledgeChunks)
-          .where(and(eq(knowledgeChunks.projectId, conversation.projectId), isNotNull(knowledgeChunks.embedding)))
-          .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
-          .limit(5);
+      if (userVector) {
+        const requestedContext = req.body.contextType as KnowledgeScope | undefined;
+        const contextType: KnowledgeScope =
+          requestedContext === "general" || requestedContext === "workspace" || requestedContext === "project"
+            ? requestedContext
+            : conversation.projectId
+              ? "project"
+              : "general";
+        const userId = (req as any).auth?.userId ?? null;
+        const role = (req as any).auth?.role || "user";
+        const workspaceId = project?.workspaceId ?? req.body.workspaceId ?? null;
+        const isolationCondition = buildKnowledgeIsolationCondition({
+          scope: contextType,
+          userId,
+          workspaceId,
+          projectId: conversation.projectId,
+          userRole: role,
+        });
 
-        if (similarChunks.length === 0) {
-          similarChunks = await db
+        if (isolationCondition) {
+          let similarChunks = await db
             .select()
             .from(knowledgeChunks)
-            .where(eq(knowledgeChunks.projectId, conversation.projectId))
-            .orderBy(desc(knowledgeChunks.createdAt))
+            .where(and(isolationCondition, isNotNull(knowledgeChunks.embedding)))
+            .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
             .limit(5);
-        }
-          
-        if (similarChunks.length > 0) {
-          ragContext = "Here is some retrieved context from the project's knowledge base that might be helpful:\n\n" + 
-            similarChunks.map((c: any) => `--- Chunk ---\n${c.chunkText}`).join("\n\n");
+
+          if (similarChunks.length === 0) {
+            similarChunks = await db
+              .select()
+              .from(knowledgeChunks)
+              .where(isolationCondition)
+              .orderBy(desc(knowledgeChunks.createdAt))
+              .limit(5);
+          }
+
+          if (similarChunks.length > 0) {
+            ragContext = "Here is some retrieved context from the selected knowledge scope that might be helpful:\n\n" +
+              similarChunks.map((c: any) => `--- Chunk ---\n${c.chunkText}`).join("\n\n");
+          }
+        } else {
+          req.log.warn({ contextType, conversationId }, "Skipping RAG because knowledge context failed closed");
         }
       }
     } catch (err) {

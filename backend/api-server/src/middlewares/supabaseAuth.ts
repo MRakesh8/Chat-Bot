@@ -30,7 +30,7 @@ export const supabaseAuthMiddleware = async (
       } catch (err) {
         console.error("Failed to ensure local demo user:", err);
       }
-      (req as any).auth = { userId: LOCAL_DEMO_USER_ID };
+      (req as any).auth = { userId: LOCAL_DEMO_USER_ID, role: "admin" };
       return next();
     }
     res.status(401).json({ error: "Missing or invalid authorization header" });
@@ -47,17 +47,20 @@ export const supabaseAuthMiddleware = async (
   }
 
   try {
-    const existingUser = await db.select().from(users).where(eq(users.id, data.user.id));
-    if (existingUser.length === 0) {
-      await db.insert(users).values({
+    const [existingUser] = await db.select().from(users).where(eq(users.id, data.user.id));
+    let appUser = existingUser;
+    if (!appUser) {
+      const [createdUser] = await db.insert(users).values({
         id: data.user.id,
         email: data.user.email || "no-email@example.com",
-      });
+      }).returning();
+      appUser = createdUser;
     }
+    (req as any).auth = { userId: data.user.id, user: data.user, role: appUser?.role ?? "user" };
   } catch (err) {
     console.error("Failed to upsert user:", err);
+    (req as any).auth = { userId: data.user.id, user: data.user, role: "user" };
   }
 
-  (req as any).auth = { userId: data.user.id, user: data.user };
   next();
 };
