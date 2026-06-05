@@ -14,6 +14,11 @@ export const supabaseAuthMiddleware = async (
   res: Response,
   next: NextFunction,
 ) => {
+  // Public share routes do not require authentication
+  if (req.path.startsWith("/api/projects/share/")) {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
     if (process.env.LOCAL_DEMO_MODE === "true") {
