@@ -34,12 +34,12 @@ const clients = API_KEYS.map(key => new GoogleGenAI({
 }));
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-3-flash"];
+const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
 
-// Helper to determine if an error is a 429
-const isRateLimitError = (err: any) => {
+// Helper to determine if an error is a 429 or 404
+const isRateLimitOrNotFoundError = (err: any) => {
   const status = err?.status || err?.response?.status;
-  return status === 429 || err?.message?.includes("429");
+  return status === 429 || status === 404 || err?.message?.includes("429") || err?.message?.includes("404");
 };
 
 class GeminiFailoverModels {
@@ -90,7 +90,7 @@ class GeminiFailoverModels {
         console.log(`[Gemini] Success on Attempt ${attemptCount + 1}`);
         return result;
       } catch (err: any) {
-        if (isRateLimitError(err)) {
+        if (isRateLimitOrNotFoundError(err)) {
           console.warn(`[Gemini] Rate limit hit on Attempt ${attemptCount + 1} (Key ${keyIndex}, Model ${modelToUse})`);
           attemptCount++;
         } else {
@@ -126,7 +126,7 @@ class GeminiFailoverModels {
 
         return result;
       } catch (err: any) {
-        if (isRateLimitError(err)) {
+        if (isRateLimitOrNotFoundError(err)) {
           console.warn(`[Gemini Embedding] Rate limit hit on Attempt ${attemptCount + 1} (Key ${keyIndex})`);
           attemptCount++;
         } else {
