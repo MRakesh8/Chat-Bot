@@ -13,7 +13,7 @@ export default function ChatPage() {
     <div className="flex h-[100dvh] w-full overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       {desktopSidebarOpen && (
-        <Sidebar className="hidden md:flex w-[260px] flex-shrink-0" />
+        <Sidebar className="hidden md:flex w-[260px] flex-shrink-0" onDesktopClose={() => setDesktopSidebarOpen(false)} />
       )}
       
       {/* Mobile Sidebar Trigger & Drawer */}
@@ -31,18 +31,20 @@ export default function ChatPage() {
       </div>
 
       <div className="flex-1 relative flex overflow-hidden">
-        {/* Desktop Sidebar Toggle Button (when closed or open, like Claude) */}
+        {/* Desktop Sidebar Toggle Button (only when sidebar is closed) */}
+        {!desktopSidebarOpen && (
         <div className="hidden md:block absolute top-3 left-4 z-20">
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={() => setDesktopSidebarOpen(!desktopSidebarOpen)}
+            onClick={() => setDesktopSidebarOpen(true)}
             className="text-muted-foreground hover:text-foreground hover:bg-accent/50"
-            title={desktopSidebarOpen ? "Close sidebar" : "Open sidebar"}
+            title="Open sidebar"
           >
             <Menu className="w-5 h-5" />
           </Button>
         </div>
+        )}
         
         <ChatArea />
       </div>

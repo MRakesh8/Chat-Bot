@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useCallback } from "react";
 import { apiUrl } from "@/lib/api-url";
 
-export function Sidebar({ className, onClose }: { className?: string, onClose?: () => void }) {
+export function Sidebar({ className, onClose, onDesktopClose }: { className?: string, onClose?: () => void, onDesktopClose?: () => void }) {
   const [location, setLocation] = useLocation();
   const { user, session, signOut } = useAuth();
   const { data: conversations, isLoading } = useListGeminiConversations();
@@ -124,14 +124,19 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
   return (
     <div className={cn("w-full md:w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-full", className)}>
       <div className="p-4 border-b border-sidebar-border space-y-4">
-        <div className="flex items-center justify-between md:hidden mb-2">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Aria AI" className="w-6 h-6" />
-            <span className="font-bold text-white">Aria AI</span>
+            <span className="font-bold text-sidebar-foreground">Aria AI</span>
           </div>
           {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-zinc-400 hover:text-white">
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-sidebar-foreground md:hidden">
               <X className="w-5 h-5" />
+            </Button>
+          )}
+          {onDesktopClose && (
+            <Button variant="ghost" size="icon" onClick={onDesktopClose} className="hidden text-muted-foreground hover:text-sidebar-foreground md:inline-flex" title="Close sidebar">
+              <PanelLeftClose className="w-5 h-5" />
             </Button>
           )}
         </div>
@@ -284,12 +289,10 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
         </div>
         
         <div className="space-y-1">
-          {user?.role === 'admin' && (
-            <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
-              <FolderKanban className="w-4 h-4" />
-              Projects
-            </Link>
-          )}
+          <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
+            <FolderKanban className="w-4 h-4" />
+            Projects
+          </Link>
           <Link href="/settings" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
             <Settings className="w-4 h-4" />
             Settings

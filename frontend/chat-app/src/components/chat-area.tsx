@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import {
+  ArrowLeft,
   ChevronDown,
   Copy,
   Loader2,
@@ -376,9 +377,20 @@ export function ChatArea() {
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
       {conversationId ? (
         <div className="z-10 flex h-14 shrink-0 items-center justify-between border-b border-border bg-background/85 px-14 backdrop-blur-md md:px-5">
-          <h1 className="max-w-[220px] truncate text-sm font-semibold text-foreground md:max-w-md">
-            {conversation?.title || "Chat"}
-          </h1>
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="Back to new chat"
+              onClick={() => setLocation("/chat")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h1 className="max-w-[180px] truncate text-sm font-semibold text-foreground md:max-w-md">
+              {conversation?.title || "Chat"}
+            </h1>
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-9 min-w-[132px] justify-between gap-2 bg-card text-xs text-foreground">
