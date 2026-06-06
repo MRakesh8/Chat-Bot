@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
 import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose } from "lucide-react";
@@ -10,7 +10,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useCallback } from "react";
 import { apiUrl } from "@/lib/api-url";
 
 export function Sidebar({ className, onClose, onDesktopClose }: { className?: string, onClose?: () => void, onDesktopClose?: () => void }) {
@@ -25,6 +24,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   const [showFavorites, setShowFavorites] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<string>>(new Set());
 
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const token = session?.access_token;
@@ -93,13 +93,35 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   const handleToggleFavorite = (id: string, currentStatus: boolean, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const nextStatus = !currentStatus;
+
+    queryClient.setQueryData(getListGeminiConversationsQueryKey(), (previous: any) => {
+      if (!Array.isArray(previous)) return previous;
+      return previous.map((conversation) =>
+        conversation.id === id ? { ...conversation, isFavorite: nextStatus } : conversation,
+      );
+    });
+    setPendingFavoriteIds((prev) => new Set(prev).add(id));
+
     authFetch(apiUrl(`/api/gemini/conversations/${id}/favorite`), {
       method: "PATCH",
-      body: JSON.stringify({ isFavorite: !currentStatus }),
-    }).then((res) => {
-      if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
+      body: JSON.stringify({ isFavorite: nextStatus }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        queryClient.setQueryData(getListGeminiConversationsQueryKey(), (previous: any) => {
+          if (!Array.isArray(previous)) return previous;
+          return previous.map((conversation) =>
+            conversation.id === id ? { ...conversation, isFavorite: currentStatus } : conversation,
+          );
+        });
       }
+      await queryClient.refetchQueries({ queryKey: getListGeminiConversationsQueryKey() });
+    }).finally(() => {
+      setPendingFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     });
   };
 
@@ -113,13 +135,20 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     });
   };
 
+  const reloadSidebar = async () => {
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: getListGeminiConversationsQueryKey() }),
+      queryClient.refetchQueries({ queryKey: ["admin-projects"] }),
+    ]);
+  };
+
   const typedConversations = conversations as Array<(NonNullable<typeof conversations>[number]) & { isFavorite?: boolean }> | undefined;
 
-  const filteredConversations = typedConversations?.filter(c => {
+  const filteredConversations = useMemo(() => typedConversations?.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase());
     const matchesFavorite = showFavorites ? c.isFavorite : true;
     return matchesSearch && matchesFavorite;
-  });
+  }), [typedConversations, search, showFavorites]);
 
   return (
     <div className={cn("w-full md:w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-full", className)}>
@@ -152,7 +181,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           <Button
             variant="outline"
             size="icon"
-            onClick={() => queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() })}
+            onClick={reloadSidebar}
             className="w-10 h-10 bg-sidebar-accent hover:bg-sidebar-accent/80 border-border text-muted-foreground hover:text-sidebar-foreground shrink-0"
             title="Reload chats"
           >
@@ -228,7 +257,11 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
                     className="h-6 w-6 mr-1"
                     onClick={(e) => handleToggleFavorite(conv.id, !!conv.isFavorite, e)}
                   >
-                    <Heart className={cn("w-3.5 h-3.5", conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500")} />
+                    <Heart className={cn(
+                      "w-3.5 h-3.5 transition-colors",
+                      conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500",
+                      pendingFavoriteIds.has(conv.id) && "opacity-70",
+                    )} />
                   </Button>
                   
                   {editingId !== conv.id && (
