@@ -80,6 +80,8 @@ export const chatSessions = pgTable("chat_sessions", {
     .references(() => projects.id, { onDelete: "cascade" }),
   modeId: uuid("mode_id").references(() => projectModes.id),
   title: text("title").notNull(),
+  isFavorite: boolean("is_favorite").default(false).notNull(),
+  expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -14,5 +14,8 @@ export interface GeminiConversationWithMessages {
   userId?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  isFavorite: boolean;
+  /** @nullable */
+  expiresAt?: Date | null;
   messages: GeminiMessage[];
 }

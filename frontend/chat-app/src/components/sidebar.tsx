@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban } from "lucide-react";
-import { useListGeminiConversations, useCreateGeminiConversation, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart } from "lucide-react";
+import { useListGeminiConversations, useCreateGeminiConversation, useDeleteGeminiConversation, useUpdateGeminiConversation, useToggleGeminiConversationFavorite, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,8 +21,11 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
   const queryClient = useQueryClient();
   
   const [search, setSearch] = useState("");
+  const [showFavorites, setShowFavorites] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+
+  const toggleFavorite = useToggleGeminiConversationFavorite();
 
   const handleNewChat = () => {
     createConversation.mutate(
@@ -74,7 +77,21 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
     }
   };
 
-  const filteredConversations = conversations?.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
+  const handleToggleFavorite = (id: string, currentStatus: boolean, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFavorite.mutate({ id, data: { isFavorite: !currentStatus } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
+      }
+    });
+  };
+
+  const filteredConversations = conversations?.filter(c => {
+    const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase());
+    const matchesFavorite = showFavorites ? c.isFavorite : true;
+    return matchesSearch && matchesFavorite;
+  });
 
   return (
     <div className={cn("w-full md:w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-full", className)}>
@@ -98,14 +115,24 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
           <Plus className="w-4 h-4" />
           New Chat
         </Button>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-500" />
-          <Input 
-            placeholder="Search..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-black/50 border-white/10 text-white placeholder:text-zinc-500" 
-          />
+        <div className="relative flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-500" />
+            <Input 
+              placeholder="Search..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-black/50 border-white/10 text-white placeholder:text-zinc-500" 
+            />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowFavorites(!showFavorites)}
+            className={cn("h-10 w-10 border border-white/10 shrink-0", showFavorites ? "bg-red-500/20 text-red-500 hover:text-red-400 hover:bg-red-500/30" : "bg-black/50 text-zinc-400 hover:text-white")}
+          >
+            <Heart className={cn("w-5 h-5", showFavorites && "fill-current")} />
+          </Button>
         </div>
       </div>
 
@@ -151,6 +178,14 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
                       <>
                         <span className="truncate flex-1">{conv.title}</span>
                         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 absolute right-2 bg-sidebar md:bg-transparent pl-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={(e) => handleToggleFavorite(conv.id, !!conv.isFavorite, e)} 
+                            className={cn("h-6 w-6", conv.isFavorite ? "text-red-500 hover:text-red-400" : "text-zinc-400 hover:text-white")}
+                          >
+                            <Heart className={cn("h-3 w-3", conv.isFavorite && "fill-current")} />
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
                               <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white">

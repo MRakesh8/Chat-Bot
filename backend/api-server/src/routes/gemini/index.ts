@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, desc, like, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, desc, like, inArray, isNotNull, or, isNull, gt } from "drizzle-orm";
 import fs from "fs";
 import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
@@ -51,7 +51,12 @@ router.get("/conversations", async (req, res) => {
     const results = await db
       .select()
       .from(chatSessions)
-      .where(eq(chatSessions.userId, userId))
+      .where(
+        and(
+          eq(chatSessions.userId, userId),
+          or(isNull(chatSessions.expiresAt), gt(chatSessions.expiresAt, new Date()))
+        )
+      )
       .orderBy(desc(chatSessions.createdAt));
     res.json(results.map(serializeConversation));
   } catch (err) {
@@ -71,9 +76,10 @@ router.post("/conversations", async (req, res) => {
       return;
     }
     const projectId = req.body.projectId || null;
+    const expiresAt = !projectId ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null;
     const [conversation] = await db
       .insert(chatSessions)
-      .values({ title: parsed.data.title, projectId, userId })
+      .values({ title: parsed.data.title, projectId, userId, expiresAt })
       .returning();
     res.status(201).json(serializeConversation(conversation));
   } catch (err) {
@@ -142,6 +148,40 @@ router.patch("/conversations/:id", async (req, res) => {
     res.json(serializeConversation(updated));
   } catch (err) {
     req.log.error({ err }, "Error updating conversation");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /gemini/conversations/:id/favorite
+router.patch("/conversations/:id/favorite", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  try {
+    const paramsParsed = UpdateGeminiConversationParams.safeParse({ id: req.params.id });
+    if (!paramsParsed.success) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const isFavorite = Boolean(req.body.isFavorite);
+    const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, paramsParsed.data.id));
+    if (!existing || existing.userId !== userId) {
+      res.status(404).json({ error: "Conversation not found" }); return;
+    }
+    const updateData: any = { isFavorite };
+    if (isFavorite) {
+      updateData.expiresAt = null; // Remove auto-delete for favorites
+    } else if (!existing.projectId) {
+      // Restore auto-delete if it's a normal chat
+      updateData.expiresAt = new Date(existing.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+    }
+    const [updated] = await db
+      .update(chatSessions)
+      .set(updateData)
+      .where(eq(chatSessions.id, paramsParsed.data.id))
+      .returning();
+    res.json(serializeConversation(updated));
+  } catch (err) {
+    req.log.error({ err }, "Error updating conversation favorite");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -29,6 +29,7 @@ import type {
   GeminiMessageInput,
   HealthStatus,
   SearchGeminiConversationsParams,
+  ToggleGeminiConversationFavoriteBody,
   UploadedFile
 } from './api.schemas';
 
@@ -419,12 +420,84 @@ export const useUpdateGeminiConversation = <TError = ErrorType<GeminiError>,
       return useMutation(getUpdateGeminiConversationMutationOptions(options));
     }
 
+export const getToggleGeminiConversationFavoriteUrl = (id: string,) => {
+
+
+
+
+  return `/api/gemini/conversations/${id}/favorite`
+}
+
+/**
+ * @summary Toggle a conversation favorite status
+ */
+export const toggleGeminiConversationFavorite = async (id: string,
+    toggleGeminiConversationFavoriteBody: ToggleGeminiConversationFavoriteBody, options?: RequestInit): Promise<GeminiConversation> => {
+
+  return customFetch<GeminiConversation>(getToggleGeminiConversationFavoriteUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      toggleGeminiConversationFavoriteBody,)
+  }
+);}
+
+
+
+
+export const getToggleGeminiConversationFavoriteMutationOptions = <TError = ErrorType<GeminiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleGeminiConversationFavorite>>, TError,{id: string;data: BodyType<ToggleGeminiConversationFavoriteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleGeminiConversationFavorite>>, TError,{id: string;data: BodyType<ToggleGeminiConversationFavoriteBody>}, TContext> => {
+
+const mutationKey = ['toggleGeminiConversationFavorite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleGeminiConversationFavorite>>, {id: string;data: BodyType<ToggleGeminiConversationFavoriteBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  toggleGeminiConversationFavorite(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleGeminiConversationFavoriteMutationResult = NonNullable<Awaited<ReturnType<typeof toggleGeminiConversationFavorite>>>
+    export type ToggleGeminiConversationFavoriteMutationBody = BodyType<ToggleGeminiConversationFavoriteBody>
+    export type ToggleGeminiConversationFavoriteMutationError = ErrorType<GeminiError>
+
+    /**
+ * @summary Toggle a conversation favorite status
+ */
+export const useToggleGeminiConversationFavorite = <TError = ErrorType<GeminiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleGeminiConversationFavorite>>, TError,{id: string;data: BodyType<ToggleGeminiConversationFavoriteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleGeminiConversationFavorite>>,
+        TError,
+        {id: string;data: BodyType<ToggleGeminiConversationFavoriteBody>},
+        TContext
+      > => {
+      return useMutation(getToggleGeminiConversationFavoriteMutationOptions(options));
+    }
+
 export const getDeleteGeminiConversationUrl = (id: string,) => {
 
 
 
 
-  return `/api/gemini/conversations/${id}`
+  return `/api/gemini/conversations/${id}/favorite`
 }
 
 /**

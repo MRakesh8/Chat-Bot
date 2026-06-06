@@ -167,6 +167,54 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+const addKnowledgeFromChatSchema = z.object({
+  contents: z.array(z.string().min(1)),
+});
+
+// POST /projects/:id/knowledge/from-chat
+router.post("/:id/knowledge/from-chat", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const id = req.params.id;
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  
+  const parsed = addKnowledgeFromChatSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid contents array" });
+    return;
+  }
+  
+  try {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    if (!project) { res.status(404).json({ error: "Not found" }); return; }
+    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const { contents } = parsed.data;
+    
+    // Embed and insert each message as a knowledge chunk
+    for (const content of contents) {
+      const embedRes = await ai.models.embedContent({
+        model: "gemini-embedding-2",
+        contents: content,
+        config: { outputDimensionality: 768 },
+      });
+      const embedding = embedRes.embeddings?.[0]?.values;
+      if (embedding) {
+        await db.insert(knowledgeChunks).values({
+          projectId: id as any,
+          chunkText: content,
+          embedding: embedding as any,
+        });
+      }
+    }
+    
+    res.status(200).json({ success: true });
+  } catch (err: any) {
+    req.log.error({ err: err.message || err }, "Error adding knowledge from chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── Shared / public routes ─────────────────────────────────────────────────
 
 // GET /projects/share/:token — public project info

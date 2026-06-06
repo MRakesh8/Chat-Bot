@@ -13,4 +13,7 @@ export interface GeminiConversation {
   userId?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  isFavorite: boolean;
+  /** @nullable */
+  expiresAt?: Date | null;
 }

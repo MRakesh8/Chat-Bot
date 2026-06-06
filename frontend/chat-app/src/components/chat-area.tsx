@@ -15,6 +15,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import { apiUrl } from "@/lib/api-url";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+
+type Project = { id: string; name: string; isActive: boolean; };
 
 export function ChatArea() {
   const { id } = useParams();
@@ -40,6 +44,63 @@ export function ChatArea() {
   const { toast } = useToast();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const queryClient = useQueryClient();
+  const { session } = useAuth();
+
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const token = session?.access_token;
+    return fetch(url, {
+      ...options,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    });
+  }, [session]);
+
+  const { data: projectList } = useQuery({
+    queryKey: ["admin-projects"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/projects"));
+      if (!res.ok) throw new Error("Failed to load projects");
+      return res.json() as Promise<Project[]>;
+    },
+  });
+
+  const [appMode, setAppMode] = useState("normal");
+  const [targetProjectId, setTargetProjectId] = useState("");
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+
+  const handleAddToProject = async () => {
+    if (!targetProjectId || selectedMessages.size === 0) return;
+    const contents = Array.from(selectedMessages).map(id => messages?.find(m => m.id === id)?.content).filter(Boolean);
+    if (contents.length === 0) return;
+
+    try {
+      const res = await authFetch(apiUrl(`/api/projects/${targetProjectId}/knowledge/from-chat`), {
+        method: "POST",
+        body: JSON.stringify({ contents }),
+      });
+      if (res.ok) {
+        toast({ title: "Added to Knowledge", description: `Added ${contents.length} message(s) to project knowledge.` });
+        setSelectedMessages(new Set());
+      } else {
+        toast({ title: "Error", description: "Failed to add to project knowledge", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to add to project knowledge", variant: "destructive" });
+    }
+  };
+
+  const toggleMessageSelection = (id: string) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      return newSet;
+    });
+  };
 
   const scrollToBottom = useCallback((smooth = false) => {
     if (scrollRef.current) {
@@ -190,17 +251,41 @@ export function ChatArea() {
       <div className="h-14 border-b border-white/5 flex items-center justify-between px-12 md:px-4 bg-background/80 backdrop-blur-md flex-shrink-0 z-10">
         <h1 className="font-medium text-white truncate max-w-[200px] md:max-w-md">{conversation?.title || "Chat"}</h1>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-500 hidden sm:inline-block">Persona:</span>
-          <Select value={mode} onValueChange={setMode}>
-            <SelectTrigger className="w-[140px] h-8 bg-black/50 border-white/10 text-xs">
+          {appMode === "project" && (
+            <Select value={targetProjectId} onValueChange={setTargetProjectId}>
+              <SelectTrigger className="w-[140px] h-8 bg-black/50 border-white/10 text-xs text-white">
+                <SelectValue placeholder="Select Project" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#111118] border border-white/10">
+                {projectList?.filter(p => p.isActive).map(p => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Select value={appMode} onValueChange={setAppMode}>
+            <SelectTrigger className="w-[140px] h-8 bg-black/50 border-white/10 text-xs text-white">
               <SelectValue placeholder="Mode" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#111118] border border-white/10">
+              <SelectItem value="normal">Normal Mode</SelectItem>
+              <SelectItem value="project">Project Selection</SelectItem>
+              <SelectItem value="workspace" disabled>Workspace Managements</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <span className="text-xs text-zinc-500 hidden sm:inline-block border-l border-white/10 pl-2 ml-1">Persona:</span>
+          <Select value={mode} onValueChange={setMode}>
+            <SelectTrigger className="w-[120px] h-8 bg-black/50 border-white/10 text-xs text-white">
+              <SelectValue placeholder="Persona" />
             </SelectTrigger>
             <SelectContent className="bg-[#111118] border border-white/10">
               <SelectItem value="friendly">Friendly</SelectItem>
               <SelectItem value="expert">Expert</SelectItem>
               <SelectItem value="client">Client</SelectItem>
               <SelectItem value="teacher">Teacher</SelectItem>
-              <SelectItem value="analyst">Business Analyst</SelectItem>
+              <SelectItem value="analyst">Analyst</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -230,13 +315,22 @@ export function ChatArea() {
           {messages?.map((msg) => (
             <div
               key={msg.id}
-              className={cn("flex group", msg.role === "user" ? "justify-end" : "justify-start")}
+              className={cn("flex group items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}
             >
+              {appMode === "project" && targetProjectId && msg.role !== "user" && (
+                <input
+                  type="checkbox"
+                  className="mb-4 ml-1 accent-indigo-500 w-4 h-4 rounded border-white/20 bg-black/50"
+                  checked={selectedMessages.has(msg.id)}
+                  onChange={() => toggleMessageSelection(msg.id)}
+                />
+              )}
               <div className={cn(
                 "max-w-[85%] rounded-2xl px-5 py-3.5",
                 msg.role === "user"
                   ? "bg-white/10 text-white"
-                  : "bg-transparent text-zinc-300 border border-white/5"
+                  : "bg-transparent text-zinc-300 border border-white/5",
+                appMode === "project" && targetProjectId && selectedMessages.has(msg.id) && "ring-1 ring-indigo-500 bg-indigo-500/10"
               )}>
                 {msg.role !== "user" && (
                   <div className="flex items-center justify-between mb-2">
@@ -245,6 +339,27 @@ export function ChatArea() {
                       <span className="text-xs font-medium text-zinc-500">Aria</span>
                     </div>
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      {appMode === "project" && targetProjectId && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-xs text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 mr-1" 
+                          onClick={() => {
+                            setSelectedMessages(new Set([msg.id]));
+                            // We need to wait for state update before calling handleAddToProject
+                            // but since it uses state, we can just call the fetch directly here
+                            authFetch(apiUrl(`/api/projects/${targetProjectId}/knowledge/from-chat`), {
+                              method: "POST",
+                              body: JSON.stringify({ contents: [msg.content] }),
+                            }).then(res => {
+                              if (res.ok) toast({ title: "Added to Knowledge" });
+                              else toast({ title: "Error", variant: "destructive" });
+                            });
+                          }}
+                        >
+                          Add to Project
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => copyToClipboard(msg.content)}>
                         <Copy className="w-3 h-3" />
                       </Button>
@@ -260,6 +375,14 @@ export function ChatArea() {
                   </ReactMarkdown>
                 </div>
               </div>
+              {appMode === "project" && targetProjectId && msg.role === "user" && (
+                <input
+                  type="checkbox"
+                  className="mb-4 mr-1 accent-indigo-500 w-4 h-4 rounded border-white/20 bg-black/50"
+                  checked={selectedMessages.has(msg.id)}
+                  onChange={() => toggleMessageSelection(msg.id)}
+                />
+              )}
             </div>
           ))}
 
@@ -302,6 +425,28 @@ export function ChatArea() {
             className="h-8 w-8 rounded-full bg-zinc-800 border border-white/10 text-zinc-300 hover:bg-zinc-700 shadow-lg"
           >
             <ChevronDown className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Bottom bar for multi-select Add to Project */}
+      {appMode === "project" && targetProjectId && selectedMessages.size > 0 && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 bg-indigo-600 border border-indigo-500 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4">
+          <span className="text-white text-sm font-medium">{selectedMessages.size} selected</span>
+          <Button 
+            size="sm" 
+            className="bg-white text-indigo-600 hover:bg-zinc-100 rounded-full font-semibold"
+            onClick={handleAddToProject}
+          >
+            Add to Project Knowledge
+          </Button>
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            className="text-indigo-200 hover:text-white hover:bg-white/20 h-8 w-8 rounded-full"
+            onClick={() => setSelectedMessages(new Set())}
+          >
+            <X className="w-4 h-4" />
           </Button>
         </div>
       )}

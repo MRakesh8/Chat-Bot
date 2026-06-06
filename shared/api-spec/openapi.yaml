@@ -112,6 +112,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GeminiError"
+  /gemini/conversations/{id}/favorite:
+    patch:
+      operationId: toggleGeminiConversationFavorite
+      tags: [gemini]
+      summary: Toggle a conversation favorite status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isFavorite:
+                  type: boolean
+              required:
+                - isFavorite
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiConversation"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiError"
     delete:
       operationId: deleteGeminiConversation
       tags: [gemini]
@@ -242,9 +277,15 @@ components:
         updatedAt:
           type: string
           format: date-time
+        isFavorite:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
       required:
         - id
         - title
+        - isFavorite
         - createdAt
         - updatedAt
     GeminiMessage:
@@ -311,6 +352,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        isFavorite:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
         messages:
           type: array
           items:
@@ -318,6 +364,7 @@ components:
       required:
         - id
         - title
+        - isFavorite
         - createdAt
         - updatedAt
         - messages

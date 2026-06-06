@@ -16,6 +16,9 @@ export interface GeminiConversation {
   userId?: string | null;
   createdAt: string;
   updatedAt: string;
+  isFavorite: boolean;
+  /** @nullable */
+  expiresAt?: string | null;
 }
 
 export interface GeminiMessage {
@@ -50,6 +53,9 @@ export interface GeminiConversationWithMessages {
   userId?: string | null;
   createdAt: string;
   updatedAt: string;
+  isFavorite: boolean;
+  /** @nullable */
+  expiresAt?: string | null;
   messages: GeminiMessage[];
 }
 
@@ -76,6 +82,10 @@ export interface GeminiImageOutput {
 export interface GeminiError {
   error: string;
 }
+
+export type ToggleGeminiConversationFavoriteBody = {
+  isFavorite: boolean;
+};
 
 export type SearchGeminiConversationsParams = {
 q: string;

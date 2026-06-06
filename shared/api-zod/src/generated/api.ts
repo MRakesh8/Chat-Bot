@@ -25,7 +25,9 @@ export const ListGeminiConversationsResponseItem = zod.object({
   "title": zod.string(),
   "userId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "isFavorite": zod.boolean(),
+  "expiresAt": zod.coerce.date().nullish()
 })
 export const ListGeminiConversationsResponse = zod.array(ListGeminiConversationsResponseItem)
 
@@ -52,6 +54,8 @@ export const GetGeminiConversationResponse = zod.object({
   "userId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
+  "isFavorite": zod.boolean(),
+  "expiresAt": zod.coerce.date().nullish(),
   "messages": zod.array(zod.object({
   "id": zod.string(),
   "conversationId": zod.string(),
@@ -79,7 +83,31 @@ export const UpdateGeminiConversationResponse = zod.object({
   "title": zod.string(),
   "userId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "isFavorite": zod.boolean(),
+  "expiresAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Toggle a conversation favorite status
+ */
+export const ToggleGeminiConversationFavoriteParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ToggleGeminiConversationFavoriteBody = zod.object({
+  "isFavorite": zod.boolean()
+})
+
+export const ToggleGeminiConversationFavoriteResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "userId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "isFavorite": zod.boolean(),
+  "expiresAt": zod.coerce.date().nullish()
 })
 
 
@@ -134,7 +162,9 @@ export const SearchGeminiConversationsResponseItem = zod.object({
   "title": zod.string(),
   "userId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "isFavorite": zod.boolean(),
+  "expiresAt": zod.coerce.date().nullish()
 })
 export const SearchGeminiConversationsResponse = zod.array(SearchGeminiConversationsResponseItem)
 
