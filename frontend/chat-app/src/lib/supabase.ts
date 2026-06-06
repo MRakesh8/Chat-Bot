@@ -7,4 +7,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase env vars");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+    broadcast: false,
+  },
+});
