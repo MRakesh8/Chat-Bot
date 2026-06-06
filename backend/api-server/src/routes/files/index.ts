@@ -2,9 +2,9 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { projectFiles } from "@workspace/db";
+import { projectFiles, projects } from "@workspace/db";
 import { DeleteFileParams } from "@workspace/api-zod";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
@@ -45,6 +45,20 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     if (!projectId) {
       fs.unlinkSync(localPath);
       res.status(400).json({ error: "Missing projectId" });
+      return;
+    }
+
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      fs.unlinkSync(localPath);
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    if (!project) {
+      fs.unlinkSync(localPath);
+      res.status(403).json({ error: "Forbidden: You do not own this project" });
       return;
     }
 
@@ -110,6 +124,18 @@ router.post("/url", async (req, res) => {
       return;
     }
 
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    if (!project) {
+      res.status(403).json({ error: "Forbidden: You do not own this project" });
+      return;
+    }
+
     let type = "website";
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
       type = "youtube";
@@ -143,6 +169,12 @@ router.post("/url", async (req, res) => {
 router.get("/project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
+    const userId = (req as any).auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    if (!project) { res.status(403).json({ error: "Forbidden" }); return; }
+
     const files = await db
       .select()
       .from(projectFiles)
@@ -165,15 +197,21 @@ router.delete("/:id", async (req, res) => {
       return;
     }
 
-    const [record] = await db
-      .select()
-      .from(projectFiles)
-      .where(eq(projectFiles.id, id));
+    const userId = (req as any).auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    if (!record) {
-      res.status(404).json({ error: "File not found" });
+    const [result] = await db
+      .select({ file: projectFiles })
+      .from(projectFiles)
+      .innerJoin(projects, eq(projectFiles.projectId, projects.id))
+      .where(and(eq(projectFiles.id, id), eq(projects.userId, userId)));
+
+    if (!result || !result.file) {
+      res.status(404).json({ error: "File not found or access denied" });
       return;
     }
+    
+    const record = result.file;
 
     // Delete from Supabase Storage
     const { error: deleteError } = await supabaseAdmin.storage
@@ -199,6 +237,20 @@ router.post("/:id/reprocess", async (req, res) => {
     const id = req.params.id;
     if (!id) {
       res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const userId = (req as any).auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [result] = await db
+      .select({ file: projectFiles })
+      .from(projectFiles)
+      .innerJoin(projects, eq(projectFiles.projectId, projects.id))
+      .where(and(eq(projectFiles.id, id), eq(projects.userId, userId)));
+
+    if (!result || !result.file) {
+      res.status(404).json({ error: "File not found or access denied" });
       return;
     }
 

@@ -75,6 +75,7 @@ export const knowledgeChunks = pgTable("knowledge_chunks", {
 
 export const chatSessions = pgTable("chat_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" }),
   modeId: uuid("mode_id").references(() => projectModes.id),

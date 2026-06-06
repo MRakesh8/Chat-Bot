@@ -92,6 +92,7 @@ export default function AdminProjectEditPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
       setSavedToken(data.shareToken);
       toast({ title: "Project created!", description: "Your shareable chatbot is ready." });
+      setLocation(`/admin/projects/${data.id}/edit`);
     },
     onError: (err: Error) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),

@@ -21,6 +21,8 @@ const router = Router();
 
 // GET /gemini/conversations/search - MUST be before /:id routes
 router.get("/conversations/search", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = SearchGeminiConversationsQueryParams.safeParse(req.query);
     if (!parsed.success) {
@@ -31,7 +33,7 @@ router.get("/conversations/search", async (req, res) => {
     const results = await db
       .select()
       .from(chatSessions)
-      .where(like(chatSessions.title, `%${q}%`))
+      .where(and(like(chatSessions.title, `%${q}%`), eq(chatSessions.userId, userId)))
       .orderBy(desc(chatSessions.createdAt))
       .limit(20);
     res.json(results.map(serializeConversation));
@@ -43,10 +45,13 @@ router.get("/conversations/search", async (req, res) => {
 
 // GET /gemini/conversations
 router.get("/conversations", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const results = await db
       .select()
       .from(chatSessions)
+      .where(eq(chatSessions.userId, userId))
       .orderBy(desc(chatSessions.createdAt));
     res.json(results.map(serializeConversation));
   } catch (err) {
@@ -57,6 +62,8 @@ router.get("/conversations", async (req, res) => {
 
 // POST /gemini/conversations
 router.post("/conversations", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = CreateGeminiConversationBody.safeParse(req.body);
     if (!parsed.success) {
@@ -66,7 +73,7 @@ router.post("/conversations", async (req, res) => {
     const projectId = req.body.projectId || null;
     const [conversation] = await db
       .insert(chatSessions)
-      .values({ title: parsed.data.title, projectId })
+      .values({ title: parsed.data.title, projectId, userId })
       .returning();
     res.status(201).json(serializeConversation(conversation));
   } catch (err) {
@@ -77,6 +84,8 @@ router.post("/conversations", async (req, res) => {
 
 // GET /gemini/conversations/:id
 router.get("/conversations/:id", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = GetGeminiConversationParams.safeParse({ id: req.params.id });
     if (!parsed.success) {
@@ -86,7 +95,7 @@ router.get("/conversations/:id", async (req, res) => {
     const [conversation] = await db
       .select()
       .from(chatSessions)
-      .where(eq(chatSessions.id, parsed.data.id));
+      .where(and(eq(chatSessions.id, parsed.data.id), eq(chatSessions.userId, userId)));
     if (!conversation) {
       res.status(404).json({ error: "Conversation not found" });
       return;
@@ -108,6 +117,8 @@ router.get("/conversations/:id", async (req, res) => {
 
 // PATCH /gemini/conversations/:id
 router.patch("/conversations/:id", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const paramsParsed = UpdateGeminiConversationParams.safeParse({ id: req.params.id });
     if (!paramsParsed.success) {
@@ -119,15 +130,15 @@ router.patch("/conversations/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid request body" });
       return;
     }
+    const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, paramsParsed.data.id));
+    if (!existing || existing.userId !== userId) {
+      res.status(404).json({ error: "Conversation not found" }); return;
+    }
     const [updated] = await db
       .update(chatSessions)
       .set({ title: bodyParsed.data.title })
       .where(eq(chatSessions.id, paramsParsed.data.id))
       .returning();
-    if (!updated) {
-      res.status(404).json({ error: "Conversation not found" });
-      return;
-    }
     res.json(serializeConversation(updated));
   } catch (err) {
     req.log.error({ err }, "Error updating conversation");
@@ -137,20 +148,19 @@ router.patch("/conversations/:id", async (req, res) => {
 
 // DELETE /gemini/conversations/:id
 router.delete("/conversations/:id", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = DeleteGeminiConversationParams.safeParse({ id: req.params.id });
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    const [deleted] = await db
-      .delete(chatSessions)
-      .where(eq(chatSessions.id, parsed.data.id))
-      .returning();
-    if (!deleted) {
-      res.status(404).json({ error: "Conversation not found" });
-      return;
+    const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, parsed.data.id));
+    if (!existing || existing.userId !== userId) {
+      res.status(404).json({ error: "Conversation not found" }); return;
     }
+    await db.delete(chatSessions).where(eq(chatSessions.id, parsed.data.id));
     res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Error deleting conversation");
@@ -160,11 +170,17 @@ router.delete("/conversations/:id", async (req, res) => {
 
 // GET /gemini/conversations/:id/messages
 router.get("/conversations/:id/messages", async (req, res) => {
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = ListGeminiMessagesParams.safeParse({ id: req.params.id });
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid id" });
       return;
+    }
+    const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, parsed.data.id));
+    if (!existing || existing.userId !== userId) {
+      res.status(404).json({ error: "Conversation not found" }); return;
     }
     const msgs = await db
       .select()
@@ -269,11 +285,14 @@ router.post("/conversations/:id/messages", async (req, res) => {
     const { content, fileIds } = bodyParsed.data;
     const mode = req.body.mode || "friendly";
 
-    // Verify conversation exists
+    const userId = (req as any).auth?.userId ?? null;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    // Verify conversation exists and belongs to user
     const [conversation] = await db
       .select()
       .from(chatSessions)
-      .where(eq(chatSessions.id, conversationId));
+      .where(and(eq(chatSessions.id, conversationId), eq(chatSessions.userId, userId)));
     if (!conversation) {
       res.status(404).json({ error: "Conversation not found" });
       return;

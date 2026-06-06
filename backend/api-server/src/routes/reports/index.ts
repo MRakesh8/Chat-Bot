@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, reports, projects, chatSessions, messages, knowledgeChunks } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
@@ -24,10 +24,16 @@ router.post("/generate", async (req, res) => {
 
     const { projectId, title } = parsed.data;
 
-    // Check project
-    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    // Check project ownership
+    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
     if (!project) {
-      res.status(404).json({ error: "Project not found" });
+      res.status(404).json({ error: "Project not found or unauthorized" });
       return;
     }
 
@@ -109,6 +115,18 @@ router.post("/generate", async (req, res) => {
 router.get("/project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    if (!project) {
+      res.status(404).json({ error: "Project not found or unauthorized" });
+      return;
+    }
+
     const list = await db.select().from(reports).where(eq(reports.projectId, projectId)).orderBy(reports.createdAt);
     res.json(list);
   } catch (err) {

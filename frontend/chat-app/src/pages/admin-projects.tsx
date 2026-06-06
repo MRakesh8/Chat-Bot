@@ -82,12 +82,27 @@ export default function AdminProjectsPage() {
       const res = await authFetch(apiUrl(`/api/projects/${id}`), { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete project");
     },
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["admin-projects"] });
+      const previous = queryClient.getQueryData<Project[]>(["admin-projects"]);
+      if (previous) {
+        queryClient.setQueryData<Project[]>(["admin-projects"], old => old?.filter(p => p.id !== id));
+      }
+      return { previous };
+    },
+    onError: (err, id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["admin-projects"], context.previous);
+      }
+      toast({ title: "Failed to delete project", variant: "destructive" });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
+    },
+    onSuccess: () => {
       toast({ title: "Project deleted" });
       setDeletingId(null);
     },
-    onError: () => toast({ title: "Failed to delete project", variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
@@ -99,8 +114,23 @@ export default function AdminProjectsPage() {
       if (!res.ok) throw new Error("Failed to update project");
       return res.json() as Promise<Project>;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-projects"] }),
-    onError: () => toast({ title: "Failed to update project", variant: "destructive" }),
+    onMutate: async ({ id, isActive }) => {
+      await queryClient.cancelQueries({ queryKey: ["admin-projects"] });
+      const previous = queryClient.getQueryData<Project[]>(["admin-projects"]);
+      if (previous) {
+        queryClient.setQueryData<Project[]>(["admin-projects"], old => old?.map(p => p.id === id ? { ...p, isActive } : p));
+      }
+      return { previous };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["admin-projects"], context.previous);
+      }
+      toast({ title: "Failed to update project", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
+    },
   });
 
   const copyShareLink = (token: string) => {
