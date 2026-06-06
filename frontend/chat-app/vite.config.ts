@@ -52,16 +52,6 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ["react", "react-dom", "wouter"],
-          ui: ["lucide-react", "clsx", "tailwind-merge"],
-          query: ["@tanstack/react-query"],
-          markdown: ["react-markdown", "remark-gfm", "rehype-highlight", "highlight.js"],
-        },
-      },
-    },
   },
   server: {
     port,

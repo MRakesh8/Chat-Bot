@@ -1,11 +1,10 @@
 import { Router } from "express";
-import { db, reports, projects, knowledgeChunks } from "@workspace/db";
+import { db, reports, projects, chatSessions, messages, knowledgeChunks } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
 import { randomUUID } from "crypto";
-import { buildKnowledgeIsolationCondition } from "../../services/knowledge-isolation";
 
 const router = Router();
 
@@ -24,11 +23,6 @@ router.post("/generate", async (req, res) => {
     }
 
     const { projectId, title } = parsed.data;
-    const userId = (req as any).auth?.userId ?? null;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
 
     // Check project
     const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
@@ -36,23 +30,9 @@ router.post("/generate", async (req, res) => {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    if (project.userId !== userId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
 
     // Gather knowledge to summarize
-    const isolationCondition = buildKnowledgeIsolationCondition({
-      scope: "project",
-      userId,
-      projectId,
-      userRole: (req as any).auth?.role ?? "user",
-    });
-    if (!isolationCondition) {
-      res.status(400).json({ error: "Invalid knowledge context" });
-      return;
-    }
-    const chunks = await db.select().from(knowledgeChunks).where(isolationCondition);
+    const chunks = await db.select().from(knowledgeChunks).where(eq(knowledgeChunks.projectId, projectId));
     const allKnowledge = chunks.map(c => c.chunkText).join("\n\n").slice(0, 50000); // Take up to 50k chars to avoid token limits
 
     // Trigger Gemini to write the report
@@ -129,20 +109,6 @@ router.post("/generate", async (req, res) => {
 router.get("/project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
-    const userId = (req as any).auth?.userId ?? null;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
-    if (!project) {
-      res.status(404).json({ error: "Project not found" });
-      return;
-    }
-    if (project.userId !== userId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
     const list = await db.select().from(reports).where(eq(reports.projectId, projectId)).orderBy(reports.createdAt);
     res.json(list);
   } catch (err) {

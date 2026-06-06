@@ -16,53 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/lib/supabase";
 import { apiUrl } from "@/lib/api-url";
 
-import React, { memo } from "react";
-
-const MessageList = memo(({ messages, basePath, copyToClipboard, regenerate }: { messages: any[], basePath: string, copyToClipboard: (t: string) => void, regenerate: () => void }) => {
-  return (
-    <>
-      {messages?.map((msg) => (
-        <div
-          key={msg.id}
-          className={cn("flex group", msg.role === "user" ? "justify-end" : "justify-start")}
-        >
-          <div className={cn(
-            "max-w-[85%] rounded-2xl px-5 py-3.5",
-            msg.role === "user"
-              ? "bg-white/10 text-white"
-              : "bg-transparent text-zinc-300 border border-white/5"
-          )}>
-            {msg.role !== "user" && (
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <img src={`${basePath}/logo.svg`} alt="Aria" className="w-5 h-5" />
-                  <span className="text-xs font-medium text-zinc-500">Aria</span>
-                </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => copyToClipboard(msg.content)}>
-                    <Copy className="w-3 h-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={regenerate}>
-                    <RotateCcw className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-            )}
-            <div className="prose prose-invert prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 max-w-none text-sm">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {msg.content}
-              </ReactMarkdown>
-            </div>
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}, (prevProps, nextProps) => {
-  // Only re-render if the length changes (prevents re-render during streaming)
-  return prevProps.messages?.length === nextProps.messages?.length;
-});
-
 export function ChatArea() {
   const { id } = useParams();
   const conversationId = id;
@@ -79,7 +32,6 @@ export function ChatArea() {
 
   const { sendMessage, isStreaming, streamingContent, stopStreaming } = useChatStream();
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState("friendly");
   const [isRecording, setIsRecording] = useState(false);
   const [files, setFiles] = useState<{ file: File; id?: string; uploading: boolean }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -218,16 +170,18 @@ export function ChatArea() {
     e.target.value = "";
   };
 
-  const copyToClipboard = useCallback((text: string) => {
+  const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast({ title: "Copied", description: "Message copied to clipboard." });
-  }, [toast]);
+  };
 
-  const regenerate = useCallback(() => {
+  const regenerate = () => {
     if (!conversationId || !messages?.length) return;
     const lastUser = [...(messages ?? [])].reverse().find(m => m.role === "user");
     if (lastUser) sendMessage(conversationId, lastUser.content, [], mode);
-  }, [conversationId, messages, mode, sendMessage]);
+  };
+
+  const [mode, setMode] = useState("friendly");
 
   return (
     <div className="flex-1 flex flex-col bg-background min-h-0 h-full relative">
@@ -273,12 +227,41 @@ export function ChatArea() {
           </div>
         ) : (
         <div className="max-w-3xl mx-auto space-y-6 w-full mt-auto">
-          <MessageList
-            messages={messages || []}
-            basePath={basePath}
-            copyToClipboard={copyToClipboard}
-            regenerate={regenerate}
-          />
+          {messages?.map((msg) => (
+            <div
+              key={msg.id}
+              className={cn("flex group", msg.role === "user" ? "justify-end" : "justify-start")}
+            >
+              <div className={cn(
+                "max-w-[85%] rounded-2xl px-5 py-3.5",
+                msg.role === "user"
+                  ? "bg-white/10 text-white"
+                  : "bg-transparent text-zinc-300 border border-white/5"
+              )}>
+                {msg.role !== "user" && (
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <img src={`${basePath}/logo.svg`} alt="Aria" className="w-5 h-5" />
+                      <span className="text-xs font-medium text-zinc-500">Aria</span>
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => copyToClipboard(msg.content)}>
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={regenerate}>
+                        <RotateCcw className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <div className="prose prose-invert prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 max-w-none text-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            </div>
+          ))}
 
           {isStreaming && (
             <div className="flex justify-start">

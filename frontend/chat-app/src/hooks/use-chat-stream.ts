@@ -30,24 +30,6 @@ export function useChatStream() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Snapshot previous data for optimistic UI rollback
-    const queryKey = getListGeminiMessagesQueryKey(conversationId);
-    const previousMessages = queryClient.getQueryData(queryKey);
-
-    // Optimistically push the user message
-    const tempId = `temp-${Date.now()}`;
-    queryClient.setQueryData(queryKey, (old: any) => {
-      const newMsg = {
-        id: tempId,
-        conversationId,
-        role: "user",
-        content,
-        fileIds: fileIds || [],
-        createdAt: new Date().toISOString()
-      };
-      return old ? [...old, newMsg] : [newMsg];
-    });
-
     try {
       const { data } = await supabase.auth.getSession();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -121,15 +103,9 @@ export function useChatStream() {
       setIsStreaming(false);
       setStreamingContent("");
       abortControllerRef.current = null;
-      
-      // Rollback Optimistic UI
-      if (previousMessages !== undefined) {
-        queryClient.setQueryData(queryKey, previousMessages);
-      } else {
-        await queryClient.invalidateQueries({
-          queryKey: getListGeminiMessagesQueryKey(conversationId),
-        });
-      }
+      await queryClient.invalidateQueries({
+        queryKey: getListGeminiMessagesQueryKey(conversationId),
+      });
     }
   };
 

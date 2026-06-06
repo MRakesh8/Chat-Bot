@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, desc, isNotNull, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import { YoutubeTranscript } from "youtube-transcript";
@@ -7,7 +7,20 @@ import { db } from "@workspace/db";
 import { projects, chatSessions, messages, projectFiles, knowledgeChunks } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
-import { buildKnowledgeIsolationCondition } from "../../services/knowledge-isolation";
+import { z } from "zod";
+
+const createProjectSchema = z.object({
+  name: z.string({ required_error: "name is required" }).trim().min(1, "name is required"),
+  description: z.string().trim().optional().nullable(),
+  systemPrompt: z.string({ required_error: "systemPrompt is required" }).trim().min(1, "systemPrompt is required"),
+});
+
+const updateProjectSchema = z.object({
+  name: z.string().trim().min(1, "name cannot be empty").optional(),
+  description: z.string().trim().optional().nullable(),
+  systemPrompt: z.string().trim().min(1, "systemPrompt cannot be empty").optional(),
+  isActive: z.boolean().optional(),
+});
 
 const router = Router();
 
@@ -40,32 +53,31 @@ router.post("/", async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const { name, description, systemPrompt } = req.body as {
-    name?: string;
-    description?: string;
-    systemPrompt?: string;
-  };
-  if (!name?.trim() || !systemPrompt?.trim()) {
-    res.status(400).json({ error: "name and systemPrompt are required" });
+  
+  const parsed = createProjectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
     return;
   }
+  const { name, description, systemPrompt } = parsed.data;
+
   try {
     const shareToken = randomUUID().replace(/-/g, "").slice(0, 20);
     const [project] = await db
       .insert(projects)
       .values({
-        name: name.trim(),
-        description: description?.trim() || null,
-        systemPrompt: systemPrompt.trim(),
+        name,
+        description,
+        systemPrompt,
         userId,
         shareToken,
         isActive: true,
       })
       .returning();
     res.status(201).json(project);
-  } catch (err) {
-    req.log.error({ err }, "Error creating project");
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err: any) {
+    req.log.error({ err: err.message || err }, "Error creating project");
+    res.status(500).json({ error: "Internal server error", details: err.message });
   }
 });
 
@@ -103,21 +115,23 @@ router.patch("/:id", async (req, res) => {
   if (!id) {
     res.status(400).json({ error: "Invalid id" }); return;
   }
-  const { name, description, systemPrompt, isActive } = req.body as {
-    name?: string;
-    description?: string;
-    systemPrompt?: string;
-    isActive?: boolean;
-  };
+  
+  const parsed = updateProjectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+  const { name, description, systemPrompt, isActive } = parsed.data;
+
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
     if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const updateData: Record<string, unknown> = {};
-    if (name !== undefined) updateData.name = name.trim();
-    if (description !== undefined) updateData.description = description?.trim() || null;
-    if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt.trim();
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
     if (isActive !== undefined) updateData.isActive = isActive;
 
     const [updated] = await db
@@ -126,9 +140,9 @@ router.patch("/:id", async (req, res) => {
       .where(eq(projects.id, id))
       .returning();
     res.json(updated);
-  } catch (err) {
-    req.log.error({ err }, "Error updating project");
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err: any) {
+    req.log.error({ err: err.message || err }, "Error updating project");
+    res.status(500).json({ error: "Internal server error", details: err.message });
   }
 });
 
@@ -295,17 +309,10 @@ async function buildProjectKnowledgeContext(projectId: string, query: string): P
     const userVector = embedRes.embeddings?.[0]?.values;
     if (!userVector) return "";
 
-    const isolationCondition = buildKnowledgeIsolationCondition({
-      scope: "project",
-      projectId,
-      userRole: "client",
-    });
-    if (!isolationCondition) return "";
-
     let chunks = await db
       .select()
       .from(knowledgeChunks)
-      .where(and(isolationCondition, isNotNull(knowledgeChunks.embedding)))
+      .where(and(eq(knowledgeChunks.projectId, projectId), isNotNull(knowledgeChunks.embedding)))
       .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
       .limit(6);
 
@@ -313,7 +320,7 @@ async function buildProjectKnowledgeContext(projectId: string, query: string): P
       chunks = await db
         .select()
         .from(knowledgeChunks)
-        .where(isolationCondition)
+        .where(eq(knowledgeChunks.projectId, projectId))
         .orderBy(desc(knowledgeChunks.createdAt))
         .limit(6);
     }

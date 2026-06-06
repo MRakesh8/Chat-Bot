@@ -8,7 +8,6 @@ import {
   varchar,
   jsonb,
   vector,
-  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -20,39 +19,15 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const workspaces = pgTable("workspaces", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
-  name: text("name").notNull(),
-  clientName: text("client_name"),
-  company: text("company"),
-  phone: text("phone"),
-  email: text("email"),
-  progress: integer("progress").default(0),
-  budget: integer("budget"),
-  paid: integer("paid"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const workspaceNotes = pgTable("workspace_notes", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }).notNull(),
-  content: text("content").notNull(),
-  visibility: varchar("visibility", { length: 50 }).default("admin").notNull(), // admin or client
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .references(() => users.id)
     .notNull(),
-  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
   systemPrompt: text("system_prompt").default("").notNull(),
   shareToken: varchar("share_token", { length: 50 }),
-  status: varchar("status", { length: 50 }).default("planning"), // planning, active, completed
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -89,22 +64,13 @@ export const projectFiles = pgTable("project_files", {
 
 export const knowledgeChunks = pgTable("knowledge_chunks", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   projectFileId: uuid("project_file_id").references(() => projectFiles.id, { onDelete: "cascade" }),
-  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
-  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
-  scope: varchar("scope", { length: 50 }).default("project").notNull(), // general, workspace, project
-  visibility: varchar("visibility", { length: 50 }).default("admin").notNull(), // admin, client
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   chunkText: text("chunk_text").notNull(),
   embedding: vector("embedding", { dimensions: 768 }), // Gemini embedding size (768)
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => {
-  return {
-    scopeIdx: index("idx_knowledge_chunks_scope").on(table.scope),
-    userIdx: index("idx_knowledge_chunks_user_id").on(table.userId),
-    workspaceIdx: index("idx_knowledge_chunks_workspace_id").on(table.workspaceId),
-    projectIdx: index("idx_knowledge_chunks_project_id").on(table.projectId),
-  };
 });
 
 export const chatSessions = pgTable("chat_sessions", {
@@ -114,11 +80,6 @@ export const chatSessions = pgTable("chat_sessions", {
   modeId: uuid("mode_id").references(() => projectModes.id),
   title: text("title").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => {
-  return {
-    projectIdx: index("idx_chat_sessions_project_id").on(table.projectId),
-    createdAtIdx: index("idx_chat_sessions_created_at").on(table.createdAt),
-  };
 });
 
 export const messages = pgTable("messages", {
@@ -131,11 +92,6 @@ export const messages = pgTable("messages", {
   sourceTransparency: varchar("source_transparency", { length: 100 }), // project, gemini, combined
   confidence: varchar("confidence", { length: 50 }), // high, medium, low
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => {
-  return {
-    sessionIdx: index("idx_messages_session_id").on(table.sessionId),
-    createdAtIdx: index("idx_messages_created_at").on(table.createdAt),
-  };
 });
 
 export const notes = pgTable("notes", {
@@ -167,24 +123,12 @@ export const auditLogs = pgTable("audit_logs", {
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
-  workspaces: many(workspaces),
   projects: many(projects),
   auditLogs: many(auditLogs),
 }));
 
-export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
-  user: one(users, { fields: [workspaces.userId], references: [users.id] }),
-  projects: many(projects),
-  notes: many(workspaceNotes),
-}));
-
-export const workspaceNotesRelations = relations(workspaceNotes, ({ one }) => ({
-  workspace: one(workspaces, { fields: [workspaceNotes.workspaceId], references: [workspaces.id] }),
-}));
-
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
-  workspace: one(workspaces, { fields: [projects.workspaceId], references: [workspaces.id] }),
   settings: one(projectSettings, { fields: [projects.id], references: [projectSettings.projectId] }),
   modes: many(projectModes),
   files: many(projectFiles),
@@ -197,11 +141,4 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
 export const filesRelations = relations(projectFiles, ({ one, many }) => ({
   project: one(projects, { fields: [projectFiles.projectId], references: [projects.id] }),
   chunks: many(knowledgeChunks),
-}));
-
-export const knowledgeChunksRelations = relations(knowledgeChunks, ({ one }) => ({
-  user: one(users, { fields: [knowledgeChunks.userId], references: [users.id] }),
-  project: one(projects, { fields: [knowledgeChunks.projectId], references: [projects.id] }),
-  workspace: one(workspaces, { fields: [knowledgeChunks.workspaceId], references: [workspaces.id] }),
-  file: one(projectFiles, { fields: [knowledgeChunks.projectFileId], references: [projectFiles.id] }),
 }));
