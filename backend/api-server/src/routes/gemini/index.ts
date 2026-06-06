@@ -239,7 +239,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
 
 const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content. When files are shared with you, analyze and describe their content fully and helpfully. When a YouTube transcript is provided in the context, use it to answer questions about the video accurately and in detail.`;
 
-const PROJECT_BRAIN_DIRECTIVE = `\n\nCRITICAL DIRECTIVE: You are acting as a specific Project Brain. If a user asks you a question that cannot be answered using the provided context (Project Knowledge), you must explicitly state that the answer is not in the project's knowledge base. Then, and only then, you may offer your general knowledge, but you must make it super clear that you are pulling from outside the project's files. Please mention the Project Name when you find the answer in the project context.`;
+const PROJECT_BRAIN_DIRECTIVE = `\n\nCRITICAL DIRECTIVE: You are acting as a specific Project Brain. Project Knowledge includes BOTH the project's Knowledge & Instructions text and any retrieved file/chat knowledge chunks supplied in the current message. Treat the Knowledge & Instructions text as authoritative project knowledge, not just behavior guidance. Use all selected projects together; do not ignore later projects when multiple projects are selected. If the user's question cannot be answered using the selected projects' Knowledge & Instructions or retrieved chunks, explicitly state that the answer is not in the selected project knowledge. Then, and only then, you may offer general knowledge, clearly labeled as outside the project's knowledge. Mention the relevant project name when you find the answer in that project's instructions or context.`;
 
 // Extract YouTube video ID from any YouTube URL format
 function extractYouTubeId(text: string): string[] {
@@ -344,16 +344,19 @@ router.post("/conversations/:id/messages", async (req, res) => {
     let primaryProject = null;
     let validProjectIds: string[] = [];
 
+    let dbProjectsList: any[] = [];
+
     // Prioritize passed projectIds, or fallback to conversation's projectId
     if (projectIds && projectIds.length > 0) {
-      const dbProjects = await db.select().from(projects).where(inArray(projects.id, projectIds));
-      if (dbProjects.length > 0) {
-        primaryProject = dbProjects[0];
-        validProjectIds = dbProjects.map(p => p.id);
+      dbProjectsList = await db.select().from(projects).where(inArray(projects.id, projectIds));
+      if (dbProjectsList.length > 0) {
+        primaryProject = dbProjectsList[0];
+        validProjectIds = dbProjectsList.map((p: any) => p.id);
       }
     } else if (conversation.projectId) {
       const [res] = await db.select().from(projects).where(eq(projects.id, conversation.projectId));
       if (res) {
+        dbProjectsList = [res];
         primaryProject = res;
         validProjectIds = [res.id];
       }
@@ -414,8 +417,8 @@ router.post("/conversations/:id/messages", async (req, res) => {
         }
           
         if (similarChunks.length > 0) {
-          ragContext = "Here is some retrieved context from the project's knowledge base that might be helpful:\n\n" + 
-            similarChunks.map((c: any) => `--- Chunk ---\n${c.chunkText}`).join("\n\n");
+          ragContext = "Here are retrieved file/chat knowledge chunks from the selected projects. This is part of Project Knowledge, alongside each project's Knowledge & Instructions:\n\n" + 
+            similarChunks.map((c: any) => `--- Retrieved Chunk ---\n${c.chunkText}`).join("\n\n");
         }
       }
     } catch (err) {
@@ -430,10 +433,14 @@ router.post("/conversations/:id/messages", async (req, res) => {
       ...(content.trim() ? [{ text: content }] : []),
     ];
 
-    let finalSystemPrompt = primaryProject?.systemPrompt || SYSTEM_PROMPT;
+    let finalSystemPrompt = SYSTEM_PROMPT;
     if (validProjectIds.length > 0) {
-      finalSystemPrompt += PROJECT_BRAIN_DIRECTIVE;
+      const projectPrompts = dbProjectsList.map((p: any) => `Project: ${p.name}\nKnowledge & Instructions:\n${p.systemPrompt}`).join("\n\n---\n\n");
+      finalSystemPrompt = `${SYSTEM_PROMPT}\n\nSelected Project Knowledge & Instructions:\n${projectPrompts}\n${PROJECT_BRAIN_DIRECTIVE}`;
+    } else {
+      finalSystemPrompt = primaryProject?.systemPrompt || SYSTEM_PROMPT;
     }
+    
     if (useNormalAi === false && validProjectIds.length === 0) {
        // If somehow no projects selected and normal AI disabled (shouldn't happen in UI)
        finalSystemPrompt += "\n\nCRITICAL DIRECTIVE: You must only answer questions based on the provided context.";

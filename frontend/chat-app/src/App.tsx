@@ -15,6 +15,7 @@ import SharedChatPage from "./pages/shared-chat";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { supabase } from "./lib/supabase";
 import { useState } from "react";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -119,7 +120,8 @@ export default function App() {
   return (
     <WouterRouter base={basePath}>
       <AuthProvider>
-        <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="dark">
+          <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <Switch>
               <Route path="/" component={Home} />
@@ -155,7 +157,8 @@ export default function App() {
             </Switch>
             <Toaster />
           </TooltipProvider>
-        </QueryClientProvider>
+          </QueryClientProvider>
+        </ThemeProvider>
       </AuthProvider>
     </WouterRouter>
   );

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
 import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw } from "lucide-react";
-import { useListGeminiConversations, useCreateGeminiConversation, useDeleteGeminiConversation, useUpdateGeminiConversation, useToggleGeminiConversationFavorite, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
+import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,9 +15,8 @@ import { apiUrl } from "@/lib/api-url";
 
 export function Sidebar({ className, onClose }: { className?: string, onClose?: () => void }) {
   const [location, setLocation] = useLocation();
-  const { user, signOut } = useAuth();
+  const { user, session, signOut } = useAuth();
   const { data: conversations, isLoading } = useListGeminiConversations();
-  const createConversation = useCreateGeminiConversation();
   const deleteConversation = useDeleteGeminiConversation();
   const updateConversation = useUpdateGeminiConversation();
   const queryClient = useQueryClient();
@@ -27,10 +26,8 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
-  const toggleFavorite = useToggleGeminiConversationFavorite();
-
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
-    const token = user?.access_token || (window as any).session?.access_token;
+    const token = session?.access_token;
     return fetch(url, {
       ...options,
       credentials: "include",
@@ -40,7 +37,7 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
         ...(options.headers ?? {}),
       },
     });
-  }, [user]);
+  }, [session]);
 
   const { data: projectList } = useQuery({
     queryKey: ["admin-projects"],
@@ -52,16 +49,8 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
   });
 
   const handleNewChat = () => {
-    createConversation.mutate(
-      { data: { title: "New Chat", projectId: null } },
-      {
-        onSuccess: (newConv) => {
-          queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
-          setLocation(`/chat/${newConv.id}`);
-          if (onClose) onClose();
-        },
-      }
-    );
+    setLocation("/chat");
+    if (onClose) onClose();
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -104,8 +93,11 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
   const handleToggleFavorite = (id: string, currentStatus: boolean, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleFavorite.mutate({ id, data: { isFavorite: !currentStatus } }, {
-      onSuccess: () => {
+    authFetch(apiUrl(`/api/gemini/conversations/${id}/favorite`), {
+      method: "PATCH",
+      body: JSON.stringify({ isFavorite: !currentStatus }),
+    }).then((res) => {
+      if (res.ok) {
         queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
       }
     });
@@ -121,7 +113,9 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
     });
   };
 
-  const filteredConversations = conversations?.filter(c => {
+  const typedConversations = conversations as Array<(NonNullable<typeof conversations>[number]) & { isFavorite?: boolean }> | undefined;
+
+  const filteredConversations = typedConversations?.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase());
     const matchesFavorite = showFavorites ? c.isFavorite : true;
     return matchesSearch && matchesFavorite;
@@ -144,7 +138,7 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
         <div className="flex gap-2">
           <Button 
             onClick={handleNewChat}
-            className="flex-1 justify-start gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10"
+            className="flex-1 justify-start gap-2 bg-sidebar-accent hover:bg-sidebar-accent/80 text-sidebar-foreground border border-border"
             variant="outline"
           >
             <Plus className="w-4 h-4" />
@@ -154,7 +148,7 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
             variant="outline"
             size="icon"
             onClick={() => queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() })}
-            className="w-10 h-10 bg-white/5 hover:bg-white/10 border-white/10 text-zinc-400 hover:text-white shrink-0"
+            className="w-10 h-10 bg-sidebar-accent hover:bg-sidebar-accent/80 border-border text-muted-foreground hover:text-sidebar-foreground shrink-0"
             title="Reload chats"
           >
             <RotateCcw className="w-4 h-4" />
@@ -162,150 +156,151 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
         </div>
         <div className="relative flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-500" />
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input 
               placeholder="Search..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-black/50 border-white/10 text-white placeholder:text-zinc-500" 
+              className="pl-9 h-9 bg-sidebar-accent/50 border-border text-sidebar-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             />
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setShowFavorites(!showFavorites)}
-            className={cn("h-10 w-10 border border-white/10 shrink-0", showFavorites ? "bg-red-500/20 text-red-500 hover:text-red-400 hover:bg-red-500/30" : "bg-black/50 text-zinc-400 hover:text-white")}
+            className={cn("h-9 w-9 border border-border", showFavorites ? "bg-sidebar-accent text-red-500" : "bg-sidebar-accent/50 text-muted-foreground hover:text-sidebar-foreground")}
+            title="Toggle Favorites"
           >
-            <Heart className={cn("w-5 h-5", showFavorites && "fill-current")} />
+            <Heart className={cn("w-4 h-4", showFavorites && "fill-current")} />
           </Button>
         </div>
       </div>
 
       <ScrollArea className="flex-1 p-3">
-        <div className="space-y-1">
+        <div className="space-y-1 pr-4">
           {isLoading ? (
             <div className="text-sm text-muted-foreground p-2">Loading...</div>
           ) : filteredConversations?.length === 0 ? (
             <div className="text-sm text-muted-foreground p-2">No conversations</div>
           ) : (
-            filteredConversations?.map((conv) => {
-              const isActive = location === `/chat/${conv.id}` || (location === "/chat" && conversations?.[0]?.id === conv.id);
-              return (
-                <Link key={conv.id} href={`/chat/${conv.id}`}>
-                  <div 
-                    onClick={() => onClose && onClose()}
-                    className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer group relative",
-                    isActive ? "bg-white/10 text-white" : "text-zinc-400 hover:bg-white/5 hover:text-white"
-                  )}>
-                    <MessageSquare className="w-4 h-4 opacity-70 flex-shrink-0" />
-                    
-                    {editingId === conv.id ? (
-                      <div className="flex-1 flex items-center gap-1" onClick={e => e.preventDefault()}>
-                        <input 
-                          autoFocus
-                          value={editTitle}
-                          onChange={e => setEditTitle(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') saveEdit(conv.id);
-                            if (e.key === 'Escape') setEditingId(null);
-                          }}
-                          className="flex-1 bg-black/50 border border-primary/50 rounded px-1 text-white text-sm focus:outline-none"
-                        />
-                        <button onClick={(e) => saveEdit(conv.id, e)} className="text-green-400 hover:text-green-300">
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button onClick={(e) => { e.preventDefault(); setEditingId(null); }} className="text-zinc-400 hover:text-white">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="truncate flex-1">{conv.title}</span>
-                        <div className="flex items-center gap-1 absolute right-2 bg-sidebar pl-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={(e) => handleToggleFavorite(conv.id, !!conv.isFavorite, e)} 
-                            className={cn("h-6 w-6", conv.isFavorite ? "text-red-500 hover:text-red-400" : "text-zinc-400 hover:text-white")}
-                          >
-                            <Heart className={cn("h-3 w-3", conv.isFavorite && "fill-current")} />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
-                              <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white">
-                                <MoreVertical className="h-3 w-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-popover border-white/10 text-white">
-                              <DropdownMenuItem onClick={(e) => startEdit(conv.id, conv.title, e)} className="hover:bg-white/10 cursor-pointer">
-                                <Edit2 className="w-4 h-4 mr-2" /> Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger className="hover:bg-white/10 cursor-pointer">
-                                  <FolderPlus className="w-4 h-4 mr-2" /> Move to Project
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuPortal>
-                                  <DropdownMenuSubContent className="bg-popover border-white/10 text-white">
-                                    <DropdownMenuItem onClick={(e) => handleMoveToProject(conv.id, null, e)} className="hover:bg-white/10 cursor-pointer italic text-zinc-400">
-                                      None
-                                    </DropdownMenuItem>
-                                    {projectList?.filter(p => p.isActive).map(p => (
-                                      <DropdownMenuItem key={p.id} onClick={(e) => handleMoveToProject(conv.id, p.id, e)} className="hover:bg-white/10 cursor-pointer">
-                                        {p.name}
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </DropdownMenuSubContent>
-                                </DropdownMenuPortal>
-                              </DropdownMenuSub>
-                              <DropdownMenuItem onClick={(e) => handleDelete(conv.id, e)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer">
-                                <Trash2 className="w-4 h-4 mr-2" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </>
-                    )}
+            filteredConversations?.map((conv) => (
+              <div
+                key={conv.id}
+                className={cn(
+                  "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer",
+                  location === `/chat/${conv.id}` 
+                    ? "bg-sidebar-accent text-sidebar-foreground" 
+                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                )}
+                onClick={() => { setLocation(`/chat/${conv.id}`); if (onClose) onClose(); }}
+              >
+                <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                {editingId === conv.id ? (
+                  <div className="flex-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    <Input
+                      autoFocus
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') saveEdit(conv.id);
+                        if (e.key === 'Escape') setEditingId(null);
+                      }}
+                      className="h-6 px-1.5 py-0 bg-sidebar-accent border-border text-sidebar-foreground"
+                    />
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-green-500" onClick={() => saveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => setEditingId(null)}><X className="w-3 h-3" /></Button>
                   </div>
-                </Link>
-              );
-            })
+                ) : (
+                  <span className="flex-1 truncate select-none">{conv.title}</span>
+                )}
+                
+                <div className={cn(
+                  "flex items-center transition-opacity",
+                  location === `/chat/${conv.id}` || conv.isFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}>
+                  <Button
+                    variant="ghost" size="icon"
+                    className="h-6 w-6 mr-1"
+                    onClick={(e) => handleToggleFavorite(conv.id, !!conv.isFavorite, e)}
+                  >
+                    <Heart className={cn("w-3.5 h-3.5", conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500")} />
+                  </Button>
+                  
+                  {editingId !== conv.id && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 text-muted-foreground hover:text-sidebar-foreground"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
+                        <DropdownMenuItem onClick={(e) => startEdit(conv.id, conv.title, e)} className="hover:bg-accent cursor-pointer">
+                          <Edit2 className="w-4 h-4 mr-2" /> Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger className="hover:bg-accent cursor-pointer">
+                            <FolderPlus className="w-4 h-4 mr-2" /> Move to Project
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuPortal>
+                            <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
+                              <DropdownMenuItem onClick={(e) => handleMoveToProject(conv.id, null, e)} className="hover:bg-accent cursor-pointer italic text-muted-foreground">
+                                None
+                              </DropdownMenuItem>
+                              {projectList?.filter(p => p.isActive).map(p => (
+                                <DropdownMenuItem key={p.id} onClick={(e) => handleMoveToProject(conv.id, p.id, e)} className="hover:bg-accent cursor-pointer">
+                                  {p.name}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuPortal>
+                        </DropdownMenuSub>
+                        <DropdownMenuItem onClick={(e) => handleDelete(conv.id, e)} className="text-destructive hover:bg-destructive/10 cursor-pointer">
+                          <Trash2 className="w-4 h-4 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
+            ))
           )}
         </div>
       </ScrollArea>
 
-      <div className="p-3 border-t border-sidebar-border">
-        <div className="flex flex-col gap-1">
-          <Link href="/profile">
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer" onClick={() => onClose && onClose()}>
-              <Avatar className="w-6 h-6 border border-white/10">
-                <AvatarImage src={user?.user_metadata?.avatar_url} />
-                <AvatarFallback className="bg-primary/20 text-primary text-xs">
-                  {user?.email?.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="truncate flex-1">{user?.email || 'User'}</span>
-            </div>
-          </Link>
-          <Link href="/admin/projects">
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer" onClick={() => onClose && onClose()}>
-              <FolderKanban className="w-4 h-4 opacity-70" />
-              <span>Projects</span>
-            </div>
-          </Link>
-          <Link href="/settings">
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer" onClick={() => onClose && onClose()}>
-              <Settings className="w-4 h-4 opacity-70" />
-              <span>Settings</span>
-            </div>
-          </Link>
-          <div 
-            onClick={() => signOut()}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
-          >
-            <LogOut className="w-4 h-4 opacity-70" />
-            <span>Log out</span>
+      <div className="p-4 border-t border-border bg-sidebar mt-auto flex-shrink-0">
+        <div className="flex items-center gap-3 mb-4 px-2">
+          <Avatar className="h-8 w-8 ring-1 ring-border">
+            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
+            <AvatarFallback className="bg-sidebar-accent">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <div className="flex-1 truncate">
+            <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.email}</p>
           </div>
+        </div>
+        
+        <div className="space-y-1">
+          {user?.role === 'admin' && (
+            <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
+              <FolderKanban className="w-4 h-4" />
+              Projects
+            </Link>
+          )}
+          <Link href="/settings" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
+            <Settings className="w-4 h-4" />
+            Settings
+          </Link>
+          <button 
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Log out
+          </button>
         </div>
       </div>
     </div>
