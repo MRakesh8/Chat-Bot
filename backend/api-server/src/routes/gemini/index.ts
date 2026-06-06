@@ -142,7 +142,10 @@ router.patch("/conversations/:id", async (req, res) => {
     }
     const [updated] = await db
       .update(chatSessions)
-      .set({ title: bodyParsed.data.title })
+      .set({ 
+        ...(bodyParsed.data.title !== undefined && { title: bodyParsed.data.title }),
+        ...(bodyParsed.data.projectId !== undefined && { projectId: bodyParsed.data.projectId })
+      })
       .where(eq(chatSessions.id, paramsParsed.data.id))
       .returning();
     res.json(serializeConversation(updated));
@@ -234,9 +237,9 @@ router.get("/conversations/:id/messages", async (req, res) => {
   }
 });
 
-const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content. When files are shared with you, analyze and describe their content fully and helpfully. When a YouTube transcript is provided in the context, use it to answer questions about the video accurately and in detail. 
+const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant. You speak like a knowledgeable friend — casual, warm, and clear. You explain things simply like a great teacher, remember context from the conversation, and give direct, helpful answers. You are supportive, curious, and never condescending. Keep responses concise unless detail is needed. Use markdown formatting for code and structured content. When files are shared with you, analyze and describe their content fully and helpfully. When a YouTube transcript is provided in the context, use it to answer questions about the video accurately and in detail.`;
 
-CRITICAL DIRECTIVE: You represent a specific Project Brain. If a user asks you a question that cannot be answered using the provided context (Project Knowledge), you must explicitly state that the answer is not in the project's knowledge base. You may offer your general knowledge, but you must make it clear that you are drawing from outside the project's specific files.`;
+const PROJECT_BRAIN_DIRECTIVE = `\n\nCRITICAL DIRECTIVE: You are acting as a specific Project Brain. If a user asks you a question that cannot be answered using the provided context (Project Knowledge), you must explicitly state that the answer is not in the project's knowledge base. Then, and only then, you may offer your general knowledge, but you must make it super clear that you are pulling from outside the project's files. Please mention the Project Name when you find the answer in the project context.`;
 
 // Extract YouTube video ID from any YouTube URL format
 function extractYouTubeId(text: string): string[] {
@@ -322,8 +325,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     }
 
     const conversationId = paramsParsed.data.id;
-    const { content, fileIds } = bodyParsed.data;
-    const mode = req.body.mode || "friendly";
+    const { content, fileIds, projectIds, useNormalAi } = bodyParsed.data as any;
 
     const userId = (req as any).auth?.userId ?? null;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -339,13 +341,22 @@ router.post("/conversations/:id/messages", async (req, res) => {
     }
 
     const { projects } = require("@workspace/db");
-    let project = null;
-    if (conversation.projectId) {
-      const [res] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, conversation.projectId));
-      project = res;
+    let primaryProject = null;
+    let validProjectIds: string[] = [];
+
+    // Prioritize passed projectIds, or fallback to conversation's projectId
+    if (projectIds && projectIds.length > 0) {
+      const dbProjects = await db.select().from(projects).where(inArray(projects.id, projectIds));
+      if (dbProjects.length > 0) {
+        primaryProject = dbProjects[0];
+        validProjectIds = dbProjects.map(p => p.id);
+      }
+    } else if (conversation.projectId) {
+      const [res] = await db.select().from(projects).where(eq(projects.id, conversation.projectId));
+      if (res) {
+        primaryProject = res;
+        validProjectIds = [res.id];
+      }
     }
     // Save user message
     await db.insert(messages).values({
@@ -382,25 +393,24 @@ router.post("/conversations/:id/messages", async (req, res) => {
       });
       const userVector = embedRes.embeddings?.[0]?.values;
       
-      if (userVector && conversation.projectId) {
+      if (userVector && validProjectIds.length > 0) {
         const { sql } = require("drizzle-orm");
         const { knowledgeChunks } = require("@workspace/db");
         
-        // Use pgvector cosine distance operator (<=>)
         let similarChunks = await db
           .select()
           .from(knowledgeChunks)
-          .where(and(eq(knowledgeChunks.projectId, conversation.projectId), isNotNull(knowledgeChunks.embedding)))
+          .where(and(inArray(knowledgeChunks.projectId, validProjectIds), isNotNull(knowledgeChunks.embedding)))
           .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
-          .limit(5);
+          .limit(10);
 
         if (similarChunks.length === 0) {
           similarChunks = await db
             .select()
             .from(knowledgeChunks)
-            .where(eq(knowledgeChunks.projectId, conversation.projectId))
+            .where(inArray(knowledgeChunks.projectId, validProjectIds))
             .orderBy(desc(knowledgeChunks.createdAt))
-            .limit(5);
+            .limit(10);
         }
           
         if (similarChunks.length > 0) {
@@ -420,15 +430,13 @@ router.post("/conversations/:id/messages", async (req, res) => {
       ...(content.trim() ? [{ text: content }] : []),
     ];
 
-    let finalSystemPrompt = project?.systemPrompt || SYSTEM_PROMPT;
-    if (mode === "expert") {
-      finalSystemPrompt += "\n\nCRITICAL INSTRUCTION: The user has selected EXPERT mode. Answer with highly technical, precise terminology, omitting casual pleasantries.";
-    } else if (mode === "client") {
-      finalSystemPrompt += "\n\nCRITICAL INSTRUCTION: The user has selected CLIENT mode. Answer in a highly professional, business-appropriate tone, suitable for external clients.";
-    } else if (mode === "teacher") {
-      finalSystemPrompt += "\n\nCRITICAL INSTRUCTION: The user has selected TEACHER mode. Break down complex topics step-by-step and explain them as if you are teaching a beginner.";
-    } else if (mode === "analyst") {
-      finalSystemPrompt += "\n\nCRITICAL INSTRUCTION: The user has selected BUSINESS ANALYST mode. Focus on metrics, strategic implications, return on investment, and structured analytical breakdowns.";
+    let finalSystemPrompt = primaryProject?.systemPrompt || SYSTEM_PROMPT;
+    if (validProjectIds.length > 0) {
+      finalSystemPrompt += PROJECT_BRAIN_DIRECTIVE;
+    }
+    if (useNormalAi === false && validProjectIds.length === 0) {
+       // If somehow no projects selected and normal AI disabled (shouldn't happen in UI)
+       finalSystemPrompt += "\n\nCRITICAL DIRECTIVE: You must only answer questions based on the provided context.";
     }
 
     // Build full chat history for Gemini

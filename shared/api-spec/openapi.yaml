@@ -112,6 +112,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GeminiError"
+    delete:
+      operationId: deleteGeminiConversation
+      tags: [gemini]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiError"
   /gemini/conversations/{id}/favorite:
     patch:
       operationId: toggleGeminiConversationFavorite
@@ -141,25 +160,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GeminiConversation"
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GeminiError"
-    delete:
-      operationId: deleteGeminiConversation
-      tags: [gemini]
-      summary: Delete a conversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Deleted
         "404":
           description: Not found
           content:
@@ -319,6 +319,15 @@ components:
           type: ["string", "null"]
       required:
         - title
+    UpdateGeminiConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+        projectId:
+          type: ["string", "null"]
+      required:
+        - title
     GeminiConversationUpdate:
       type: object
       properties:
@@ -335,6 +344,12 @@ components:
           type: array
           items:
             type: string
+        projectIds:
+          type: array
+          items:
+            type: string
+        useNormalAi:
+          type: boolean
       required:
         - content
     GeminiConversationWithMessages:

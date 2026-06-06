@@ -23,7 +23,7 @@ export function useChatStream() {
     setStreamingContent("");
   };
 
-  const sendMessage = async (conversationId: string, content: string, fileIds: string[], mode: string = "friendly") => {
+  const sendMessage = async (conversationId: string, content: string, fileIds: string[], projectIds: string[] = [], useNormalAi: boolean = true) => {
     setIsStreaming(true);
     setStreamingContent("");
 
@@ -40,7 +40,7 @@ export function useChatStream() {
       const response = await fetch(apiUrl(`/api/gemini/conversations/${conversationId}/messages`), {
         method: "POST",
         headers,
-        body: JSON.stringify({ content, fileIds, mode }),
+        body: JSON.stringify({ content, fileIds, projectIds, useNormalAi }),
         credentials: "include",
         signal: controller.signal,
       });

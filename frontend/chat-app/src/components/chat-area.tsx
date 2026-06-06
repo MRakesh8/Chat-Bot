@@ -12,6 +12,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import { apiUrl } from "@/lib/api-url";
@@ -68,7 +69,7 @@ export function ChatArea() {
     },
   });
 
-  const [appMode, setAppMode] = useState("normal");
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(["normal"]));
   const [targetProjectId, setTargetProjectId] = useState("");
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
 
@@ -137,6 +138,9 @@ export function ChatArea() {
     if ((!input.trim() && files.length === 0)) return;
     const fileIds = files.filter(f => f.id).map(f => f.id!);
 
+    const projectIds = Array.from(selectedSources).filter(id => id !== "normal");
+    const useNormalAi = selectedSources.has("normal");
+
     let targetId = conversationId;
     if (!targetId) {
       const newConv = await createConversation.mutateAsync({ data: { title: input.trim().slice(0, 30) || "New Chat", projectId: null } });
@@ -144,14 +148,14 @@ export function ChatArea() {
       queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
       setLocation(`/chat/${targetId}`);
       setTimeout(() => {
-        sendMessage(targetId!, input, fileIds, mode);
+        sendMessage(targetId!, input, fileIds, projectIds, useNormalAi);
       }, 50);
       setInput("");
       setFiles([]);
       return;
     }
 
-    sendMessage(targetId, input, fileIds, mode);
+    sendMessage(targetId, input, fileIds, projectIds, useNormalAi);
     setInput("");
     setFiles([]);
     // Always scroll to bottom when user sends
@@ -239,10 +243,12 @@ export function ChatArea() {
   const regenerate = () => {
     if (!conversationId || !messages?.length) return;
     const lastUser = [...(messages ?? [])].reverse().find(m => m.role === "user");
-    if (lastUser) sendMessage(conversationId, lastUser.content, [], mode);
+    if (lastUser) {
+      const projectIds = Array.from(selectedSources).filter(id => id !== "normal");
+      const useNormalAi = selectedSources.has("normal");
+      sendMessage(conversationId, lastUser.content, [], projectIds, useNormalAi);
+    }
   };
-
-  const [mode, setMode] = useState("friendly");
 
   return (
     <div className="flex-1 flex flex-col bg-background min-h-0 h-full relative">
@@ -251,43 +257,43 @@ export function ChatArea() {
       <div className="h-14 border-b border-white/5 flex items-center justify-between px-12 md:px-4 bg-background/80 backdrop-blur-md flex-shrink-0 z-10">
         <h1 className="font-medium text-white truncate max-w-[200px] md:max-w-md">{conversation?.title || "Chat"}</h1>
         <div className="flex items-center gap-2">
-          {appMode === "project" && (
-            <Select value={targetProjectId} onValueChange={setTargetProjectId}>
-              <SelectTrigger className="w-[140px] h-8 bg-black/50 border-white/10 text-xs text-white">
-                <SelectValue placeholder="Select Project" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#111118] border border-white/10">
-                {projectList?.filter(p => p.isActive).map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          <Select value={appMode} onValueChange={setAppMode}>
-            <SelectTrigger className="w-[140px] h-8 bg-black/50 border-white/10 text-xs text-white">
-              <SelectValue placeholder="Mode" />
-            </SelectTrigger>
-            <SelectContent className="bg-[#111118] border border-white/10">
-              <SelectItem value="normal">Normal Mode</SelectItem>
-              <SelectItem value="project">Project Selection</SelectItem>
-              <SelectItem value="workspace" disabled>Workspace Managements</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <span className="text-xs text-zinc-500 hidden sm:inline-block border-l border-white/10 pl-2 ml-1">Persona:</span>
-          <Select value={mode} onValueChange={setMode}>
-            <SelectTrigger className="w-[120px] h-8 bg-black/50 border-white/10 text-xs text-white">
-              <SelectValue placeholder="Persona" />
-            </SelectTrigger>
-            <SelectContent className="bg-[#111118] border border-white/10">
-              <SelectItem value="friendly">Friendly</SelectItem>
-              <SelectItem value="expert">Expert</SelectItem>
-              <SelectItem value="client">Client</SelectItem>
-              <SelectItem value="teacher">Teacher</SelectItem>
-              <SelectItem value="analyst">Analyst</SelectItem>
-            </SelectContent>
-          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-8 bg-black/50 border-white/10 text-xs text-white justify-between min-w-[140px]">
+                {selectedSources.size === 0 ? "Select Sources" : `${selectedSources.size} source(s) selected`}
+                <ChevronDown className="w-3 h-3 opacity-50 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="bg-[#111118] border border-white/10 text-white w-[200px]">
+              <DropdownMenuCheckboxItem
+                checked={selectedSources.has("normal")}
+                onCheckedChange={(checked) => {
+                  const newSet = new Set(selectedSources);
+                  if (checked) newSet.add("normal");
+                  else newSet.delete("normal");
+                  setSelectedSources(newSet);
+                }}
+              >
+                Normal AI
+              </DropdownMenuCheckboxItem>
+              <div className="h-px bg-white/10 my-1" />
+              <div className="px-2 py-1.5 text-xs font-semibold text-zinc-500">Projects</div>
+              {projectList?.filter(p => p.isActive).map(p => (
+                <DropdownMenuCheckboxItem
+                  key={p.id}
+                  checked={selectedSources.has(p.id)}
+                  onCheckedChange={(checked) => {
+                    const newSet = new Set(selectedSources);
+                    if (checked) newSet.add(p.id);
+                    else newSet.delete(p.id);
+                    setSelectedSources(newSet);
+                  }}
+                >
+                  {p.name}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       ) : (
@@ -317,7 +323,7 @@ export function ChatArea() {
               key={msg.id}
               className={cn("flex group items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}
             >
-              {appMode === "project" && targetProjectId && msg.role !== "user" && (
+              {Array.from(selectedSources).filter(id => id !== "normal").length > 0 && msg.role !== "user" && (
                 <input
                   type="checkbox"
                   className="mb-4 ml-1 accent-indigo-500 w-4 h-4 rounded border-white/20 bg-black/50"
@@ -330,7 +336,7 @@ export function ChatArea() {
                 msg.role === "user"
                   ? "bg-white/10 text-white"
                   : "bg-transparent text-zinc-300 border border-white/5",
-                appMode === "project" && targetProjectId && selectedMessages.has(msg.id) && "ring-1 ring-indigo-500 bg-indigo-500/10"
+                Array.from(selectedSources).filter(id => id !== "normal").length > 0 && selectedMessages.has(msg.id) && "ring-1 ring-indigo-500 bg-indigo-500/10"
               )}>
                 {msg.role !== "user" && (
                   <div className="flex items-center justify-between mb-2">
@@ -339,7 +345,7 @@ export function ChatArea() {
                       <span className="text-xs font-medium text-zinc-500">Aria</span>
                     </div>
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                      {appMode === "project" && targetProjectId && (
+                      {Array.from(selectedSources).filter(id => id !== "normal").length > 0 && (
                         <Button 
                           variant="ghost" 
                           size="sm" 
@@ -375,7 +381,7 @@ export function ChatArea() {
                   </ReactMarkdown>
                 </div>
               </div>
-              {appMode === "project" && targetProjectId && msg.role === "user" && (
+              {Array.from(selectedSources).filter(id => id !== "normal").length > 0 && msg.role === "user" && (
                 <input
                   type="checkbox"
                   className="mb-4 mr-1 accent-indigo-500 w-4 h-4 rounded border-white/20 bg-black/50"
@@ -430,13 +436,24 @@ export function ChatArea() {
       )}
 
       {/* Bottom bar for multi-select Add to Project */}
-      {appMode === "project" && targetProjectId && selectedMessages.size > 0 && (
+      {Array.from(selectedSources).filter(id => id !== "normal").length > 0 && selectedMessages.size > 0 && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 bg-indigo-600 border border-indigo-500 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4">
           <span className="text-white text-sm font-medium">{selectedMessages.size} selected</span>
+          <Select value={targetProjectId} onValueChange={setTargetProjectId}>
+            <SelectTrigger className="w-[140px] h-8 bg-indigo-700 border-indigo-400 text-xs text-white">
+              <SelectValue placeholder="Target Project" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#111118] border border-white/10">
+              {projectList?.filter(p => p.isActive).map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button 
             size="sm" 
             className="bg-white text-indigo-600 hover:bg-zinc-100 rounded-full font-semibold"
             onClick={handleAddToProject}
+            disabled={!targetProjectId}
           >
             Add to Project Knowledge
           </Button>

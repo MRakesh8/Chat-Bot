@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw } from "lucide-react";
 import { useListGeminiConversations, useCreateGeminiConversation, useDeleteGeminiConversation, useUpdateGeminiConversation, useToggleGeminiConversationFavorite, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useCallback } from "react";
+import { apiUrl } from "@/lib/api-url";
 
 export function Sidebar({ className, onClose }: { className?: string, onClose?: () => void }) {
   const [location, setLocation] = useLocation();
@@ -26,6 +28,28 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
   const [editTitle, setEditTitle] = useState("");
 
   const toggleFavorite = useToggleGeminiConversationFavorite();
+
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const token = user?.access_token || (window as any).session?.access_token;
+    return fetch(url, {
+      ...options,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    });
+  }, [user]);
+
+  const { data: projectList } = useQuery({
+    queryKey: ["admin-projects"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/projects"));
+      if (!res.ok) throw new Error("Failed to load projects");
+      return res.json() as Promise<{id: string, name: string, isActive: boolean}[]>;
+    },
+  });
 
   const handleNewChat = () => {
     createConversation.mutate(
@@ -87,6 +111,16 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
     });
   };
 
+  const handleMoveToProject = (id: string, projectId: string | null, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    updateConversation.mutate({ id, data: { title: undefined, projectId } as any }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
+      }
+    });
+  };
+
   const filteredConversations = conversations?.filter(c => {
     const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase());
     const matchesFavorite = showFavorites ? c.isFavorite : true;
@@ -107,14 +141,25 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
             </Button>
           )}
         </div>
-        <Button 
-          onClick={handleNewChat}
-          className="w-full justify-start gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10"
-          variant="outline"
-        >
-          <Plus className="w-4 h-4" />
-          New Chat
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleNewChat}
+            className="flex-1 justify-start gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10"
+            variant="outline"
+          >
+            <Plus className="w-4 h-4" />
+            New Chat
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() })}
+            className="w-10 h-10 bg-white/5 hover:bg-white/10 border-white/10 text-zinc-400 hover:text-white shrink-0"
+            title="Reload chats"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </Button>
+        </div>
         <div className="relative flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-500" />
@@ -177,7 +222,7 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
                     ) : (
                       <>
                         <span className="truncate flex-1">{conv.title}</span>
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 absolute right-2 bg-sidebar md:bg-transparent pl-2">
+                        <div className="flex items-center gap-1 absolute right-2 bg-sidebar pl-2">
                           <Button 
                             variant="ghost" 
                             size="icon" 
@@ -196,6 +241,23 @@ export function Sidebar({ className, onClose }: { className?: string, onClose?: 
                               <DropdownMenuItem onClick={(e) => startEdit(conv.id, conv.title, e)} className="hover:bg-white/10 cursor-pointer">
                                 <Edit2 className="w-4 h-4 mr-2" /> Rename
                               </DropdownMenuItem>
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger className="hover:bg-white/10 cursor-pointer">
+                                  <FolderPlus className="w-4 h-4 mr-2" /> Move to Project
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuPortal>
+                                  <DropdownMenuSubContent className="bg-popover border-white/10 text-white">
+                                    <DropdownMenuItem onClick={(e) => handleMoveToProject(conv.id, null, e)} className="hover:bg-white/10 cursor-pointer italic text-zinc-400">
+                                      None
+                                    </DropdownMenuItem>
+                                    {projectList?.filter(p => p.isActive).map(p => (
+                                      <DropdownMenuItem key={p.id} onClick={(e) => handleMoveToProject(conv.id, p.id, e)} className="hover:bg-white/10 cursor-pointer">
+                                        {p.name}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuPortal>
+                              </DropdownMenuSub>
                               <DropdownMenuItem onClick={(e) => handleDelete(conv.id, e)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer">
                                 <Trash2 className="w-4 h-4 mr-2" /> Delete
                               </DropdownMenuItem>

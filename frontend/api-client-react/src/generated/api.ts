@@ -497,7 +497,7 @@ export const getDeleteGeminiConversationUrl = (id: string,) => {
 
 
 
-  return `/api/gemini/conversations/${id}/favorite`
+  return `/api/gemini/conversations/${id}`
 }
 
 /**

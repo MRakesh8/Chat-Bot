@@ -75,7 +75,8 @@ export const UpdateGeminiConversationParams = zod.object({
 })
 
 export const UpdateGeminiConversationBody = zod.object({
-  "title": zod.string()
+  "title": zod.string().optional(),
+  "projectId": zod.string().nullable().optional()
 })
 
 export const UpdateGeminiConversationResponse = zod.object({
@@ -146,7 +147,9 @@ export const SendGeminiMessageParams = zod.object({
 
 export const SendGeminiMessageBody = zod.object({
   "content": zod.string(),
-  "fileIds": zod.array(zod.string()).optional()
+  "fileIds": zod.array(zod.string()).optional(),
+  "projectIds": zod.array(zod.string()).optional(),
+  "useNormalAi": zod.boolean().optional()
 })
 
 
