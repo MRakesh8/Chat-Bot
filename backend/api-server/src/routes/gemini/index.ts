@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq, desc, like, inArray, isNotNull, or, isNull, gt } from "drizzle-orm";
 import fs from "fs";
-import { YoutubeTranscript } from "youtube-transcript";
+import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { db } from "@workspace/db";
 import { chatSessions, messages } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -241,48 +241,6 @@ const SYSTEM_PROMPT = `You are Aria, a smart and friendly AI personal assistant.
 
 const PROJECT_BRAIN_DIRECTIVE = `\n\nCRITICAL DIRECTIVE: You are acting as a specific Project Brain. Project Knowledge includes BOTH the project's Knowledge & Instructions text and any retrieved file/chat knowledge chunks supplied in the current message. Treat the Knowledge & Instructions text as authoritative project knowledge, not just behavior guidance. Use all selected projects together; do not ignore later projects when multiple projects are selected. If the user's question cannot be answered using the selected projects' Knowledge & Instructions or retrieved chunks, explicitly state that the answer is not in the selected project knowledge. Then, and only then, you may offer general knowledge, clearly labeled as outside the project's knowledge. Mention the relevant project name when you find the answer in that project's instructions or context.`;
 
-// Extract YouTube video ID from any YouTube URL format
-function extractYouTubeId(text: string): string[] {
-  const pattern =
-    /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-  const ids: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    if (!ids.includes(match[1])) ids.push(match[1]);
-  }
-  return ids;
-}
-
-async function fetchYouTubeTranscripts(text: string): Promise<string> {
-  const ids = extractYouTubeId(text);
-  if (ids.length === 0) return "";
-
-  const parts: string[] = [];
-  for (const id of ids) {
-    try {
-      const transcript = await YoutubeTranscript.fetchTranscript(id, { lang: "en" });
-      const fullText = transcript.map((t) => t.text).join(" ");
-      parts.push(
-        `[YouTube Video ID: ${id}]\nTranscript:\n${fullText.slice(0, 40000)}`
-      );
-    } catch {
-      // Try without language preference as fallback
-      try {
-        const transcript = await YoutubeTranscript.fetchTranscript(id);
-        const fullText = transcript.map((t) => t.text).join(" ");
-        parts.push(
-          `[YouTube Video ID: ${id}]\nTranscript:\n${fullText.slice(0, 40000)}`
-        );
-      } catch {
-        parts.push(
-          `[YouTube Video ID: ${id}]\nNote: This video's transcript is unavailable (disabled by uploader or private video).`
-        );
-      }
-    }
-  }
-  return parts.join("\n\n");
-}
-
 type GeminiPart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } };
@@ -384,7 +342,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
       : [];
 
     // Fetch YouTube transcripts if any URLs are in the message
-    const youtubeContext = await fetchYouTubeTranscripts(content);
+    const youtubeContext = await fetchYouTubeTranscriptsForMessage(content);
 
     // Vector Search (RAG)
     let ragContext = "";

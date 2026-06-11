@@ -2,11 +2,11 @@ import { Router } from "express";
 import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import fs from "fs";
-import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
 import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, projectSettings } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
+import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { z } from "zod";
 
 const createProjectSchema = z.object({
@@ -310,37 +310,6 @@ function serializeMessage(message: typeof messages.$inferSelect) {
   };
 }
 
-function extractYouTubeId(text: string): string[] {
-  const pattern =
-    /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-  const ids: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    if (!ids.includes(match[1])) ids.push(match[1]);
-  }
-  return ids;
-}
-
-async function fetchYouTubeTranscripts(text: string): Promise<string> {
-  const ids = extractYouTubeId(text);
-  if (ids.length === 0) return "";
-  const parts: string[] = [];
-  for (const id of ids) {
-    try {
-      const transcript = await YoutubeTranscript.fetchTranscript(id, { lang: "en" });
-      parts.push(`[YouTube Video ID: ${id}]\nTranscript:\n${transcript.map(t => t.text).join(" ").slice(0, 40000)}`);
-    } catch {
-      try {
-        const transcript = await YoutubeTranscript.fetchTranscript(id);
-        parts.push(`[YouTube Video ID: ${id}]\nTranscript:\n${transcript.map(t => t.text).join(" ").slice(0, 40000)}`);
-      } catch {
-        parts.push(`[YouTube Video ID: ${id}]\nNote: Transcript unavailable.`);
-      }
-    }
-  }
-  return parts.join("\n\n");
-}
-
 async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
   return [];
 }
@@ -432,7 +401,7 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
 
     // Build multimodal parts for current message
     const fileParts = fileIds && fileIds.length > 0 ? await buildFileParts(fileIds) : [];
-    const youtubeContext = messageContent ? await fetchYouTubeTranscripts(messageContent) : "";
+    const youtubeContext = messageContent ? await fetchYouTubeTranscriptsForMessage(messageContent) : "";
     const ragContext = await buildProjectKnowledgeContext(project.id, messageContent);
 
     const currentParts: GeminiPart[] = [

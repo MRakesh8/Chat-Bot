@@ -4,6 +4,7 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import mammoth from "mammoth";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { extractYouTubeId, fetchYouTubeTranscriptText } from "../lib/youtube";
 
 // Helper to chunk text
 function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
@@ -19,11 +20,6 @@ function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
     index = end - overlap;
   }
   return chunks.filter((c) => c.length > 0);
-}
-
-function extractYouTubeId(text: string): string | null {
-  const match = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/.exec(text);
-  return match?.[1] ?? null;
 }
 
 export async function processKnowledgeSource(sourceId: string) {
@@ -43,19 +39,11 @@ export async function processKnowledgeSource(sourceId: string) {
 
     try {
       if (source.sourceType === "youtube") {
-        const { YoutubeTranscript } = require("youtube-transcript");
-        const videoId = extractYouTubeId(source.sourceUrl || "") ?? source.sourceUrl;
-        try {
-          const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-          extractedText = transcript.map((t: any) => t.text).join(" ");
-        } catch (err: any) {
-          try {
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-            extractedText = transcript.map((t: any) => t.text).join(" ");
-          } catch {
-            throw new Error(`Failed to fetch youtube transcript for ${source.sourceUrl}`);
-          }
+        const videoId = extractYouTubeId(source.sourceUrl || "");
+        if (!videoId) {
+          throw new Error(`Invalid YouTube URL: ${source.sourceUrl}`);
         }
+        extractedText = await fetchYouTubeTranscriptText(videoId);
       } else if (source.sourceType === "website") {
         const res = await fetch(source.sourceUrl as string);
         if (!res.ok) throw new Error(`Failed to fetch website: ${res.statusText}`);
@@ -122,7 +110,7 @@ export async function processKnowledgeSource(sourceId: string) {
         } else if (filename.endsWith(".txt") || filename.endsWith(".md") || filename.endsWith(".csv")) {
           extractedText = buffer.toString("utf-8");
         } else if (filename.endsWith(".pptx")) {
-          const { parseOfficeAsync } = require("officeparser");
+          const { parseOfficeAsync } = await import("officeparser");
           extractedText = await parseOfficeAsync(buffer);
         } else if (filename.match(/\.(png|jpe?g|webp)$/)) {
           const res = await ai.models.generateContent({
@@ -144,7 +132,8 @@ export async function processKnowledgeSource(sourceId: string) {
            });
            extractedText = res.text || "";
         } else if (filename.endsWith(".zip")) {
-          const AdmZip = require("adm-zip");
+          const AdmZipModule = await import("adm-zip");
+          const AdmZip = AdmZipModule.default || AdmZipModule;
           const zip = new AdmZip(buffer);
           const zipEntries = zip.getEntries();
           let combinedText = "";
@@ -173,25 +162,33 @@ export async function processKnowledgeSource(sourceId: string) {
 
       let savedChunks = 0;
       for (const text of chunks) {
-        try {
-          const response = await ai.models.embedContent({
-            model: "gemini-embedding-2",
-            contents: text,
-            config: { outputDimensionality: 768 },
-          });
-
-          const embedding = response.embeddings?.[0]?.values;
-          if (embedding) {
-            await db.insert(knowledgeChunks).values({
-              knowledgeSourceId: source.id,
-              projectId: source.projectId,
-              chunkText: text,
-              embedding: embedding,
+        let embedded = false;
+        for (let attempt = 0; attempt < 3 && !embedded; attempt++) {
+          try {
+            const response = await ai.models.embedContent({
+              model: "gemini-embedding-2",
+              contents: text,
+              config: { outputDimensionality: 768 },
             });
-            savedChunks++;
+
+            const embedding = response.embeddings?.[0]?.values;
+            if (embedding) {
+              await db.insert(knowledgeChunks).values({
+                knowledgeSourceId: source.id,
+                projectId: source.projectId,
+                chunkText: text,
+                embedding: embedding,
+              });
+              savedChunks++;
+              embedded = true;
+            }
+          } catch (embedError) {
+            if (attempt === 2) {
+              logger.error({ err: embedError }, "Failed to embed chunk after retries");
+            } else {
+              await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+            }
           }
-        } catch (embedError) {
-          logger.error({ err: embedError }, "Failed to embed chunk");
         }
       }
 
