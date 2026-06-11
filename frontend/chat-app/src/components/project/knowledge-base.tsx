@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,25 @@ function useAuthFetch() {
       headers: { ...headers, ...(options.headers as any) },
     });
   };
+}
+
+async function parseApiError(res: Response, fallback: string) {
+  try {
+    const data = await res.json();
+    return (data as { error?: string; message?: string }).error
+      || (data as { error?: string; message?: string }).message
+      || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function isYouTubeUrl(url: string) {
+  return /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/)|youtu\.be\/)/i.test(url);
+}
+
+function isGitHubRepoUrl(url: string) {
+  return /^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/i.test(url.trim());
 }
 
 type KnowledgeCategory = {
@@ -67,11 +86,13 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   const [isCreateCategoryOpen, setIsCreateCategoryOpen] = useState(false);
 
   // Knowledge Form State
-  const [url, setUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [tag, setTag] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Edit Form State
   const [editTag, setEditTag] = useState("");
@@ -144,14 +165,22 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       if (!activeCategoryId) throw new Error("Please select a category first");
       const res = await authFetch(apiUrl("/api/files/url"), {
         method: "POST",
-        body: JSON.stringify({ url: sourceUrl, projectId, categoryId: activeCategoryId, tag, sourceType, sourceUrl, notes: notesText }),
+        body: JSON.stringify({
+          projectId,
+          categoryId: activeCategoryId,
+          tag: tag.trim() || undefined,
+          sourceType,
+          sourceUrl: sourceUrl?.trim(),
+          notes: notesText?.trim(),
+        }),
       });
-      if (!res.ok) throw new Error("Failed to add source");
+      if (!res.ok) throw new Error(await parseApiError(res, "Failed to add source"));
       return res.json();
     },
     onSuccess: () => {
-      setUrl("");
+      setWebsiteUrl("");
       setVideoUrl("");
+      setGithubUrl("");
       setNotes("");
       setTag("");
       setIsAddKnowledgeOpen(false);
@@ -207,7 +236,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
           categoryId,
         }),
       });
-      if (!res.ok) throw new Error("Failed to update source");
+      if (!res.ok) throw new Error(await parseApiError(res, "Failed to update source"));
       return res.json();
     },
     onSuccess: () => {
@@ -230,13 +259,29 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
 
   const handleSaveEdit = () => {
     if (!editingSource) return;
+
+    if (editingSource.sourceType === "note" && !editNotes.trim()) {
+      toast({ title: "Error", description: "Note content cannot be empty", variant: "destructive" });
+      return;
+    }
+
+    if (editingSource.sourceType === "youtube" && !isYouTubeUrl(editUrl)) {
+      toast({ title: "Error", description: "Please enter a valid YouTube URL", variant: "destructive" });
+      return;
+    }
+
+    if (editingSource.sourceType === "github" && !isGitHubRepoUrl(editUrl)) {
+      toast({ title: "Error", description: "Please enter a valid GitHub repository URL", variant: "destructive" });
+      return;
+    }
+
     updateSourceMutation.mutate({
       id: editingSource.id,
-      tag: editTag,
+      tag: editTag.trim(),
       categoryId: editCategoryId,
-      ...(editingSource.sourceType === "note" ? { notes: editNotes } : {}),
+      ...(editingSource.sourceType === "note" ? { notes: editNotes.trim() } : {}),
       ...(["website", "youtube", "github"].includes(editingSource.sourceType)
-        ? { sourceUrl: editUrl }
+        ? { sourceUrl: editUrl.trim() }
         : {}),
     });
   };
@@ -253,7 +298,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
     formData.append("file", file);
     formData.append("projectId", projectId);
     formData.append("categoryId", activeCategoryId);
-    if (tag) formData.append("tag", tag);
+    if (tag.trim()) formData.append("tag", tag.trim());
 
     setIsUploadingFile(true);
     try {
@@ -261,7 +306,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) throw new Error("Failed to upload file");
+      if (!res.ok) throw new Error(await parseApiError(res, "Failed to upload file"));
       toast({ title: "File Uploaded", description: "Processing in the background." });
       setIsAddKnowledgeOpen(false);
       setTag("");
@@ -408,28 +453,35 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           <Upload className="w-8 h-8 text-muted-foreground mb-4" />
                           <p className="text-sm font-medium mb-1">Click to upload a file</p>
                           <p className="text-xs text-muted-foreground mb-4">Supports PDF, DOCX, TXT, CSV, MP4, MP3, Images, ZIP</p>
-                          <label className="cursor-pointer">
-                            <Button asChild disabled={isUploadingFile}>
-                              <span>
-                                {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                                {isUploadingFile ? "Uploading..." : "Select File"}
-                              </span>
-                            </Button>
-                            <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploadingFile} />
-                          </label>
+                          <Button
+                            type="button"
+                            disabled={isUploadingFile}
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                            {isUploadingFile ? "Uploading..." : "Select File"}
+                          </Button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.docx,.txt,.md,.csv,.pptx,.mp4,.mp3,.wav,.mov,.webm,.png,.jpg,.jpeg,.webp,.zip"
+                            onChange={handleFileUpload}
+                            disabled={isUploadingFile}
+                          />
                         </div>
                       </TabsContent>
                       
                       <TabsContent value="website" className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Website URL</label>
-                          <Input placeholder="https://example.com/docs" value={url} onChange={(e) => setUrl(e.target.value)} />
+                          <Input placeholder="https://example.com/docs" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} />
                           <p className="text-xs text-muted-foreground">Add a web page to scrape and index its content.</p>
                         </div>
                         <Button
                           className="w-full"
-                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: url, sourceType: "website" })}
-                          disabled={!url || addSourceUrlMutation.isPending}
+                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: websiteUrl, sourceType: "website" })}
+                          disabled={!websiteUrl.trim() || addSourceUrlMutation.isPending}
                         >
                           {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Add Website
@@ -444,8 +496,14 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         </div>
                         <Button
                           className="w-full"
-                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: videoUrl, sourceType: "youtube" })}
-                          disabled={!videoUrl || addSourceUrlMutation.isPending}
+                          onClick={() => {
+                            if (!isYouTubeUrl(videoUrl)) {
+                              toast({ title: "Error", description: "Please enter a valid YouTube URL", variant: "destructive" });
+                              return;
+                            }
+                            addSourceUrlMutation.mutate({ sourceUrl: videoUrl, sourceType: "youtube" });
+                          }}
+                          disabled={!videoUrl.trim() || addSourceUrlMutation.isPending}
                         >
                           {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Add Video
@@ -455,12 +513,18 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       <TabsContent value="github" className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">GitHub Repository URL</label>
-                          <Input placeholder="https://github.com/owner/repo" value={url} onChange={(e) => setUrl(e.target.value)} />
+                          <Input placeholder="https://github.com/owner/repo" value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} />
                         </div>
                         <Button 
                           className="w-full" 
-                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: url, sourceType: "github" })}
-                          disabled={!url || addSourceUrlMutation.isPending}
+                          onClick={() => {
+                            if (!isGitHubRepoUrl(githubUrl)) {
+                              toast({ title: "Error", description: "Please enter a valid GitHub repository URL", variant: "destructive" });
+                              return;
+                            }
+                            addSourceUrlMutation.mutate({ sourceUrl: githubUrl, sourceType: "github" });
+                          }}
+                          disabled={!githubUrl.trim() || addSourceUrlMutation.isPending}
                         >
                           {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Add Repository
@@ -480,7 +544,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         <Button 
                           className="w-full" 
                           onClick={() => addSourceUrlMutation.mutate({ sourceType: "note", notesText: notes })}
-                          disabled={!notes || addSourceUrlMutation.isPending}
+                          disabled={!notes.trim() || addSourceUrlMutation.isPending}
                         >
                           {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Save Note
@@ -520,9 +584,9 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           <div className="flex flex-col min-w-0 flex-1">
                             <span
                               className="text-sm font-medium text-foreground truncate"
-                              title={source.filename || source.sourceUrl || "Text Note"}
+                              title={source.filename || source.sourceUrl || source.notes?.slice(0, 80) || "Text Note"}
                             >
-                              {source.filename || source.sourceUrl || "Text Note"}
+                              {source.filename || source.sourceUrl || (source.sourceType === "note" ? (source.notes?.slice(0, 60) || "Text Note") : "Text Note")}
                             </span>
                             {source.tag && (
                               <span className="inline-flex w-fit max-w-full mt-1.5 text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20 font-medium truncate">

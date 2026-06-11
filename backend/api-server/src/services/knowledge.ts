@@ -28,7 +28,12 @@ export async function processKnowledgeSource(sourceId: string) {
     if (!source) throw new Error(`Source ${sourceId} not found`);
 
     if (source.status === "processed") {
-      logger.info(`Source ${sourceId} is already processed`);
+      logger.info(`Source ${sourceId} is already processed, skipping`);
+      return;
+    }
+
+    if (source.status === "processing") {
+      logger.info(`Source ${sourceId} is already being processed`);
       return;
     }
 
@@ -110,14 +115,15 @@ export async function processKnowledgeSource(sourceId: string) {
         } else if (filename.endsWith(".txt") || filename.endsWith(".md") || filename.endsWith(".csv")) {
           extractedText = buffer.toString("utf-8");
         } else if (filename.endsWith(".pptx")) {
-          const { parseOfficeAsync } = await import("officeparser");
-          extractedText = await parseOfficeAsync(buffer);
+          const { parseOffice } = await import("officeparser");
+          extractedText = String(await parseOffice(buffer));
         } else if (filename.match(/\.(png|jpe?g|webp)$/)) {
+          const imageMime = fileData.type || "image/jpeg";
           const res = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: [
               "Please describe this image in great detail, including any text written in it. This will be used for vector search retrieval.",
-              { inlineData: { mimeType: "image/jpeg", data: buffer.toString("base64") } }
+              { inlineData: { mimeType: imageMime, data: buffer.toString("base64") } }
             ]
           });
           extractedText = res.text || "";

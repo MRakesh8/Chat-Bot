@@ -8,6 +8,7 @@ import { knowledgeSources, projects } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
 import { processKnowledgeSource } from "../../services/knowledge";
+import { extractYouTubeId } from "../../lib/youtube";
 
 const router = Router();
 
@@ -30,7 +31,19 @@ const upload = multer({
 });
 
 // POST /files/upload - Upload file as knowledge source
-router.post("/upload", upload.single("file"), async (req, res) => {
+router.post("/upload", (req, res, next) => {
+  upload.single("file")(req, res, (err: any) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ error: "File is too large. Maximum size is 100MB." });
+        return;
+      }
+      res.status(400).json({ error: err.message || "File upload failed" });
+      return;
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { projectId, categoryId, tag, notes } = req.body;
     const userId = (req as any).auth?.userId;
@@ -44,6 +57,11 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       originalname = req.file.originalname;
       mimetype = req.file.mimetype;
       filename = req.file.filename;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: "No file uploaded" });
+      return;
     }
 
     if (!projectId || !categoryId) {
@@ -124,6 +142,26 @@ router.post("/url", async (req, res) => {
     
     if (!projectId || !categoryId || !sourceType) {
       res.status(400).json({ error: "Missing required fields" });
+      return;
+    }
+
+    if (sourceType === "note" && !notes?.trim()) {
+      res.status(400).json({ error: "Note content is required" });
+      return;
+    }
+
+    if (["website", "youtube", "github"].includes(sourceType) && !sourceUrl?.trim()) {
+      res.status(400).json({ error: "URL is required" });
+      return;
+    }
+
+    if (sourceType === "youtube" && !extractYouTubeId(sourceUrl.trim())) {
+      res.status(400).json({ error: "Invalid YouTube URL" });
+      return;
+    }
+
+    if (sourceType === "github" && !sourceUrl.trim().match(/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/i)) {
+      res.status(400).json({ error: "Invalid GitHub repository URL" });
       return;
     }
 
@@ -285,9 +323,27 @@ router.patch("/:id", async (req, res) => {
 
     if (tag !== undefined) updates.tag = tag || null;
     if (categoryId !== undefined) updates.categoryId = categoryId;
-    if (notes !== undefined && existing.sourceType === "note") updates.notes = notes;
+    if (notes !== undefined && existing.sourceType === "note") {
+      if (!notes.trim()) {
+        res.status(400).json({ error: "Note content cannot be empty" });
+        return;
+      }
+      updates.notes = notes;
+    }
     if (sourceUrl !== undefined && ["website", "youtube", "github"].includes(existing.sourceType)) {
-      updates.sourceUrl = sourceUrl;
+      if (!sourceUrl.trim()) {
+        res.status(400).json({ error: "URL cannot be empty" });
+        return;
+      }
+      if (existing.sourceType === "youtube" && !extractYouTubeId(sourceUrl.trim())) {
+        res.status(400).json({ error: "Invalid YouTube URL" });
+        return;
+      }
+      if (existing.sourceType === "github" && !sourceUrl.trim().match(/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/i)) {
+        res.status(400).json({ error: "Invalid GitHub repository URL" });
+        return;
+      }
+      updates.sourceUrl = sourceUrl.trim();
     }
 
     const contentChanged =
