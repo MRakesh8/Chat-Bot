@@ -4,9 +4,15 @@ import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw } from "lucide-react";
+import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Settings } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { apiUrl } from "@/lib/api-url";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function useAuthFetch() {
   const { session } = useAuth();
@@ -25,13 +31,24 @@ function useAuthFetch() {
   };
 }
 
-type ProjectFile = {
+type KnowledgeCategory = {
   id: string;
   projectId: string;
-  filename: string;
-  fileUrl: string;
-  type: string;
-  status: "pending" | "processed" | "error";
+  name: string;
+  createdAt: string;
+};
+
+type KnowledgeSource = {
+  id: string;
+  projectId: string;
+  categoryId: string;
+  tag: string | null;
+  filename: string | null;
+  fileId: string | null;
+  sourceType: string;
+  sourceUrl: string | null;
+  notes: string | null;
+  status: "pending" | "processing" | "processed" | "error";
   createdAt: string;
 };
 
@@ -40,70 +57,136 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [isAddKnowledgeOpen, setIsAddKnowledgeOpen] = useState(false);
+  
+  // Category Form State
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [isCreateCategoryOpen, setIsCreateCategoryOpen] = useState(false);
+
+  // Knowledge Form State
   const [url, setUrl] = useState("");
+  const [notes, setNotes] = useState("");
+  const [tag, setTag] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
-  const { data: files, isLoading } = useQuery({
-    queryKey: ["project-files", projectId],
+  // --- QUERIES ---
+  const { data: categories = [], isLoading: isLoadingCategories } = useQuery({
+    queryKey: ["knowledge-categories", projectId],
     queryFn: async () => {
-      const res = await authFetch(apiUrl(`/api/files/project/${projectId}`));
-      if (!res.ok) throw new Error("Failed to load files");
-      return res.json() as Promise<ProjectFile[]>;
-    },
-    refetchInterval: (query) => {
-      // Refetch if any files are pending
-      return query.state.data?.some((f) => f.status === "pending") ? 3000 : false;
+      const res = await authFetch(apiUrl(`/api/categories/project/${projectId}`));
+      if (!res.ok) throw new Error("Failed to load categories");
+      const data = await res.json() as KnowledgeCategory[];
+      if (data.length > 0 && !activeCategoryId) {
+        setActiveCategoryId(data[0].id);
+      }
+      return data;
     },
   });
 
-  const uploadUrlMutation = useMutation({
-    mutationFn: async (submitUrl: string) => {
-      const res = await authFetch(apiUrl("/api/files/url"), {
+  const { data: sources = [], isLoading: isLoadingSources } = useQuery({
+    queryKey: ["knowledge-sources", projectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/files/project/${projectId}`));
+      if (!res.ok) throw new Error("Failed to load sources");
+      return res.json() as Promise<KnowledgeSource[]>;
+    },
+    refetchInterval: (query) => {
+      return query.state.data?.some((f) => f.status === "pending" || f.status === "processing") ? 3000 : false;
+    },
+  });
+
+  // --- MUTATIONS: CATEGORY ---
+  const createCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await authFetch(apiUrl("/api/categories"), {
         method: "POST",
-        body: JSON.stringify({ url: submitUrl, projectId }),
+        body: JSON.stringify({ projectId, name }),
       });
-      if (!res.ok) throw new Error("Failed to add URL");
+      if (!res.ok) throw new Error("Failed to create category");
       return res.json();
     },
-    onSuccess: () => {
-      setUrl("");
-      toast({ title: "URL Added", description: "The content is being processed in the background." });
-      queryClient.invalidateQueries({ queryKey: ["project-files", projectId] });
+    onSuccess: (data) => {
+      toast({ title: "Category Created" });
+      setNewCategoryName("");
+      setIsCreateCategoryOpen(false);
+      setActiveCategoryId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["knowledge-categories", projectId] });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (fileId: string) => {
-      const res = await authFetch(apiUrl(`/api/files/${fileId}`), { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete file");
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await authFetch(apiUrl(`/api/categories/${id}`), { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete category");
     },
-    onSuccess: () => {
-      toast({ title: "File deleted" });
-      queryClient.invalidateQueries({ queryKey: ["project-files", projectId] });
+    onSuccess: (_, id) => {
+      toast({ title: "Category Deleted" });
+      if (activeCategoryId === id) setActiveCategoryId(categories[0]?.id || null);
+      queryClient.invalidateQueries({ queryKey: ["knowledge-categories", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
     },
   });
 
-  const reprocessMutation = useMutation({
-    mutationFn: async (fileId: string) => {
-      const res = await authFetch(apiUrl(`/api/files/${fileId}/reprocess`), { method: "POST" });
+  // --- MUTATIONS: KNOWLEDGE ---
+  const addSourceUrlMutation = useMutation({
+    mutationFn: async ({ sourceUrl, sourceType, notesText }: { sourceUrl?: string; sourceType: string; notesText?: string }) => {
+      if (!activeCategoryId) throw new Error("Please select a category first");
+      const res = await authFetch(apiUrl("/api/files/url"), {
+        method: "POST",
+        body: JSON.stringify({ url: sourceUrl, projectId, categoryId: activeCategoryId, tag, sourceType, sourceUrl, notes: notesText }),
+      });
+      if (!res.ok) throw new Error("Failed to add source");
+      return res.json();
+    },
+    onSuccess: () => {
+      setUrl("");
+      setNotes("");
+      setTag("");
+      setIsAddKnowledgeOpen(false);
+      toast({ title: "Knowledge Added", description: "Processing in the background." });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteSourceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await authFetch(apiUrl(`/api/files/${id}`), { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete source");
+    },
+    onSuccess: () => {
+      toast({ title: "Source deleted" });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
+    },
+  });
+
+  const reprocessSourceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await authFetch(apiUrl(`/api/files/${id}/reprocess`), { method: "POST" });
       if (!res.ok) throw new Error("Failed to retry processing");
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Retry started", description: "The file is being processed again." });
-      queryClient.invalidateQueries({ queryKey: ["project-files", projectId] });
+      toast({ title: "Retry started" });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
     },
-    onError: (err: any) => toast({ title: "Retry Error", description: err.message, variant: "destructive" }),
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!activeCategoryId) {
+      toast({ title: "Error", description: "Please create/select a category first", variant: "destructive" });
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("projectId", projectId);
+    formData.append("categoryId", activeCategoryId);
+    if (tag) formData.append("tag", tag);
 
     setIsUploadingFile(true);
     try {
@@ -112,133 +195,325 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
         body: formData,
       });
       if (!res.ok) throw new Error("Failed to upload file");
-      toast({ title: "File Uploaded", description: "The file is being processed in the background." });
-      queryClient.invalidateQueries({ queryKey: ["project-files", projectId] });
+      toast({ title: "File Uploaded", description: "Processing in the background." });
+      setIsAddKnowledgeOpen(false);
+      setTag("");
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
     } catch (err: any) {
       toast({ title: "Upload Error", description: err.message, variant: "destructive" });
     } finally {
       setIsUploadingFile(false);
-      e.target.value = ""; // reset file input
+      e.target.value = "";
     }
   };
 
   const getIcon = (type: string) => {
     switch (type) {
-      case "youtube": return <Youtube className="w-4 h-4 text-red-500" />;
-      case "website": return <LinkIcon className="w-4 h-4 text-blue-400" />;
-      case "pdf": return <FileIcon className="w-4 h-4 text-red-400" />;
-      case "docx": return <FileIcon className="w-4 h-4 text-blue-500" />;
-      default: return <FileIcon className="w-4 h-4 text-zinc-400" />;
+      case "youtube": return <Youtube className="w-5 h-5 text-red-500" />;
+      case "website": return <LinkIcon className="w-5 h-5 text-blue-400" />;
+      case "github": return <Github className="w-5 h-5 text-foreground" />;
+      case "note": return <StickyNote className="w-5 h-5 text-yellow-500" />;
+      case "video": return <Youtube className="w-5 h-5 text-purple-500" />;
+      case "image": return <FileIcon className="w-5 h-5 text-emerald-400" />;
+      default: return <FileIcon className="w-5 h-5 text-zinc-400" />;
     }
   };
 
-  return (
-    <Card className="bg-card border-border text-card-foreground mt-8">
-      <CardHeader>
-        <CardTitle>Knowledge Base</CardTitle>
-        <CardDescription className="text-muted-foreground">
-          Upload documents (PDF, DOCX) or link websites and YouTube videos for your AI to learn from.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Upload Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Add Web Link or YouTube URL</label>
-            <div className="flex gap-2">
-              <Input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://..."
-                className="bg-muted border-border"
-              />
-              <Button
-                variant="outline"
-                className="border-border bg-card hover:bg-muted"
-                onClick={() => {
-                  if (url.trim()) uploadUrlMutation.mutate(url.trim());
-                }}
-                disabled={!url.trim() || uploadUrlMutation.isPending}
-              >
-                {uploadUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Upload File (PDF, DOCX, TXT, PPT, Images)</label>
-            <div className="flex items-center gap-2">
-              <label className="cursor-pointer flex items-center justify-center gap-2 border border-border bg-card hover:bg-muted h-10 px-4 rounded-md w-full transition-colors">
-                {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                <span className="text-sm font-medium">{isUploadingFile ? "Uploading..." : "Choose File"}</span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*"
-                  onChange={handleFileUpload}
-                  disabled={isUploadingFile}
-                />
-              </label>
-            </div>
-          </div>
-        </div>
+  const activeSources = sources.filter(s => s.categoryId === activeCategoryId);
 
-        {/* File List */}
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold mb-3">Project Files</h3>
-          {isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
-          ) : files?.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
-              No files uploaded yet.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {files?.map((f) => (
-                <div key={f.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted hover:bg-muted/80 transition-colors">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    {getIcon(f.type)}
-                    <div className="flex flex-col truncate">
-                      <span className="text-sm font-medium truncate">{f.filename}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(f.createdAt).toLocaleDateString()} &middot;{" "}
-                        <span className={
-                          f.status === "processed" ? "text-green-400" :
-                          f.status === "error" ? "text-red-400" : "text-yellow-400"
-                        }>
-                          {f.status}
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {f.status !== "pending" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted-foreground hover:text-foreground hover:bg-muted"
-                        onClick={() => reprocessMutation.mutate(f.id)}
-                        disabled={reprocessMutation.isPending}
-                        title={f.status === "error" ? "Retry processing" : "Reprocess knowledge"}
-                      >
-                        {reprocessMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteMutation.mutate(f.id)}
-                      disabled={deleteMutation.isPending}
-                    >
-                      {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+  return (
+    <div className="flex flex-col md:flex-row gap-6 mt-8 h-[calc(100vh-200px)] min-h-[500px]">
+      
+      {/* Sidebar: Categories */}
+      <Card className="w-full md:w-64 flex-shrink-0 flex flex-col border-border bg-card overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold text-foreground">Categories</h3>
+          <Dialog open={isCreateCategoryOpen} onOpenChange={setIsCreateCategoryOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create Category</DialogTitle>
+                <DialogDescription>Organize your project knowledge.</DialogDescription>
+              </DialogHeader>
+              <div className="flex gap-2 mt-4">
+                <Input 
+                  placeholder="e.g., Frontend Docs" 
+                  value={newCategoryName} 
+                  onChange={(e) => setNewCategoryName(e.target.value)} 
+                />
+                <Button 
+                  onClick={() => createCategoryMutation.mutate(newCategoryName)}
+                  disabled={!newCategoryName.trim() || createCategoryMutation.isPending}
+                >
+                  {createCategoryMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-      </CardContent>
-    </Card>
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-1">
+            {isLoadingCategories ? (
+               <div className="flex justify-center p-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+            ) : categories.length === 0 ? (
+               <div className="text-center p-4 text-xs text-muted-foreground">No categories yet.</div>
+            ) : (
+              categories.map(cat => (
+                <div 
+                  key={cat.id}
+                  className={`group flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors ${
+                    activeCategoryId === cat.id 
+                      ? "bg-primary/10 text-primary font-medium" 
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setActiveCategoryId(cat.id)}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Folder className={`w-4 h-4 ${activeCategoryId === cat.id ? "text-primary" : ""}`} />
+                    <span className="truncate text-sm">{cat.name}</span>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <MoreVertical className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem 
+                        className="text-destructive focus:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); deleteCategoryMutation.mutate(cat.id); }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))
+            )}
+          </div>
+        </ScrollArea>
+      </Card>
+
+      {/* Main Content: Sources */}
+      <Card className="flex-1 flex flex-col border-border bg-card shadow-sm overflow-hidden">
+        {activeCategoryId ? (
+          <>
+            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  {categories.find(c => c.id === activeCategoryId)?.name || "Knowledge"}
+                </h2>
+                <p className="text-sm text-muted-foreground">Manage files, links, and notes in this category.</p>
+              </div>
+              
+              <Dialog open={isAddKnowledgeOpen} onOpenChange={setIsAddKnowledgeOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2 shadow-sm">
+                    <Plus className="w-4 h-4" /> Add Knowledge
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <DialogHeader>
+                    <DialogTitle>Add Knowledge Source</DialogTitle>
+                    <DialogDescription>Upload files, add web links, or create text notes.</DialogDescription>
+                  </DialogHeader>
+                  <div className="mt-4">
+                    <div className="mb-4">
+                      <label className="text-xs font-medium text-foreground mb-1 block">Tag (Optional)</label>
+                      <Input placeholder="e.g. documentation, reference" value={tag} onChange={(e) => setTag(e.target.value)} />
+                    </div>
+                    
+                    <Tabs defaultValue="file" className="w-full">
+                      <TabsList className="grid w-full grid-cols-4 mb-4">
+                        <TabsTrigger value="file">File</TabsTrigger>
+                        <TabsTrigger value="link">Web / Video</TabsTrigger>
+                        <TabsTrigger value="github">GitHub</TabsTrigger>
+                        <TabsTrigger value="note">Note</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="file" className="space-y-4">
+                        <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center text-center bg-muted/30 hover:bg-muted/50 transition-colors">
+                          <Upload className="w-8 h-8 text-muted-foreground mb-4" />
+                          <p className="text-sm font-medium mb-1">Click to upload a file</p>
+                          <p className="text-xs text-muted-foreground mb-4">Supports PDF, DOCX, TXT, CSV, MP4, MP3, Images, ZIP</p>
+                          <label className="cursor-pointer">
+                            <Button asChild disabled={isUploadingFile}>
+                              <span>
+                                {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                {isUploadingFile ? "Uploading..." : "Select File"}
+                              </span>
+                            </Button>
+                            <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploadingFile} />
+                          </label>
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="link" className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Website or YouTube URL</label>
+                          <Input placeholder="https://..." value={url} onChange={(e) => setUrl(e.target.value)} />
+                        </div>
+                        <Button 
+                          className="w-full" 
+                          onClick={() => {
+                            const type = (url.includes("youtube.com") || url.includes("youtu.be")) ? "youtube" : "website";
+                            addSourceUrlMutation.mutate({ sourceUrl: url, sourceType: type });
+                          }}
+                          disabled={!url || addSourceUrlMutation.isPending}
+                        >
+                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          Add Link
+                        </Button>
+                      </TabsContent>
+
+                      <TabsContent value="github" className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">GitHub Repository URL</label>
+                          <Input placeholder="https://github.com/owner/repo" value={url} onChange={(e) => setUrl(e.target.value)} />
+                        </div>
+                        <Button 
+                          className="w-full" 
+                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: url, sourceType: "github" })}
+                          disabled={!url || addSourceUrlMutation.isPending}
+                        >
+                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          Add Repository
+                        </Button>
+                      </TabsContent>
+
+                      <TabsContent value="note" className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Text Content</label>
+                          <Textarea 
+                            placeholder="Paste your text here..." 
+                            className="min-h-[150px]"
+                            value={notes} 
+                            onChange={(e) => setNotes(e.target.value)} 
+                          />
+                        </div>
+                        <Button 
+                          className="w-full" 
+                          onClick={() => addSourceUrlMutation.mutate({ sourceType: "note", notesText: notes })}
+                          disabled={!notes || addSourceUrlMutation.isPending}
+                        >
+                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          Save Note
+                        </Button>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+            
+            <ScrollArea className="flex-1 p-4">
+              {isLoadingSources ? (
+                <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+              ) : activeSources.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <Search className="w-8 h-8 text-muted-foreground/50" />
+                  </div>
+                  <h3 className="text-lg font-medium text-foreground">No knowledge sources</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm mt-1">
+                    Upload files, add links, or write notes to build the brain for this category.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  {activeSources.map((source) => (
+                    <div 
+                      key={source.id} 
+                      className="group flex flex-col p-4 rounded-xl border border-border bg-card hover:bg-muted/50 transition-all shadow-sm hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 overflow-hidden">
+                          <div className="p-2 rounded-lg bg-background border border-border shadow-sm">
+                            {getIcon(source.sourceType)}
+                          </div>
+                          <div className="flex flex-col truncate">
+                            <span className="text-sm font-medium text-foreground truncate" title={source.filename || source.sourceUrl || "Text Note"}>
+                              {source.filename || source.sourceUrl || "Text Note"}
+                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-muted-foreground capitalize">
+                                {source.sourceType}
+                              </span>
+                              <span className="text-muted-foreground text-[10px]">•</span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(source.createdAt).toLocaleDateString()}
+                              </span>
+                              {source.tag && (
+                                <>
+                                  <span className="text-muted-foreground text-[10px]">•</span>
+                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium">
+                                    {source.tag}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {source.status !== "pending" && source.status !== "processing" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              onClick={() => reprocessSourceMutation.mutate(source.id)}
+                              disabled={reprocessSourceMutation.isPending}
+                              title="Reprocess"
+                            >
+                              {reprocessSourceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => deleteSourceMutation.mutate(source.id)}
+                            disabled={deleteSourceMutation.isPending}
+                            title="Delete"
+                          >
+                            {deleteSourceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Status indicator bar at bottom */}
+                      <div className="mt-4 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden relative">
+                          {source.status === "processed" && <div className="absolute inset-y-0 left-0 bg-emerald-500 w-full"></div>}
+                          {source.status === "error" && <div className="absolute inset-y-0 left-0 bg-destructive w-full"></div>}
+                          {(source.status === "pending" || source.status === "processing") && (
+                            <div className="absolute inset-y-0 left-0 bg-blue-500 w-1/2 animate-pulse rounded-full"></div>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+                          source.status === "processed" ? "text-emerald-500" :
+                          source.status === "error" ? "text-destructive" : "text-blue-500"
+                        }`}>
+                          {source.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col">
+            <Folder className="w-12 h-12 mb-4 opacity-20" />
+            <p>Create or select a category to manage knowledge.</p>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }

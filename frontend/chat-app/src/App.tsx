@@ -40,6 +40,7 @@ function AuthPage({ type }: { type: "login" | "signup" }) {
       ? await supabase.auth.signInWithPassword({ email, password })
       : await supabase.auth.signUp({ email, password });
     
+
     if (error) {
       if (error.message.includes("For security purposes")) {
         setError("Too many login attempts. Please wait a minute, or try Google Login instead.");
@@ -47,6 +48,50 @@ function AuthPage({ type }: { type: "login" | "signup" }) {
         setError(error.message);
       }
     } else {
+      setLocation("/");
+    }
+  };
+
+  return (
+    <div className="flex h-screen w-screen items-center justify-center bg-background">
+      <div className="w-full max-w-sm rounded-lg border bg-card p-8 shadow-sm">
+        <h2 className="mb-6 text-2xl font-bold text-foreground">
+          {type === "login" ? "Welcome back" : "Create an account"}
+        </h2>
+        {error && <div className="mb-4 text-sm text-destructive">{error}</div>}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Email</label>
+            <input
+              type="email"
+              required
+              className="w-full rounded-md border bg-background px-3 py-2 text-foreground"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Password</label>
+            <input
+              type="password"
+              required
+              className="w-full rounded-md border bg-background px-3 py-2 text-foreground"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
+          >
+            {type === "login" ? "Sign In" : "Sign Up"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   

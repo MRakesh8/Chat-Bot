@@ -5,6 +5,7 @@ import localDemoGeminiRouter from "./gemini/local-demo";
 import filesRouter from "./files";
 import projectsRouter from "./projects";
 import reportsRouter from "./reports";
+import categoriesRouter from "./categories";
 
 const router: IRouter = Router();
 
@@ -13,5 +14,6 @@ router.use("/gemini", process.env.LOCAL_DEMO_MODE === "true" ? localDemoGeminiRo
 router.use("/files", filesRouter);
 router.use("/projects", projectsRouter);
 router.use("/reports", reportsRouter);
+router.use("/categories", categoriesRouter);
 
 export default router;

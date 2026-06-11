@@ -4,15 +4,13 @@ import path from "path";
 import fs from "fs";
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { projectFiles, projects } from "@workspace/db";
-import { DeleteFileParams } from "@workspace/api-zod";
+import { knowledgeSources, projects } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
-import { processProjectFile } from "../../services/knowledge";
+import { processKnowledgeSource } from "../../services/knowledge";
 
 const router = Router();
 
-// Ensure uploads directory exists temporarily
 const uploadsDir = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -28,83 +26,87 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for video/zips
 });
 
-// POST /files/upload
+// POST /files/upload - Upload file as knowledge source
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      res.status(400).json({ error: "No file uploaded" });
-      return;
-    }
-
-    const { originalname, filename, mimetype, path: localPath } = req.file;
-    const projectId = req.body.projectId;
-
-    if (!projectId) {
-      fs.unlinkSync(localPath);
-      res.status(400).json({ error: "Missing projectId" });
-      return;
-    }
-
+    const { projectId, categoryId, tag, notes } = req.body;
     const userId = (req as any).auth?.userId;
+    let localPath: string | undefined;
+    let originalname: string | undefined;
+    let mimetype: string | undefined;
+    let filename: string | undefined;
+
+    if (req.file) {
+      localPath = req.file.path;
+      originalname = req.file.originalname;
+      mimetype = req.file.mimetype;
+      filename = req.file.filename;
+    }
+
+    if (!projectId || !categoryId) {
+      if (localPath) fs.unlinkSync(localPath);
+      res.status(400).json({ error: "Missing projectId or categoryId" });
+      return;
+    }
+
     if (!userId) {
-      fs.unlinkSync(localPath);
+      if (localPath) fs.unlinkSync(localPath);
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
     if (!project) {
-      fs.unlinkSync(localPath);
+      if (localPath) fs.unlinkSync(localPath);
       res.status(403).json({ error: "Forbidden: You do not own this project" });
       return;
     }
 
-    // Read the file buffer
-    const fileBuffer = fs.readFileSync(localPath);
+    let fileId: string | undefined;
+    let sourceType = "file";
+    
+    if (localPath && originalname && mimetype && filename) {
+      const fileBuffer = fs.readFileSync(localPath);
+      const storagePath = `${projectId}/${filename}`;
+      const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+        .from("project-files")
+        .upload(storagePath, fileBuffer, {
+          contentType: mimetype,
+          upsert: false,
+        });
 
-    // Upload to Supabase Storage
-    const storagePath = `${projectId}/${filename}`;
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from("project-files")
-      .upload(storagePath, fileBuffer, {
-        contentType: mimetype,
-        upsert: false,
-      });
+      fs.unlinkSync(localPath);
 
-    // Delete local file regardless of success/failure
-    fs.unlinkSync(localPath);
-
-    if (uploadError) {
-      req.log.error({ err: uploadError }, "Supabase storage upload failed");
-      res.status(500).json({ error: "Failed to upload file to storage" });
-      return;
+      if (uploadError) {
+        req.log.error({ err: uploadError }, "Supabase storage upload failed");
+        res.status(500).json({ error: "Failed to upload file to storage" });
+        return;
+      }
+      
+      fileId = storagePath;
+      
+      if (mimetype.startsWith("video/")) sourceType = "video";
+      else if (mimetype.startsWith("image/")) sourceType = "image";
     }
 
-    // Determine type string
-    let type = "other";
-    if (mimetype.startsWith("image/")) type = "image";
-    else if (mimetype === "application/pdf") type = "pdf";
-    else if (mimetype.startsWith("text/")) type = "txt";
-    else if (mimetype.includes("wordprocessingml") || mimetype.includes("msword")) type = "docx";
-    else if (mimetype.includes("presentationml") || mimetype.includes("powerpoint")) type = "pptx";
-
-    // Store in Database
     const [record] = await db
-      .insert(projectFiles)
+      .insert(knowledgeSources)
       .values({
         projectId,
-        filename: originalname,
-        fileUrl: storagePath,
-        type,
+        categoryId,
+        tag: tag || null,
+        notes: notes || null,
+        filename: originalname || null,
+        fileId: fileId || null,
+        sourceType,
         status: "pending",
       })
       .returning();
 
-    // Trigger async processing for extracting text and embedding
-    processProjectFile(record.id).catch((e) => {
+    processKnowledgeSource(record.id).catch((e) => {
       req.log.error({ err: e }, "Async processing failed");
     });
 
@@ -115,12 +117,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// POST /files/url
+// POST /files/url - Add non-file knowledge (Website, YouTube, Instagram, GitHub, Note)
 router.post("/url", async (req, res) => {
   try {
-    const { url, projectId } = req.body;
-    if (!url || !projectId) {
-      res.status(400).json({ error: "Missing url or projectId" });
+    const { projectId, categoryId, tag, sourceType, sourceUrl, notes } = req.body;
+    
+    if (!projectId || !categoryId || !sourceType) {
+      res.status(400).json({ error: "Missing required fields" });
       return;
     }
 
@@ -136,31 +139,26 @@ router.post("/url", async (req, res) => {
       return;
     }
 
-    let type = "website";
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      type = "youtube";
-    }
-
-    // Store in Database
     const [record] = await db
-      .insert(projectFiles)
+      .insert(knowledgeSources)
       .values({
         projectId,
-        filename: url, // For URLs, filename is the URL itself
-        fileUrl: url,
-        type,
+        categoryId,
+        tag: tag || null,
+        sourceType,
+        sourceUrl: sourceUrl || null,
+        notes: notes || null,
         status: "pending",
       })
       .returning();
 
-    // Trigger async processing
-    processProjectFile(record.id).catch((e) => {
-      req.log.error({ err: e }, "Async processing failed for URL");
+    processKnowledgeSource(record.id).catch((e) => {
+      req.log.error({ err: e }, "Async processing failed for source");
     });
 
     res.status(201).json(record);
   } catch (err) {
-    req.log.error({ err }, "Error saving URL");
+    req.log.error({ err }, "Error saving source");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -175,15 +173,15 @@ router.get("/project/:projectId", async (req, res) => {
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
     if (!project) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const files = await db
+    const sources = await db
       .select()
-      .from(projectFiles)
-      .where(eq(projectFiles.projectId, projectId))
-      .orderBy(desc(projectFiles.createdAt));
+      .from(knowledgeSources)
+      .where(eq(knowledgeSources.projectId, projectId))
+      .orderBy(desc(knowledgeSources.createdAt));
     
-    res.json(files);
+    res.json(sources);
   } catch (err) {
-    req.log.error({ err }, "Error listing files");
+    req.log.error({ err }, "Error listing sources");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -192,41 +190,36 @@ router.get("/project/:projectId", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "Invalid id" });
-      return;
-    }
-
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [result] = await db
-      .select({ file: projectFiles })
-      .from(projectFiles)
-      .innerJoin(projects, eq(projectFiles.projectId, projects.id))
-      .where(and(eq(projectFiles.id, id), eq(projects.userId, userId)));
+      .select({ source: knowledgeSources })
+      .from(knowledgeSources)
+      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
 
-    if (!result || !result.file) {
-      res.status(404).json({ error: "File not found or access denied" });
+    if (!result || !result.source) {
+      res.status(404).json({ error: "Source not found or access denied" });
       return;
     }
     
-    const record = result.file;
+    const record = result.source;
 
-    // Delete from Supabase Storage
-    const { error: deleteError } = await supabaseAdmin.storage
-      .from("project-files")
-      .remove([record.fileUrl]);
+    if (record.fileId) {
+      const { error: deleteError } = await supabaseAdmin.storage
+        .from("project-files")
+        .remove([record.fileId]);
 
-    if (deleteError) {
-      logger.warn({ err: deleteError }, "Could not delete file from storage");
+      if (deleteError) {
+        logger.warn({ err: deleteError }, "Could not delete file from storage");
+      }
     }
 
-    // Delete from Database
-    await db.delete(projectFiles).where(eq(projectFiles.id, id));
+    await db.delete(knowledgeSources).where(eq(knowledgeSources.id, id));
     res.status(204).send();
   } catch (err) {
-    req.log.error({ err }, "Error deleting file");
+    req.log.error({ err }, "Error deleting source");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -235,43 +228,65 @@ router.delete("/:id", async (req, res) => {
 router.post("/:id/reprocess", async (req, res) => {
   try {
     const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "Invalid id" });
-      return;
-    }
-
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [result] = await db
-      .select({ file: projectFiles })
-      .from(projectFiles)
-      .innerJoin(projects, eq(projectFiles.projectId, projects.id))
-      .where(and(eq(projectFiles.id, id), eq(projects.userId, userId)));
+      .select({ source: knowledgeSources })
+      .from(knowledgeSources)
+      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
 
-    if (!result || !result.file) {
-      res.status(404).json({ error: "File not found or access denied" });
+    if (!result || !result.source) {
+      res.status(404).json({ error: "Source not found or access denied" });
       return;
     }
 
     const [record] = await db
-      .update(projectFiles)
+      .update(knowledgeSources)
       .set({ status: "pending" })
-      .where(eq(projectFiles.id, id))
+      .where(eq(knowledgeSources.id, id))
       .returning();
 
-    if (!record) {
-      res.status(404).json({ error: "File not found" });
-      return;
-    }
-
-    processProjectFile(record.id).catch((e) => {
+    processKnowledgeSource(record.id).catch((e) => {
       req.log.error({ err: e }, "Async reprocessing failed");
     });
 
     res.json(record);
   } catch (err) {
-    req.log.error({ err }, "Error reprocessing file");
+    req.log.error({ err }, "Error reprocessing source");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /files/:id/category
+router.patch("/:id/category", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { categoryId } = req.body;
+    const userId = (req as any).auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [result] = await db
+      .select({ source: knowledgeSources })
+      .from(knowledgeSources)
+      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
+
+    if (!result || !result.source) {
+      res.status(404).json({ error: "Source not found or access denied" });
+      return;
+    }
+
+    const [record] = await db
+      .update(knowledgeSources)
+      .set({ categoryId, updatedAt: new Date() })
+      .where(eq(knowledgeSources.id, id))
+      .returning();
+
+    res.json(record);
+  } catch (err) {
+    req.log.error({ err }, "Error moving source");
     res.status(500).json({ error: "Internal server error" });
   }
 });

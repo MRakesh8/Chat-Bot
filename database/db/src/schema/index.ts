@@ -50,21 +50,37 @@ export const projectModes = pgTable("project_modes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const projectFiles = pgTable("project_files", {
+export const knowledgeCategories = pgTable("knowledge_categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" })
     .notNull(),
-  filename: text("filename").notNull(),
-  fileUrl: text("file_url").notNull(),
-  type: varchar("type", { length: 50 }).notNull(), // pdf, docx, txt, image, audio, youtube, website
-  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, processed, error
+  name: varchar("name", { length: 255 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const knowledgeSources = pgTable("knowledge_sources", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  categoryId: uuid("category_id")
+    .references(() => knowledgeCategories.id, { onDelete: "set null" }),
+  tag: varchar("tag", { length: 255 }),
+  filename: text("filename"), // Optional, if it's a file
+  sourceUrl: text("source_url"), // For website, youtube, etc.
+  fileId: varchar("file_id", { length: 255 }), // Storage ID if uploaded
+  sourceType: varchar("source_type", { length: 50 }).notNull(), // file, website, youtube, instagram, github, note
+  notes: text("notes"),
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, processing, processed, error
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const knowledgeChunks = pgTable("knowledge_chunks", {
   id: uuid("id").primaryKey().defaultRandom(),
-  projectFileId: uuid("project_file_id").references(() => projectFiles.id, { onDelete: "cascade" }),
+  knowledgeSourceId: uuid("knowledge_source_id").references(() => knowledgeSources.id, { onDelete: "cascade" }),
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" })
     .notNull(),
@@ -134,14 +150,21 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
   settings: one(projectSettings, { fields: [projects.id], references: [projectSettings.projectId] }),
   modes: many(projectModes),
-  files: many(projectFiles),
+  categories: many(knowledgeCategories),
+  sources: many(knowledgeSources),
   chunks: many(knowledgeChunks),
   sessions: many(chatSessions),
   notes: many(notes),
   reports: many(reports),
 }));
 
-export const filesRelations = relations(projectFiles, ({ one, many }) => ({
-  project: one(projects, { fields: [projectFiles.projectId], references: [projects.id] }),
+export const categoriesRelations = relations(knowledgeCategories, ({ one, many }) => ({
+  project: one(projects, { fields: [knowledgeCategories.projectId], references: [projects.id] }),
+  sources: many(knowledgeSources),
+}));
+
+export const sourcesRelations = relations(knowledgeSources, ({ one, many }) => ({
+  project: one(projects, { fields: [knowledgeSources.projectId], references: [projects.id] }),
+  category: one(knowledgeCategories, { fields: [knowledgeSources.categoryId], references: [knowledgeCategories.id] }),
   chunks: many(knowledgeChunks),
 }));

@@ -3,7 +3,7 @@ import { and, eq, desc, like, inArray, isNotNull, or, isNull, gt } from "drizzle
 import fs from "fs";
 import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
-import { chatSessions, messages, projectFiles } from "@workspace/db";
+import { chatSessions, messages } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CreateGeminiConversationBody,

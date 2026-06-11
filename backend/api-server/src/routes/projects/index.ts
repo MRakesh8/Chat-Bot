@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import { YoutubeTranscript } from "youtube-transcript";
 import { db } from "@workspace/db";
-import { projects, chatSessions, messages, projectFiles, knowledgeChunks } from "@workspace/db";
+import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, projectSettings } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
 import { z } from "zod";

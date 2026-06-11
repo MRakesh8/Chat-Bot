@@ -1,22 +1,19 @@
-import { db, knowledgeChunks, projectFiles } from "@workspace/db";
+import { db, knowledgeChunks, knowledgeSources } from "@workspace/db";
 import { supabaseAdmin } from "../lib/supabase";
 import { ai } from "@workspace/integrations-gemini-ai";
 import mammoth from "mammoth";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
-// Recursive Character Text Splitter simplified
+// Helper to chunk text
 function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
   const chunks: string[] = [];
   let index = 0;
   while (index < text.length) {
     let end = index + chunkSize;
     if (end < text.length) {
-      // Try to find a safe boundary
       const boundary = text.lastIndexOf('\n', end);
-      if (boundary > index + overlap) {
-        end = boundary;
-      }
+      if (boundary > index + overlap) end = boundary;
     }
     chunks.push(text.slice(index, end).trim());
     index = end - overlap;
@@ -29,135 +26,189 @@ function extractYouTubeId(text: string): string | null {
   return match?.[1] ?? null;
 }
 
-export async function processProjectFile(fileId: string) {
+export async function processKnowledgeSource(sourceId: string) {
   try {
-    const [file] = await db.select().from(projectFiles).where(eq(projectFiles.id, fileId));
-    if (!file) throw new Error(`File ${fileId} not found`);
+    const [source] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, sourceId));
+    if (!source) throw new Error(`Source ${sourceId} not found`);
 
-    if (file.status === "processed") {
-      logger.info(`File ${fileId} is already processed`);
+    if (source.status === "processed") {
+      logger.info(`Source ${sourceId} is already processed`);
       return;
     }
 
-    await db.delete(knowledgeChunks).where(eq(knowledgeChunks.projectFileId, fileId));
+    await db.update(knowledgeSources).set({ status: "processing" }).where(eq(knowledgeSources.id, sourceId));
+    await db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledgeSourceId, sourceId));
 
     let extractedText = "";
 
-    if (file.type === "youtube") {
-      const { YoutubeTranscript } = require("youtube-transcript");
-      const videoId = extractYouTubeId(file.fileUrl) ?? file.fileUrl;
-      try {
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-        extractedText = transcript.map((t: any) => t.text).join(" ");
-      } catch (err: any) {
+    try {
+      if (source.sourceType === "youtube") {
+        const { YoutubeTranscript } = require("youtube-transcript");
+        const videoId = extractYouTubeId(source.sourceUrl || "") ?? source.sourceUrl;
         try {
-          const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+          const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
           extractedText = transcript.map((t: any) => t.text).join(" ");
-        } catch {
-          logger.warn(`Failed to fetch youtube transcript for ${file.fileUrl}: ${err.message}`);
-          extractedText = `[YouTube Video: ${file.fileUrl}] No transcript available.`;
+        } catch (err: any) {
+          try {
+            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+            extractedText = transcript.map((t: any) => t.text).join(" ");
+          } catch {
+            throw new Error(`Failed to fetch youtube transcript for ${source.sourceUrl}`);
+          }
         }
-      }
-    } else if (file.type === "website") {
-      try {
-        const res = await fetch(file.fileUrl);
+      } else if (source.sourceType === "website") {
+        const res = await fetch(source.sourceUrl as string);
+        if (!res.ok) throw new Error(`Failed to fetch website: ${res.statusText}`);
         const html = await res.text();
-        // Basic HTML stripping
-        extractedText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      } catch (err: any) {
-        logger.warn(`Failed to fetch website ${file.fileUrl}: ${err.message}`);
-      }
-    } else {
-      // Download file from Supabase Storage
-      const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-        .from("project-files")
-        .download(file.fileUrl);
-
-      if (downloadError || !fileData) {
-        throw new Error(`Failed to download file from storage: ${downloadError?.message}`);
-      }
-
-      const buffer = Buffer.from(await fileData.arrayBuffer());
-
-      // Extract Text based on type
-      if (file.type === "pdf") {
-        const { PDFParse } = await import("pdf-parse");
-        const parser = new PDFParse({ data: buffer });
-        try {
-          const parsed = await parser.getText();
-          extractedText = parsed.text;
-        } finally {
-          await parser.destroy();
+        // A simple html extraction, ideally use cheerio/readability
+        extractedText = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      } else if (source.sourceType === "github") {
+        let repoPath = source.sourceUrl?.replace(/https?:\/\/github\.com\//, "");
+        if (repoPath?.endsWith("/")) repoPath = repoPath.slice(0, -1);
+        
+        const headers = { "User-Agent": "Aria-AI-Knowledge-Base" };
+        const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
+        if (!repoRes.ok) throw new Error(`Failed to fetch github repo details for ${repoPath}`);
+        const repoData = await repoRes.json();
+        
+        let readmeText = "";
+        const readmeRes = await fetch(`https://api.github.com/repos/${repoPath}/readme`, { headers });
+        if (readmeRes.ok) {
+          const readmeData = await readmeRes.json();
+          if (readmeData.content) {
+            readmeText = Buffer.from(readmeData.content, "base64").toString("utf8");
+          }
         }
-      } else if (file.type === "docx") {
-        const parsed = await mammoth.extractRawText({ buffer });
-        extractedText = parsed.value;
-      } else if (file.type === "txt") {
-        extractedText = buffer.toString("utf-8");
-      } else if (file.type === "pptx") {
-        const { parseOfficeAsync } = require("officeparser");
-        extractedText = await parseOfficeAsync(buffer);
-      } else if (file.type === "image") {
-        const res = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [
-            "Please describe this image in great detail, including any text written in it. This will be used for vector search retrieval.",
-            { inlineData: { mimeType: "image/jpeg", data: buffer.toString("base64") } }
-          ]
-        });
-        extractedText = res.text || "";
-      } else {
-        logger.warn(`Unsupported file type for extraction: ${file.type}`);
-        await db.update(projectFiles).set({ status: "processed" }).where(eq(projectFiles.id, fileId));
-        return;
+        extractedText = `Repository: ${repoData.full_name}\nDescription: ${repoData.description || "No description"}\n\nREADME:\n${readmeText}`;
+        
+      } else if (source.sourceType === "note") {
+        extractedText = source.notes || "";
+      } else if (source.sourceType === "instagram" || source.sourceType === "video") {
+        // Fallback or generic AI-based video/audio processing
+        if (source.sourceUrl) {
+          throw new Error("Direct Instagram/Video URL scraping not fully supported without proxy/auth. Please upload video file instead.");
+        }
       }
-    }
 
-    if (!extractedText.trim()) {
-      logger.warn(`No text extracted from file: ${file.filename}`);
-      await db.update(projectFiles).set({ status: "processed" }).where(eq(projectFiles.id, fileId));
-      return;
-    }
+      // If it's an uploaded file (sourceType = file or it has fileId)
+      if (source.fileId) {
+        const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+          .from("project-files")
+          .download(source.fileId);
 
-    // Chunking
-    const chunks = chunkText(extractedText);
-    logger.info(`Extracted ${chunks.length} chunks from ${file.filename}`);
+        if (downloadError || !fileData) {
+          throw new Error(`Failed to download file from storage: ${downloadError?.message}`);
+        }
 
-    // Embeddings & Storage
-    let savedChunks = 0;
-    for (const text of chunks) {
-      try {
-        const response = await ai.models.embedContent({
-          model: "gemini-embedding-2",
-          contents: text,
-          config: { outputDimensionality: 768 },
-        });
+        const buffer = Buffer.from(await fileData.arrayBuffer());
+        const filename = source.filename?.toLowerCase() || "";
 
-        const embedding = response.embeddings?.[0]?.values;
-        if (embedding) {
-          await db.insert(knowledgeChunks).values({
-            projectFileId: file.id,
-            projectId: file.projectId,
-            chunkText: text,
-            embedding: embedding,
+        if (filename.endsWith(".pdf")) {
+          const { PDFParse } = await import("pdf-parse");
+          const parser = new PDFParse({ data: buffer });
+          try {
+            const parsed = await parser.getText();
+            extractedText = parsed.text;
+          } finally {
+            await parser.destroy();
+          }
+        } else if (filename.endsWith(".docx")) {
+          const parsed = await mammoth.extractRawText({ buffer });
+          extractedText = parsed.value;
+        } else if (filename.endsWith(".txt") || filename.endsWith(".md") || filename.endsWith(".csv")) {
+          extractedText = buffer.toString("utf-8");
+        } else if (filename.endsWith(".pptx")) {
+          const { parseOfficeAsync } = require("officeparser");
+          extractedText = await parseOfficeAsync(buffer);
+        } else if (filename.match(/\.(png|jpe?g|webp)$/)) {
+          const res = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [
+              "Please describe this image in great detail, including any text written in it. This will be used for vector search retrieval.",
+              { inlineData: { mimeType: "image/jpeg", data: buffer.toString("base64") } }
+            ]
           });
-          savedChunks++;
+          extractedText = res.text || "";
+        } else if (filename.match(/\.(mp4|mp3|wav|mov|webm)$/)) {
+           // Audio/Video processing via Gemini
+           const res = await ai.models.generateContent({
+             model: "gemini-1.5-pro",
+             contents: [
+               "Please transcribe the audio from this file, and describe any visual information if it is a video. Return the full text transcript.",
+               { inlineData: { mimeType: fileData.type || "video/mp4", data: buffer.toString("base64") } }
+             ]
+           });
+           extractedText = res.text || "";
+        } else if (filename.endsWith(".zip")) {
+          const AdmZip = require("adm-zip");
+          const zip = new AdmZip(buffer);
+          const zipEntries = zip.getEntries();
+          let combinedText = "";
+          for (const zipEntry of zipEntries) {
+            if (!zipEntry.isDirectory) {
+              const ext = zipEntry.name.split('.').pop()?.toLowerCase();
+              if (["txt", "md", "csv"].includes(ext || "")) {
+                combinedText += `\n\n--- File: ${zipEntry.entryName} ---\n`;
+                combinedText += zipEntry.getData().toString("utf8");
+              }
+            }
+          }
+          extractedText = combinedText;
+          if (!extractedText) throw new Error("No supported text files found in ZIP");
+        } else {
+          throw new Error(`Unsupported file type: ${filename}`);
         }
-      } catch (embedError) {
-        logger.error({ err: embedError }, "Failed to embed chunk");
       }
+
+      if (!extractedText.trim()) {
+        throw new Error("No text extracted from source.");
+      }
+
+      const chunks = chunkText(extractedText);
+      logger.info(`Extracted ${chunks.length} chunks from ${sourceId}`);
+
+      let savedChunks = 0;
+      for (const text of chunks) {
+        try {
+          const response = await ai.models.embedContent({
+            model: "gemini-embedding-2",
+            contents: text,
+            config: { outputDimensionality: 768 },
+          });
+
+          const embedding = response.embeddings?.[0]?.values;
+          if (embedding) {
+            await db.insert(knowledgeChunks).values({
+              knowledgeSourceId: source.id,
+              projectId: source.projectId,
+              chunkText: text,
+              embedding: embedding,
+            });
+            savedChunks++;
+          }
+        } catch (embedError) {
+          logger.error({ err: embedError }, "Failed to embed chunk");
+        }
+      }
+
+      if (savedChunks === 0) {
+        throw new Error("No knowledge chunks could be embedded");
+      }
+
+      // Successful retrieval test point - we assume success if chunks > 0 saved
+      await db.update(knowledgeSources).set({ status: "processed" }).where(eq(knowledgeSources.id, sourceId));
+      logger.info(`Successfully processed source ${sourceId}`);
+
+    } catch (err: any) {
+      logger.error({ err }, `Processing pipeline failed for source ${sourceId}`);
+      throw err; // Caught by outer block
     }
-
-    if (savedChunks === 0) {
-      throw new Error(`No knowledge chunks could be embedded for ${file.filename}`);
-    }
-
-    // Mark as processed
-    await db.update(projectFiles).set({ status: "processed" }).where(eq(projectFiles.id, fileId));
-    logger.info(`Successfully processed file ${file.filename}`);
-
   } catch (error) {
-    logger.error({ err: error }, `Error processing file ${fileId}`);
-    await db.update(projectFiles).set({ status: "error" }).where(eq(projectFiles.id, fileId));
+    logger.error({ err: error }, `Error processing source ${sourceId}`);
+    await db.update(knowledgeSources).set({ status: "error" }).where(eq(knowledgeSources.id, sourceId));
   }
 }
