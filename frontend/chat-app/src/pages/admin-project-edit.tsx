@@ -183,15 +183,15 @@ export default function AdminProjectEditPage() {
             variant="ghost"
             size="icon"
             onClick={() => setLocation("/admin/projects")}
-            className="text-zinc-400 hover:text-white border border-white/10 hover:bg-white/5"
+            className="text-muted-foreground hover:text-foreground border border-border hover:bg-muted"
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">
               {isNew ? "New Project" : "Edit Project"}
             </h1>
-            <p className="text-sm text-zinc-500 mt-0.5">
+            <p className="text-sm text-muted-foreground mt-0.5">
               {isNew
                 ? "Build a custom AI assistant with your own knowledge"
                 : "Update your project settings and knowledge"}
@@ -205,7 +205,7 @@ export default function AdminProjectEditPage() {
           </div>
         ) : (
           <Tabs defaultValue={isNew ? "settings" : "overview"} className="w-full">
-            <TabsList className="mb-6 bg-white/5 border border-white/10 p-1 w-full flex overflow-x-auto justify-start h-12">
+            <TabsList className="mb-6 bg-card border border-border p-1 w-full flex overflow-x-auto justify-start h-12">
               <TabsTrigger value="overview" className="flex-1 min-w-[120px] data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
                 <LayoutDashboard className="w-4 h-4 mr-2" /> Overview
               </TabsTrigger>
@@ -225,24 +225,24 @@ export default function AdminProjectEditPage() {
 
             <TabsContent value="overview">
               {isNew ? (
-                <div className="text-center py-12 bg-black/20 border border-white/10 rounded-xl mt-8">
-                  <LayoutDashboard className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">Create Project First</h3>
-                  <p className="text-zinc-400 max-w-md mx-auto">You need to save the project settings before you can view the overview.</p>
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <LayoutDashboard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can view the overview.</p>
                 </div>
               ) : (
-                <Card className="bg-white/5 border-white/10 text-white mt-8">
+                <Card className="bg-card border-border text-card-foreground mt-8">
                 <CardHeader>
                   <CardTitle>Project Overview</CardTitle>
-                  <CardDescription className="text-zinc-400">
+                  <CardDescription className="text-muted-foreground">
                     Quick stats and access to your project.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-black/20 border border-white/10 rounded-lg p-4">
-                      <h3 className="text-zinc-400 text-sm font-medium mb-1">Status</h3>
-                      <p className="text-xl font-semibold text-white flex items-center gap-2">
+                    <div className="bg-muted border border-border rounded-lg p-4">
+                      <h3 className="text-muted-foreground text-sm font-medium mb-1">Status</h3>
+                      <p className="text-xl font-semibold text-foreground flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-green-500"></span>
                         Active
                       </p>
@@ -254,13 +254,13 @@ export default function AdminProjectEditPage() {
                         Shareable Project Link
                       </p>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs text-zinc-300 bg-black/30 rounded-lg px-3 py-2 font-mono truncate border border-white/5">
+                        <code className="flex-1 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 font-mono truncate border border-border">
                           {shareUrl}
                         </code>
-                        <Button type="button" size="sm" variant="outline" onClick={copyShareLink} className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white shrink-0 gap-1.5">
+                        <Button type="button" size="sm" variant="outline" onClick={copyShareLink} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
                           <Copy className="w-3 h-3" /> Copy
                         </Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")} className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white shrink-0 gap-1.5">
+                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
                           <Globe className="w-3 h-3" /> Open
                         </Button>
                       </div>
@@ -273,24 +273,24 @@ export default function AdminProjectEditPage() {
 
             <TabsContent value="chat">
               {isNew ? (
-                <div className="text-center py-12 bg-black/20 border border-white/10 rounded-xl mt-8">
-                  <MessageSquare className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">Create Project First</h3>
-                  <p className="text-zinc-400 max-w-md mx-auto">You need to save the project settings before you can test the chat.</p>
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can test the chat.</p>
                 </div>
               ) : (
-                <Card className="bg-white/5 border-white/10 text-white mt-8 overflow-hidden h-[600px] flex flex-col">
+                <Card className="bg-card border-border text-card-foreground mt-8 overflow-hidden h-[600px] flex flex-col">
                 <CardHeader className="pb-2 shrink-0">
                   <CardTitle>Test Chatbot</CardTitle>
-                  <CardDescription className="text-zinc-400">
+                  <CardDescription className="text-muted-foreground">
                     Interact with the AI using your project's knowledge base.
                   </CardDescription>
                 </CardHeader>
-                <div className="flex-1 relative bg-black/30 w-full overflow-hidden">
+                <div className="flex-1 relative bg-muted w-full overflow-hidden">
                    {shareUrl ? (
                      <iframe src={shareUrl} className="w-full h-full border-0 absolute inset-0" title="Test Chatbot" />
                    ) : (
-                     <div className="flex h-full items-center justify-center text-zinc-500">Share link not available</div>
+                     <div className="flex h-full items-center justify-center text-muted-foreground">Share link not available</div>
                    )}
                 </div>
               </Card>
@@ -299,10 +299,10 @@ export default function AdminProjectEditPage() {
 
             <TabsContent value="knowledge">
               {isNew ? (
-                <div className="text-center py-12 bg-black/20 border border-white/10 rounded-xl mt-8">
-                  <Database className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">Create Project First</h3>
-                  <p className="text-zinc-400 max-w-md mx-auto">You need to save the project settings before you can upload knowledge base documents (PDF, PPT, Text, etc).</p>
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can upload knowledge base documents (PDF, PPT, Text, etc).</p>
                 </div>
               ) : (
                 <KnowledgeBase projectId={projectId!} />
@@ -311,16 +311,16 @@ export default function AdminProjectEditPage() {
 
             <TabsContent value="reports">
               {isNew ? (
-                <div className="text-center py-12 bg-black/20 border border-white/10 rounded-xl mt-8">
-                  <FileText className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">Create Project First</h3>
-                  <p className="text-zinc-400 max-w-md mx-auto">You need to save the project settings before you can view reports.</p>
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can view reports.</p>
                 </div>
               ) : (
-                <Card className="bg-white/5 border-white/10 text-white mt-8">
+                <Card className="bg-card border-border text-card-foreground mt-8">
                 <CardHeader>
                   <CardTitle>Project Reports</CardTitle>
-                  <CardDescription className="text-zinc-400">
+                  <CardDescription className="text-muted-foreground">
                     Generate an AI summary report based on all project knowledge.
                   </CardDescription>
                 </CardHeader>
@@ -328,26 +328,26 @@ export default function AdminProjectEditPage() {
                   <Button
                     onClick={generateReport}
                     disabled={isGenerating || projectId === "new" || !projectId}
-                    className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 gap-2 px-6"
+                    className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-primary-foreground border-0 gap-2 px-6"
                   >
                     {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                     {isGenerating ? "Generating Report..." : "Generate Project Summary"}
                   </Button>
 
                   <div className="mt-8 space-y-4">
-                    <h3 className="text-sm font-medium text-zinc-300 border-b border-white/10 pb-2">Past Reports</h3>
+                    <h3 className="text-sm font-medium text-muted-foreground border-b border-border pb-2">Past Reports</h3>
                     {reports && reports.length > 0 ? (
                       <div className="space-y-2">
                         {reports.map((report) => (
-                          <div key={report.id} className="flex items-center justify-between bg-black/20 border border-white/10 p-3 rounded-lg">
+                          <div key={report.id} className="flex items-center justify-between bg-muted border border-border p-3 rounded-lg">
                             <div>
-                              <p className="text-sm font-medium text-white">{report.title}</p>
-                              <p className="text-xs text-zinc-500">{new Date(report.createdAt).toLocaleString()}</p>
+                              <p className="text-sm font-medium text-foreground">{report.title}</p>
+                              <p className="text-xs text-muted-foreground">{new Date(report.createdAt).toLocaleString()}</p>
                             </div>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="border-white/10 bg-white/5 hover:bg-white/10 text-white"
+                              className="border-border bg-card hover:bg-muted text-foreground"
                               onClick={() => window.open(report.contentUrl, "_blank")}
                             >
                               Download PDF
@@ -356,9 +356,9 @@ export default function AdminProjectEditPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-black/20 border border-white/10 rounded-lg">
-                        <FileText className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-                        <p className="text-zinc-400 text-sm">No reports generated yet.</p>
+                      <div className="text-center py-8 bg-muted border border-border rounded-lg">
+                        <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-muted-foreground text-sm">No reports generated yet.</p>
                       </div>
                     )}
                   </div>
@@ -370,30 +370,30 @@ export default function AdminProjectEditPage() {
             <TabsContent value="settings">
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-300">Project Name *</label>
+                  <label className="text-sm font-medium text-muted-foreground">Project Name *</label>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Customer Support Bot, Sales Assistant"
-                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 focus:border-primary focus:ring-primary/20"
+                    className="bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-300">
-                    Description <span className="text-zinc-600 font-normal">(optional)</span>
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Description <span className="text-muted-foreground font-normal">(optional)</span>
                   </label>
                   <Input
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="What is this chatbot for?"
-                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 focus:border-primary focus:ring-primary/20"
+                    className="bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-300">Knowledge &amp; Instructions *</label>
-                  <p className="text-xs text-zinc-500">
+                  <label className="text-sm font-medium text-muted-foreground">Knowledge &amp; Instructions *</label>
+                  <p className="text-xs text-muted-foreground">
                     Write everything the AI should know — your product info, FAQs, rules, tone of voice,
                     or any specific information. The AI will use only this to answer questions.
                   </p>
@@ -401,16 +401,16 @@ export default function AdminProjectEditPage() {
                     value={systemPrompt}
                     onChange={(e) => setSystemPrompt(e.target.value)}
                     placeholder="Example:\nYou are a helpful support assistant for Acme Corp.\n..."
-                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 focus:border-primary focus:ring-primary/20 min-h-[320px] font-mono text-sm resize-y"
+                    className="bg-card border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 min-h-[320px] font-mono text-sm resize-y"
                   />
-                  <p className="text-xs text-zinc-600">{systemPrompt.length.toLocaleString()} characters</p>
+                  <p className="text-xs text-muted-foreground">{systemPrompt.length.toLocaleString()} characters</p>
                 </div>
 
                 <div className="flex items-center gap-3 pt-2">
                   <Button
                     type="submit"
                     disabled={isPending}
-                    className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 gap-2 px-6"
+                    className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-primary-foreground border-0 gap-2 px-6"
                   >
                     {isPending ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -423,11 +423,11 @@ export default function AdminProjectEditPage() {
 
                 {shareUrl && (
                   <div className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl">
-                    <p className="text-green-400 font-medium text-sm mb-2">
+                    <p className="text-green-600 dark:text-green-400 font-medium text-sm mb-2">
                       {savedToken ? "🎉 Project created! Share this link:" : "Share link"}
                     </p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 text-xs text-zinc-300 bg-black/30 rounded-lg px-3 py-2 font-mono truncate border border-white/5">
+                      <code className="flex-1 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 font-mono truncate border border-border">
                         {shareUrl}
                       </code>
                       <Button
@@ -435,7 +435,7 @@ export default function AdminProjectEditPage() {
                         size="sm"
                         variant="outline"
                         onClick={copyShareLink}
-                        className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white shrink-0 gap-1.5"
+                        className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5"
                       >
                         <Copy className="w-3 h-3" />
                         Copy
@@ -445,7 +445,7 @@ export default function AdminProjectEditPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => window.open(shareUrl, "_blank")}
-                        className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white shrink-0 gap-1.5"
+                        className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5"
                       >
                         <Globe className="w-3 h-3" />
                         Open

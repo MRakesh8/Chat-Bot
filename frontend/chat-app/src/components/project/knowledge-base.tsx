@@ -133,10 +133,10 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   };
 
   return (
-    <Card className="bg-white/5 border-white/10 text-white mt-8">
+    <Card className="bg-card border-border text-card-foreground mt-8">
       <CardHeader>
         <CardTitle>Knowledge Base</CardTitle>
-        <CardDescription className="text-zinc-400">
+        <CardDescription className="text-muted-foreground">
           Upload documents (PDF, DOCX) or link websites and YouTube videos for your AI to learn from.
         </CardDescription>
       </CardHeader>
@@ -144,17 +144,17 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
         {/* Upload Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400">Add Web Link or YouTube URL</label>
+            <label className="text-xs font-medium text-muted-foreground">Add Web Link or YouTube URL</label>
             <div className="flex gap-2">
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://..."
-                className="bg-black/50 border-white/10"
+                className="bg-muted border-border"
               />
               <Button
                 variant="outline"
-                className="border-white/10 bg-white/5 hover:bg-white/10"
+                className="border-border bg-card hover:bg-muted"
                 onClick={() => {
                   if (url.trim()) uploadUrlMutation.mutate(url.trim());
                 }}
@@ -165,9 +165,9 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400">Upload File (PDF, DOCX, TXT, PPT, Images)</label>
+            <label className="text-xs font-medium text-muted-foreground">Upload File (PDF, DOCX, TXT, PPT, Images)</label>
             <div className="flex items-center gap-2">
-              <label className="cursor-pointer flex items-center justify-center gap-2 border border-white/10 bg-white/5 hover:bg-white/10 h-10 px-4 rounded-md w-full transition-colors">
+              <label className="cursor-pointer flex items-center justify-center gap-2 border border-border bg-card hover:bg-muted h-10 px-4 rounded-md w-full transition-colors">
                 {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 <span className="text-sm font-medium">{isUploadingFile ? "Uploading..." : "Choose File"}</span>
                 <input
@@ -186,20 +186,20 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
         <div className="mt-6">
           <h3 className="text-sm font-semibold mb-3">Project Files</h3>
           {isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
           ) : files?.length === 0 ? (
-            <div className="text-center py-8 text-zinc-500 text-sm border border-dashed border-white/10 rounded-lg">
+            <div className="text-center py-8 text-muted-foreground text-sm border border-dashed border-border rounded-lg">
               No files uploaded yet.
             </div>
           ) : (
             <div className="space-y-2">
               {files?.map((f) => (
-                <div key={f.id} className="flex items-center justify-between p-3 rounded-lg border border-white/5 bg-black/20 hover:bg-black/40 transition-colors">
+                <div key={f.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted hover:bg-muted/80 transition-colors">
                   <div className="flex items-center gap-3 overflow-hidden">
                     {getIcon(f.type)}
                     <div className="flex flex-col truncate">
                       <span className="text-sm font-medium truncate">{f.filename}</span>
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-xs text-muted-foreground">
                         {new Date(f.createdAt).toLocaleDateString()} &middot;{" "}
                         <span className={
                           f.status === "processed" ? "text-green-400" :
@@ -215,7 +215,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-zinc-500 hover:text-white hover:bg-white/10"
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted"
                         onClick={() => reprocessMutation.mutate(f.id)}
                         disabled={reprocessMutation.isPending}
                         title={f.status === "error" ? "Retry processing" : "Reprocess knowledge"}
@@ -226,7 +226,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-zinc-500 hover:text-red-400 hover:bg-red-400/10"
+                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       onClick={() => deleteMutation.mutate(f.id)}
                       disabled={deleteMutation.isPending}
                     >

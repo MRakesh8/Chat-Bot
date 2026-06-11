@@ -17,11 +17,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <div className="md:hidden absolute top-3 left-4 z-30">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white bg-background/80 backdrop-blur-md border border-white/5">
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground bg-background/80 backdrop-blur-md border border-border">
               <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 border-r border-white/10 w-[280px]">
+          <SheetContent side="left" className="p-0 border-r border-border w-[280px]">
             <Sidebar onClose={() => setMobileOpen(false)} />
           </SheetContent>
         </Sheet>

@@ -365,12 +365,12 @@ export default function SharedChatPage() {
   if (projectError || !project) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 text-center px-4">
-        <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-          <Bot className="w-7 h-7 text-zinc-500" />
+        <div className="w-14 h-14 rounded-2xl bg-card border border-border flex items-center justify-center">
+          <Bot className="w-7 h-7 text-muted-foreground" />
         </div>
         <div>
-          <p className="text-white font-semibold text-lg">Chatbot not found</p>
-          <p className="text-zinc-500 text-sm mt-1">
+          <p className="text-foreground font-semibold text-lg">Chatbot not found</p>
+          <p className="text-muted-foreground text-sm mt-1">
             This link may be invalid, expired, or has been deactivated.
           </p>
         </div>
@@ -386,7 +386,7 @@ export default function SharedChatPage() {
       <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-blue-500/15 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/8 bg-background/80 backdrop-blur-md shrink-0">
+      <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-border bg-background/80 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-3">
           <Button
             type="button"
@@ -398,27 +398,27 @@ export default function SharedChatPage() {
               if (window.history.length > 1) window.history.back();
               else setLocation("/");
             }}
-            className="h-8 w-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 shrink-0"
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0">
-            <Bot className="w-4 h-4 text-white" />
+            <Bot className="w-4 h-4 text-primary-foreground" />
           </div>
           <div>
-            <p className="text-white font-semibold text-sm leading-tight">{project.name}</p>
+            <p className="text-foreground font-semibold text-sm leading-tight">{project.name}</p>
             {project.description && (
-              <p className="text-zinc-500 text-xs leading-tight">{project.description}</p>
+              <p className="text-muted-foreground text-xs leading-tight">{project.description}</p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-600 hidden sm:block">Powered by Aria AI</span>
+          <span className="text-xs text-muted-foreground hidden sm:block">Powered by Aria AI</span>
           <Button
             size="sm"
             variant="ghost"
             onClick={startNewChat}
-            className="text-xs text-zinc-500 hover:text-white h-7 px-2"
+            className="text-xs text-muted-foreground hover:text-foreground h-7 px-2"
           >
             New chat
           </Button>
@@ -434,15 +434,15 @@ export default function SharedChatPage() {
         <div className="max-w-2xl mx-auto space-y-6">
           {messages.length === 0 && !isStreaming && (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-white/10 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-border flex items-center justify-center">
                 <Bot className="w-6 h-6 text-violet-400" />
               </div>
               <div>
-                <p className="text-white font-medium">Hi! I'm {project.name}</p>
-                <p className="text-zinc-500 text-sm mt-1">
+                <p className="text-foreground font-medium">Hi! I'm {project.name}</p>
+                <p className="text-muted-foreground text-sm mt-1">
                   {project.description ?? "Ask me anything — I'm here to help!"}
                 </p>
-                <p className="text-zinc-600 text-xs mt-3">
+                <p className="text-muted-foreground text-xs mt-3">
                   You can send text, images, PDFs, files, or paste a YouTube link
                 </p>
               </div>
@@ -459,20 +459,20 @@ export default function SharedChatPage() {
             >
               {msg.role === "assistant" && (
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0 mt-1">
-                  <Bot className="w-3.5 h-3.5 text-white" />
+                  <Bot className="w-3.5 h-3.5 text-primary-foreground" />
                 </div>
               )}
               <div
                 className={cn(
                   "max-w-[80%] rounded-2xl px-4 py-3 text-sm relative",
                   msg.role === "user"
-                    ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-white rounded-br-sm"
-                    : "bg-white/5 border border-white/8 text-zinc-100 rounded-bl-sm"
+                    ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-primary-foreground rounded-br-sm"
+                    : "bg-card border border-border text-foreground rounded-bl-sm"
                 )}
               >
                 {msg.role === "assistant" ? (
                   <>
-                    <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
+                    <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                         {msg.content}
                       </ReactMarkdown>
@@ -480,7 +480,7 @@ export default function SharedChatPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500 hover:text-white"
+                      className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                       onClick={() => copyToClipboard(msg.content)}
                     >
                       <Copy className="w-3 h-3" />
@@ -497,20 +497,20 @@ export default function SharedChatPage() {
           {isStreaming && (
             <div className="flex gap-3 justify-start">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0 mt-1">
-                <Bot className="w-3.5 h-3.5 text-white animate-pulse" />
+                <Bot className="w-3.5 h-3.5 text-primary-foreground animate-pulse" />
               </div>
-              <div className="max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm bg-white/5 border border-white/8 text-zinc-100">
+              <div className="max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm bg-card border border-border text-foreground">
                 {streamingContent ? (
-                  <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                       {streamingContent}
                     </ReactMarkdown>
                   </div>
                 ) : (
                   <div className="flex gap-1 items-center h-5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:0ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce [animation-delay:300ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
                   </div>
                 )}
               </div>
@@ -526,7 +526,7 @@ export default function SharedChatPage() {
             size="sm"
             variant="outline"
             onClick={() => { atBottomRef.current = true; scrollToBottom(true); }}
-            className="rounded-full border-white/15 bg-background/90 backdrop-blur-sm text-zinc-400 hover:text-white shadow-lg gap-1.5 text-xs"
+            className="rounded-full border-border bg-background/90 backdrop-blur-sm text-muted-foreground hover:text-foreground shadow-lg gap-1.5 text-xs"
           >
             <ChevronDown className="w-3 h-3" />
             Scroll to bottom
@@ -535,7 +535,7 @@ export default function SharedChatPage() {
       )}
 
       {/* Input bar */}
-      <div className="relative z-10 px-4 py-4 border-t border-white/8 bg-background/80 backdrop-blur-md shrink-0">
+      <div className="relative z-10 px-4 py-4 border-t border-border bg-background/80 backdrop-blur-md shrink-0">
         <div className="max-w-2xl mx-auto">
 
           {/* File previews */}
@@ -544,20 +544,20 @@ export default function SharedChatPage() {
               {files.map((f, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 bg-white/8 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-zinc-300"
+                  className="flex items-center gap-2 bg-muted border border-border rounded-xl px-3 py-1.5 text-xs text-foreground"
                 >
                   {f.preview ? (
                     <img src={f.preview} alt={f.file.name} className="w-6 h-6 rounded object-cover" />
                   ) : (
-                    <Paperclip className="w-3 h-3 text-zinc-500 shrink-0" />
+                    <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
                   )}
                   <span className="truncate max-w-[120px]">{f.file.name}</span>
                   {f.uploading ? (
-                    <Loader2 className="w-3 h-3 animate-spin shrink-0 text-zinc-500" />
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0 text-muted-foreground" />
                   ) : (
                     <button
                       onClick={() => removeFile(f.file)}
-                      className="hover:text-red-400 shrink-0"
+                      className="hover:text-destructive shrink-0"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -568,13 +568,13 @@ export default function SharedChatPage() {
           )}
 
           {/* Input box */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden focus-within:border-primary/40 focus-within:bg-white/[0.07] transition-all">
+          <div className="bg-card border border-border rounded-2xl overflow-hidden focus-within:border-primary/40 focus-within:bg-muted transition-all">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={`Message ${project.name}… (paste a YouTube link, attach files, or type)`}
-              className="w-full bg-transparent border-0 p-4 pb-2 text-sm text-white placeholder:text-zinc-600 resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[52px] max-h-[160px]"
+              className="w-full bg-transparent border-0 p-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[52px] max-h-[160px]"
               rows={1}
               disabled={isStreaming}
             />
@@ -596,7 +596,7 @@ export default function SharedChatPage() {
                   size="icon"
                   title="Attach image, PDF, or file"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-8 w-8 text-zinc-500 hover:text-white hover:bg-white/10 rounded-xl"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl"
                 >
                   <Paperclip className="w-4 h-4" />
                 </Button>
@@ -610,8 +610,8 @@ export default function SharedChatPage() {
                   className={cn(
                     "h-8 w-8 rounded-xl transition-colors",
                     isRecording
-                      ? "text-red-400 bg-red-500/10 hover:bg-red-500/20"
-                      : "text-zinc-500 hover:text-white hover:bg-white/10"
+                      ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
                   <Mic className="w-4 h-4" />
@@ -622,7 +622,7 @@ export default function SharedChatPage() {
                 <Button
                   size="icon"
                   onClick={stopStreaming}
-                  className="w-8 h-8 shrink-0 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400"
+                  className="w-8 h-8 shrink-0 rounded-xl bg-destructive/20 hover:bg-destructive/30 border border-destructive/30 text-destructive"
                 >
                   <StopCircle className="w-4 h-4" />
                 </Button>
@@ -634,8 +634,8 @@ export default function SharedChatPage() {
                   className={cn(
                     "w-8 h-8 shrink-0 rounded-xl border-0 transition-all",
                     canSend
-                      ? "bg-gradient-to-br from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white"
-                      : "bg-white/5 text-zinc-600"
+                      ? "bg-gradient-to-br from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
                   )}
                 >
                   <Send className="w-4 h-4" />
@@ -644,8 +644,8 @@ export default function SharedChatPage() {
             </div>
           </div>
 
-          <p className="text-center text-xs text-zinc-700 mt-2">
-            Powered by <span className="text-zinc-500">Aria AI</span>
+          <p className="text-center text-xs text-muted-foreground mt-2">
+            Powered by <span className="text-foreground">Aria AI</span>
           </p>
         </div>
       </div>

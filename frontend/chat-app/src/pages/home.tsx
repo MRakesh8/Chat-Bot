@@ -21,21 +21,21 @@ export default function Home() {
         <header className="px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
             <img src={`${basePath}/logo.svg`} alt="Aria AI" className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-white">Aria AI</span>
+            <span className="font-bold text-xl tracking-tight text-foreground">Aria AI</span>
           </div>
           <div className="flex items-center gap-4">
             {user ? (
               <>
                 <Button
                   variant="ghost"
-                  className="text-zinc-300 hover:text-white"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => setLocation("/chat")}
                 >
                   Chat
                 </Button>
                 <Button
                   variant="ghost"
-                  className="text-zinc-300 hover:text-white"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => signOut()}
                 >
                   Sign Out
@@ -45,7 +45,7 @@ export default function Home() {
               <>
                 <Button
                   variant="ghost"
-                  className="text-zinc-300 hover:text-white"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => setLocation("/sign-in")}
                 >
                   Sign In
@@ -67,17 +67,17 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 mb-8"
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border mb-8"
           >
             <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-zinc-300">Introducing Aria AI 3.0</span>
+            <span className="text-sm font-medium text-muted-foreground">Introducing Aria AI 3.0</span>
           </motion.div>
 
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-5xl md:text-7xl font-bold tracking-tighter text-white max-w-4xl leading-[1.1]"
+            className="text-5xl md:text-7xl font-bold tracking-tighter text-foreground max-w-4xl leading-[1.1]"
           >
             Intelligence that feels <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">alive.</span>
           </motion.h1>
@@ -86,7 +86,7 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="mt-6 text-lg md:text-xl text-zinc-400 max-w-2xl"
+            className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl"
           >
             Your personal AI companion. Powerful enough for complex coding, casual enough for daily chats. Experience the next evolution of conversation.
           </motion.p>
@@ -107,7 +107,7 @@ export default function Home() {
         </main>
 
         {/* Features Grid */}
-        <section className="px-6 py-24 bg-black/40 border-t border-white/5 z-10">
+        <section className="px-6 py-24 bg-muted/40 border-t border-border z-10">
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-3 gap-8">
               <motion.div 
@@ -115,13 +115,13 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5 }}
-                className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm"
+                className="p-6 rounded-2xl bg-card border border-border backdrop-blur-sm"
               >
                 <div className="w-12 h-12 rounded-lg bg-violet-500/20 flex items-center justify-center mb-6">
                   <BrainCircuit className="w-6 h-6 text-violet-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-3">Advanced Reasoning</h3>
-                <p className="text-zinc-400">Powered by the latest models for deep analysis, coding, and creative problem-solving.</p>
+                <h3 className="text-xl font-semibold text-card-foreground mb-3">Advanced Reasoning</h3>
+                <p className="text-muted-foreground">Powered by the latest models for deep analysis, coding, and creative problem-solving.</p>
               </motion.div>
               
               <motion.div 
@@ -129,13 +129,13 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.1 }}
-                className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm"
+                className="p-6 rounded-2xl bg-card border border-border backdrop-blur-sm"
               >
                 <div className="w-12 h-12 rounded-lg bg-indigo-500/20 flex items-center justify-center mb-6">
                   <Zap className="w-6 h-6 text-indigo-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-3">Lightning Fast</h3>
-                <p className="text-zinc-400">Real-time streaming responses and an optimized interface that never keeps you waiting.</p>
+                <h3 className="text-xl font-semibold text-card-foreground mb-3">Lightning Fast</h3>
+                <p className="text-muted-foreground">Real-time streaming responses and an optimized interface that never keeps you waiting.</p>
               </motion.div>
 
               <motion.div 
@@ -143,13 +143,13 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.2 }}
-                className="p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm"
+                className="p-6 rounded-2xl bg-card border border-border backdrop-blur-sm"
               >
                 <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-6">
                   <Lock className="w-6 h-6 text-blue-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-3">Private & Secure</h3>
-                <p className="text-zinc-400">Your conversations are yours. Enterprise-grade security keeps your data protected.</p>
+                <h3 className="text-xl font-semibold text-card-foreground mb-3">Private & Secure</h3>
+                <p className="text-muted-foreground">Your conversations are yours. Enterprise-grade security keeps your data protected.</p>
               </motion.div>
             </div>
           </div>
