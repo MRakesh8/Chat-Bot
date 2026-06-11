@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Settings } from "lucide-react";
+import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Pencil } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { apiUrl } from "@/lib/api-url";
@@ -59,6 +59,8 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
 
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [isAddKnowledgeOpen, setIsAddKnowledgeOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<KnowledgeSource | null>(null);
   
   // Category Form State
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -66,9 +68,16 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
 
   // Knowledge Form State
   const [url, setUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [tag, setTag] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+
+  // Edit Form State
+  const [editTag, setEditTag] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState("");
 
   // --- QUERIES ---
   const { data: categories = [], isLoading: isLoadingCategories } = useQuery({
@@ -142,6 +151,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
     },
     onSuccess: () => {
       setUrl("");
+      setVideoUrl("");
       setNotes("");
       setTag("");
       setIsAddKnowledgeOpen(false);
@@ -173,6 +183,63 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
     },
   });
+
+  const updateSourceMutation = useMutation({
+    mutationFn: async ({
+      id,
+      tag: nextTag,
+      sourceUrl,
+      notes: nextNotes,
+      categoryId,
+    }: {
+      id: string;
+      tag?: string;
+      sourceUrl?: string;
+      notes?: string;
+      categoryId?: string;
+    }) => {
+      const res = await authFetch(apiUrl(`/api/files/${id}`), {
+        method: "PATCH",
+        body: JSON.stringify({
+          tag: nextTag,
+          sourceUrl,
+          notes: nextNotes,
+          categoryId,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update source");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Source updated", description: "Changes saved. Reprocessing if content changed." });
+      setIsEditOpen(false);
+      setEditingSource(null);
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const openEditDialog = (source: KnowledgeSource) => {
+    setEditingSource(source);
+    setEditTag(source.tag || "");
+    setEditUrl(source.sourceUrl || "");
+    setEditNotes(source.notes || "");
+    setEditCategoryId(source.categoryId);
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingSource) return;
+    updateSourceMutation.mutate({
+      id: editingSource.id,
+      tag: editTag,
+      categoryId: editCategoryId,
+      ...(editingSource.sourceType === "note" ? { notes: editNotes } : {}),
+      ...(["website", "youtube", "github"].includes(editingSource.sourceType)
+        ? { sourceUrl: editUrl }
+        : {}),
+    });
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!activeCategoryId) {
@@ -328,11 +395,12 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                     </div>
                     
                     <Tabs defaultValue="file" className="w-full">
-                      <TabsList className="grid w-full grid-cols-4 mb-4">
-                        <TabsTrigger value="file">File</TabsTrigger>
-                        <TabsTrigger value="link">Web / Video</TabsTrigger>
-                        <TabsTrigger value="github">GitHub</TabsTrigger>
-                        <TabsTrigger value="note">Note</TabsTrigger>
+                      <TabsList className="grid w-full grid-cols-5 mb-4 h-auto">
+                        <TabsTrigger value="file" className="text-xs sm:text-sm">File</TabsTrigger>
+                        <TabsTrigger value="website" className="text-xs sm:text-sm">Website</TabsTrigger>
+                        <TabsTrigger value="video" className="text-xs sm:text-sm">Video</TabsTrigger>
+                        <TabsTrigger value="github" className="text-xs sm:text-sm">GitHub</TabsTrigger>
+                        <TabsTrigger value="note" className="text-xs sm:text-sm">Note</TabsTrigger>
                       </TabsList>
                       
                       <TabsContent value="file" className="space-y-4">
@@ -352,21 +420,35 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         </div>
                       </TabsContent>
                       
-                      <TabsContent value="link" className="space-y-4">
+                      <TabsContent value="website" className="space-y-4">
                         <div className="space-y-2">
-                          <label className="text-sm font-medium">Website or YouTube URL</label>
-                          <Input placeholder="https://..." value={url} onChange={(e) => setUrl(e.target.value)} />
+                          <label className="text-sm font-medium">Website URL</label>
+                          <Input placeholder="https://example.com/docs" value={url} onChange={(e) => setUrl(e.target.value)} />
+                          <p className="text-xs text-muted-foreground">Add a web page to scrape and index its content.</p>
                         </div>
-                        <Button 
-                          className="w-full" 
-                          onClick={() => {
-                            const type = (url.includes("youtube.com") || url.includes("youtu.be")) ? "youtube" : "website";
-                            addSourceUrlMutation.mutate({ sourceUrl: url, sourceType: type });
-                          }}
+                        <Button
+                          className="w-full"
+                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: url, sourceType: "website" })}
                           disabled={!url || addSourceUrlMutation.isPending}
                         >
                           {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                          Add Link
+                          Add Website
+                        </Button>
+                      </TabsContent>
+
+                      <TabsContent value="video" className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">YouTube Video URL</label>
+                          <Input placeholder="https://youtube.com/watch?v=... or https://youtu.be/..." value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+                          <p className="text-xs text-muted-foreground">Supports youtube.com and youtu.be links. The video transcript will be indexed.</p>
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: videoUrl, sourceType: "youtube" })}
+                          disabled={!videoUrl || addSourceUrlMutation.isPending}
+                        >
+                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          Add Video
                         </Button>
                       </TabsContent>
 
@@ -435,11 +517,19 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           <div className="p-2 rounded-lg bg-background border border-border shadow-sm">
                             {getIcon(source.sourceType)}
                           </div>
-                          <div className="flex flex-col truncate">
-                            <span className="text-sm font-medium text-foreground truncate" title={source.filename || source.sourceUrl || "Text Note"}>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span
+                              className="text-sm font-medium text-foreground truncate"
+                              title={source.filename || source.sourceUrl || "Text Note"}
+                            >
                               {source.filename || source.sourceUrl || "Text Note"}
                             </span>
-                            <div className="flex items-center gap-2 mt-1">
+                            {source.tag && (
+                              <span className="inline-flex w-fit max-w-full mt-1.5 text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20 font-medium truncate">
+                                {source.tag}
+                              </span>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2 mt-1.5">
                               <span className="text-xs text-muted-foreground capitalize">
                                 {source.sourceType}
                               </span>
@@ -447,19 +537,20 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                               <span className="text-xs text-muted-foreground">
                                 {new Date(source.createdAt).toLocaleDateString()}
                               </span>
-                              {source.tag && (
-                                <>
-                                  <span className="text-muted-foreground text-[10px]">•</span>
-                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium">
-                                    {source.tag}
-                                  </span>
-                                </>
-                              )}
                             </div>
                           </div>
                         </div>
                         
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            onClick={() => openEditDialog(source)}
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
                           {source.status !== "pending" && source.status !== "processing" && (
                             <Button
                               variant="ghost"
@@ -514,6 +605,78 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
           </div>
         )}
       </Card>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Knowledge Source</DialogTitle>
+            <DialogDescription>
+              Update metadata or content. Content changes will trigger reprocessing.
+            </DialogDescription>
+          </DialogHeader>
+          {editingSource && (
+            <div className="space-y-4 mt-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Category</label>
+                <Select value={editCategoryId} onValueChange={setEditCategoryId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Tag (Optional)</label>
+                <Input placeholder="e.g. documentation, reference" value={editTag} onChange={(e) => setEditTag(e.target.value)} />
+              </div>
+
+              {editingSource.sourceType === "note" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Note Content</label>
+                  <Textarea
+                    placeholder="Paste your text here..."
+                    className="min-h-[150px]"
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {["website", "youtube", "github"].includes(editingSource.sourceType) && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    {editingSource.sourceType === "youtube" ? "YouTube URL" :
+                     editingSource.sourceType === "github" ? "GitHub Repository URL" : "Website URL"}
+                  </label>
+                  <Input value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
+                </div>
+              )}
+
+              {editingSource.fileId && (
+                <p className="text-xs text-muted-foreground rounded-md border border-border bg-muted/30 p-3">
+                  File: <span className="font-medium text-foreground">{editingSource.filename}</span>
+                  <br />
+                  To replace the file, delete this source and upload a new one.
+                </p>
+              )}
+
+              <Button
+                className="w-full"
+                onClick={handleSaveEdit}
+                disabled={updateSourceMutation.isPending}
+              >
+                {updateSourceMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

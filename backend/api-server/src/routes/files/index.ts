@@ -259,6 +259,64 @@ router.post("/:id/reprocess", async (req, res) => {
   }
 });
 
+// PATCH /files/:id
+router.patch("/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { tag, notes, sourceUrl, categoryId } = req.body;
+    const userId = (req as any).auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const [result] = await db
+      .select({ source: knowledgeSources })
+      .from(knowledgeSources)
+      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
+
+    if (!result?.source) {
+      res.status(404).json({ error: "Source not found or access denied" });
+      return;
+    }
+
+    const existing = result.source;
+    const updates: Partial<typeof knowledgeSources.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+
+    if (tag !== undefined) updates.tag = tag || null;
+    if (categoryId !== undefined) updates.categoryId = categoryId;
+    if (notes !== undefined && existing.sourceType === "note") updates.notes = notes;
+    if (sourceUrl !== undefined && ["website", "youtube", "github"].includes(existing.sourceType)) {
+      updates.sourceUrl = sourceUrl;
+    }
+
+    const contentChanged =
+      (notes !== undefined && notes !== existing.notes) ||
+      (sourceUrl !== undefined && sourceUrl !== existing.sourceUrl);
+
+    if (contentChanged) {
+      updates.status = "pending";
+    }
+
+    const [record] = await db
+      .update(knowledgeSources)
+      .set(updates)
+      .where(eq(knowledgeSources.id, id))
+      .returning();
+
+    if (contentChanged) {
+      processKnowledgeSource(record.id).catch((e) => {
+        req.log.error({ err: e }, "Async reprocessing failed after edit");
+      });
+    }
+
+    res.json(record);
+  } catch (err) {
+    req.log.error({ err }, "Error updating source");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // PATCH /files/:id/category
 router.patch("/:id/category", async (req, res) => {
   try {
