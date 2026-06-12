@@ -145,9 +145,9 @@ router.post("/upload", (req, res, next) => {
     });
 
     res.status(201).json(record);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error uploading file");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -283,9 +283,9 @@ router.post("/url", async (req, res) => {
     }
 
     res.status(201).json(records.length === 1 ? records[0] : records);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error saving source");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -306,9 +306,9 @@ router.get("/project/:projectId", async (req, res) => {
       .orderBy(desc(knowledgeSources.createdAt));
     
     res.json(sources);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error listing sources");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -344,9 +344,9 @@ router.delete("/:id", async (req, res) => {
 
     await db.delete(knowledgeSources).where(eq(knowledgeSources.id, id));
     res.status(204).send();
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error deleting source");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -379,9 +379,9 @@ router.post("/:id/reprocess", async (req, res) => {
     });
 
     res.json(record);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error reprocessing source");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -465,9 +465,9 @@ router.patch("/:id", async (req, res) => {
     }
 
     res.json(record);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error updating source");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -503,9 +503,9 @@ router.patch("/:id/category", async (req, res) => {
       .returning();
 
     res.json(record);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error moving source");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 

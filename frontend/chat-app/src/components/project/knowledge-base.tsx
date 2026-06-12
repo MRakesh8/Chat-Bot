@@ -70,6 +70,8 @@ type KnowledgeSource = {
   websiteLinks: string[];
   videoLinks: string[];
   githubLinks: string[];
+  tools: string[];
+  steps: string[];
   notes: string | null;
   summary: string | null;
   status: "pending" | "processing" | "processed" | "error";
@@ -725,6 +727,24 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                                   <span className="inline-flex w-fit max-w-full text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border font-medium truncate">
                                     +{source.tag.split(',').length - 3}
                                   </span>
+                                )}
+                              </div>
+                            )}
+                            {((source.tools && source.tools.length > 0) || (source.steps && source.steps.length > 0)) && (
+                              <div className="flex flex-col gap-1 mt-2">
+                                {source.tools && source.tools.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tools:</span>
+                                    {source.tools.slice(0, 3).map((t: string) => (
+                                      <span key={t} className="text-[10px] bg-secondary text-secondary-foreground px-1.5 rounded">{t}</span>
+                                    ))}
+                                  </div>
+                                )}
+                                {source.steps && source.steps.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Steps:</span>
+                                    <span className="text-[10px] text-muted-foreground truncate">{source.steps.length} identified</span>
+                                  </div>
                                 )}
                               </div>
                             )}

@@ -33,6 +33,8 @@ type KnowledgeAnalysis = LinkBuckets & {
   categoryName: string;
   title: string;
   tags: string[];
+  tools: string[];
+  steps: string[];
   notes: string;
   summary: string;
   sourceType: string;
@@ -218,6 +220,8 @@ Return strictly valid JSON:
   "categoryName": "best existing category or concise new category",
   "title": "short useful title",
   "tags": ["3 to 10 concise tags"],
+  "tools": ["any specific tools, technologies, or software mentioned"],
+  "steps": ["any step-by-step instructions or processes found"],
   "notes": "brief useful notes",
   "summary": "retrieval summary preserving tools, links, names, and use cases",
   "websiteLinks": ["all website links"],
@@ -250,6 +254,8 @@ Return strictly valid JSON:
     categoryName: String(parsed.categoryName || categories[0]?.name || "General").trim().slice(0, 255),
     title: String(parsed.title || cleanContent.slice(0, 80) || "Knowledge Item").trim(),
     tags: tags.length > 0 ? tags : uniqueStrings(cleanContent.split(/\W+/).filter((w) => w.length > 3), 10).slice(0, 10),
+    tools: Array.isArray(parsed.tools) ? parsed.tools.map(String) : [],
+    steps: Array.isArray(parsed.steps) ? parsed.steps.map(String) : [],
     notes: String(parsed.notes || parsed.summary || cleanContent).trim(),
     summary: String(parsed.summary || parsed.notes || cleanContent).trim(),
     websiteLinks,
@@ -297,6 +303,118 @@ export async function saveAutoKnowledgeItem(params: {
 }) {
   const analysis = await analyzeKnowledgeContent(params);
   const category = await ensureKnowledgeCategory(params.projectId, analysis.categoryName);
+
+  // --- Duplicate Detection ---
+  // Try to find if this knowledge already exists using semantic search
+  const similarContent = await searchProjectKnowledge({
+    projectIds: [params.projectId],
+    userId: params.userId,
+    query: analysis.title + " " + analysis.summary,
+    limit: 3
+  });
+
+  // Since searchProjectKnowledge returns a formatted string, let's also do a direct DB check for exact URLs or very similar titles
+  const potentialMatches = await db
+    .select()
+    .from(knowledgeSources)
+    .where(and(
+      eq(knowledgeSources.projectId, params.projectId),
+      or(
+        analysis.sourceUrl ? eq(knowledgeSources.sourceUrl, analysis.sourceUrl) : sql`FALSE`,
+        ilike(knowledgeSources.title, `%${analysis.title.slice(0, 20)}%`)
+      )
+    ))
+    .limit(3);
+
+  if (potentialMatches.length > 0 || similarContent.includes("Knowledge ID:")) {
+    // We found potential duplicates. Let's use AI to decide if it's a true duplicate or needs merging.
+    let existingContext = "--- Exact/Metadata Matches ---\n";
+    for (const match of potentialMatches) {
+      existingContext += `Knowledge ID: ${match.id}\nTitle: ${match.title}\nTools: ${JSON.stringify(match.tools)}\nSteps: ${JSON.stringify(match.steps)}\nTags: ${match.tag}\nSummary: ${match.summary}\nURL: ${match.sourceUrl}\n\n`;
+    }
+    existingContext += "--- Semantic Matches ---\n" + similarContent;
+
+    const mergePrompt = `You are a knowledge deduplication assistant. 
+A user is trying to add NEW knowledge. We found existing knowledge in the database.
+Determine if the NEW knowledge is a duplicate, a partial duplicate (needs merging), or completely unique.
+
+NEW Knowledge:
+Title: ${analysis.title}
+URL: ${analysis.sourceUrl || 'None'}
+Tags: ${JSON.stringify(analysis.tags)}
+Tools: ${JSON.stringify(analysis.tools)}
+Steps: ${JSON.stringify(analysis.steps)}
+Summary: ${analysis.summary}
+Raw Content: ${stripSaveCommand(params.content).slice(0, 5000)}
+
+EXISTING Knowledge:
+${existingContext}
+
+Return strictly valid JSON:
+{
+  "action": "already_exists" | "merge" | "create_new",
+  "targetKnowledgeId": "If action is already_exists or merge, provide the exact Knowledge ID of the best match from the EXISTING Knowledge list",
+  "mergedTools": ["If action is merge, combine the existing and new tools into one complete list without duplicates"],
+  "mergedSteps": ["If action is merge, combine the existing and new steps into one logical list"],
+  "mergedTags": ["If action is merge, combine the tags"],
+  "mergedSummary": "If action is merge, update the summary to include both existing and new details without losing anything",
+  "mergedWebsiteLinks": ["combined website links"],
+  "mergedVideoLinks": ["combined video links"],
+  "mergedGithubLinks": ["combined github links"]
+}`;
+
+    const mergeRes = await ai.models.generateContent(params.userId, {
+      model: "gemini-2.5-flash",
+      contents: mergePrompt,
+    });
+    const mergeDecision = safeJsonFromModel(mergeRes.text);
+
+    if (mergeDecision.action === "already_exists" && mergeDecision.targetKnowledgeId) {
+      const [existingRecord] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, mergeDecision.targetKnowledgeId));
+      if (existingRecord) {
+        return {
+          record: existingRecord,
+          category,
+          analysis,
+          status: "already_exists"
+        };
+      }
+    }
+
+    if (mergeDecision.action === "merge" && mergeDecision.targetKnowledgeId) {
+      const [existingRecord] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, mergeDecision.targetKnowledgeId));
+      if (existingRecord) {
+        const [updatedRecord] = await db
+          .update(knowledgeSources)
+          .set({
+            tools: Array.isArray(mergeDecision.mergedTools) ? mergeDecision.mergedTools.map(String) : existingRecord.tools,
+            steps: Array.isArray(mergeDecision.mergedSteps) ? mergeDecision.mergedSteps.map(String) : existingRecord.steps,
+            tag: Array.isArray(mergeDecision.mergedTags) ? uniqueStrings(mergeDecision.mergedTags.map(String)).join(", ") : existingRecord.tag,
+            summary: mergeDecision.mergedSummary || existingRecord.summary,
+            websiteLinks: Array.isArray(mergeDecision.mergedWebsiteLinks) ? uniqueStrings(mergeDecision.mergedWebsiteLinks.map(String)) : existingRecord.websiteLinks,
+            videoLinks: Array.isArray(mergeDecision.mergedVideoLinks) ? uniqueStrings(mergeDecision.mergedVideoLinks.map(String)) : existingRecord.videoLinks,
+            githubLinks: Array.isArray(mergeDecision.mergedGithubLinks) ? uniqueStrings(mergeDecision.mergedGithubLinks.map(String)) : existingRecord.githubLinks,
+            status: "pending", // Re-process so chunks update
+            updatedAt: new Date()
+          })
+          .where(eq(knowledgeSources.id, existingRecord.id))
+          .returning();
+        
+        await processKnowledgeSource(updatedRecord.id, { force: true });
+        const [processed] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, updatedRecord.id));
+        
+        return {
+          record: processed ?? updatedRecord,
+          category,
+          analysis,
+          status: "merged"
+        };
+      }
+    }
+  }
+
+  // --- End Duplicate Detection ---
+
   const [record] = await db
     .insert(knowledgeSources)
     .values({
@@ -306,6 +424,8 @@ export async function saveAutoKnowledgeItem(params: {
       title: analysis.title,
       notes: analysis.notes,
       summary: analysis.summary,
+      tools: analysis.tools,
+      steps: analysis.steps,
       rawContent: stripSaveCommand(params.content),
       websiteLinks: analysis.websiteLinks,
       videoLinks: analysis.videoLinks,
@@ -323,6 +443,7 @@ export async function saveAutoKnowledgeItem(params: {
     record: processed ?? record,
     category,
     analysis,
+    status: "created"
   };
 }
 

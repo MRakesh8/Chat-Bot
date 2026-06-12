@@ -349,19 +349,32 @@ router.post("/conversations/:id/messages", async (req, res) => {
     // --- QUICK ADD TO KNOWLEDGE INTERCEPT ---
     if (isKnowledgeSaveCommand(content) && primaryProject) {
       const targetProjectId = primaryProject.id;
-      let successMsg = "";
+      let finalMsg = "";
+
+      // Start SSE early to show 'Checking existing knowledge...'
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
       
+      res.write(`data: ${JSON.stringify({ content: "Checking existing knowledge...\n\n" })}\n\n`);
+
       try {
-        const { record, category, analysis } = await saveAutoKnowledgeItem({
+        const { record, category, analysis, status } = await saveAutoKnowledgeItem({
           projectId: targetProjectId,
           userId,
           content,
         });
         
-        successMsg = `**Knowledge Added Successfully**\n\n**Category:** ${category.name}\n**Tags:** ${analysis.tags.join(", ") || 'None'}\n**Knowledge ID:** ${record.id}\n**Status:** ${record.status}`;
+        if (status === "already_exists") {
+          finalMsg = `**Knowledge already exists**\n\nFound exact or highly similar knowledge: ${record.title} (ID: ${record.id}). Skipping duplicate.`;
+        } else if (status === "merged") {
+          finalMsg = `**Knowledge merged successfully**\n\nMerged with existing knowledge: ${record.title} (ID: ${record.id})\n**Category:** ${category.name}\n**Tags:** ${analysis.tags.join(", ") || 'None'}`;
+        } else {
+          finalMsg = `**Knowledge added successfully**\n\n**Category:** ${category.name}\n**Tags:** ${analysis.tags.join(", ") || 'None'}\n**Knowledge ID:** ${record.id}\n**Status:** ${record.status}`;
+        }
       } catch (e: any) {
         req.log.error({ err: e }, "Failed to process quick add knowledge");
-        successMsg = `**Failed to Add Knowledge**\n\nError: ${e.message}`;
+        finalMsg = `**Failed to Add Knowledge**\n\nError: ${e.message}`;
       }
       
       // Save user message
@@ -375,15 +388,10 @@ router.post("/conversations/:id/messages", async (req, res) => {
       await db.insert(messages).values({
           sessionId: conversationId as any,
           sender: "assistant",
-          content: successMsg,
+          content: "Checking existing knowledge...\n\n" + finalMsg,
       });
 
-      // SSE response
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      
-      res.write(`data: ${JSON.stringify({ content: successMsg })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: finalMsg })}\n\n`);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       return;

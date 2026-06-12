@@ -79,6 +79,8 @@ export const knowledgeSources = pgTable("knowledge_sources", {
   notes: text("notes"),
   rawContent: text("raw_content"),
   summary: text("summary"),
+  tools: jsonb("tools").$type<string[]>().default([]).notNull(),
+  steps: jsonb("steps").$type<string[]>().default([]).notNull(),
   keywordIndex: text("keyword_index"),
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, processing, processed, error
   retryCount: integer("retry_count").default(0).notNull(),

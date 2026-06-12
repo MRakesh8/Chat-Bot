@@ -40,9 +40,9 @@ router.get("/", async (req, res) => {
       .where(eq(projects.userId, userId))
       .orderBy(desc(projects.createdAt));
     res.json(result);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error listing projects");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -98,9 +98,9 @@ router.get("/:id", async (req, res) => {
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
     if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     res.json(project);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error getting project");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -161,9 +161,9 @@ router.delete("/:id", async (req, res) => {
     if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     await db.delete(projects).where(eq(projects.id, id));
     res.status(204).send();
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error deleting project");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -211,7 +211,7 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
     res.status(200).json({ success: true });
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error adding knowledge from chat");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -235,9 +235,9 @@ router.get("/share/:token", async (req, res) => {
       return;
     }
     res.json(project);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error getting shared project");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -257,9 +257,9 @@ router.post("/share/:token/conversations", async (req, res) => {
       .values({ title: "New Chat", projectId: project.id })
       .returning();
     res.status(201).json(conv);
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error creating shared conversation");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
@@ -287,9 +287,9 @@ router.get("/share/:token/conversations/:convId", async (req, res) => {
       .where(eq(messages.sessionId, convId as any))
       .orderBy(messages.createdAt);
     res.json({ ...conv, messages: msgs.map(serializeMessage) });
-  } catch (err) {
+  } catch (err: any) {
     req.log.error({ err }, "Error getting shared conversation");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });
 
