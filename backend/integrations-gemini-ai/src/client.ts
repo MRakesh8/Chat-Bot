@@ -21,17 +21,19 @@ const isRetryableError = (err: any) => {
          err?.message?.includes("429") || err?.message?.includes("404") || err?.message?.includes("503") || err?.message?.includes("timeout");
 };
 
+import type { GenerateContentResponse, EmbedContentResponse } from "@google/genai";
+
 class GeminiFailoverModels {
-  async generateContent(userId: string | null, options: any) {
-    return this._executeWithRouting(userId, 'generateContent', options);
+  async generateContent(userId: string | null, options: any): Promise<GenerateContentResponse> {
+    return this._executeWithRouting(userId, 'generateContent', options) as Promise<GenerateContentResponse>;
   }
 
-  async generateContentStream(userId: string | null, options: any) {
-    return this._executeWithRouting(userId, 'generateContentStream', options);
+  async generateContentStream(userId: string | null, options: any): Promise<AsyncGenerator<GenerateContentResponse, any, any>> {
+    return this._executeWithRouting(userId, 'generateContentStream', options) as Promise<AsyncGenerator<GenerateContentResponse, any, any>>;
   }
 
-  async embedContent(userId: string | null, options: any) {
-    return this._executeWithRouting(userId, 'embedContent', options);
+  async embedContent(userId: string | null, options: any): Promise<EmbedContentResponse> {
+    return this._executeWithRouting(userId, 'embedContent', options) as Promise<EmbedContentResponse>;
   }
 
   private async _fetchAndResetKeys(userId: string | null) {

@@ -30,19 +30,13 @@ type TranscriptSegment = { text: string };
 
 async function fetchViaPlus(videoId: string, lang?: string): Promise<string> {
   const { YoutubeTranscript } = await import("youtube-transcript-plus");
-  const transcript = await YoutubeTranscript.fetchTranscript(
-    videoId,
-    lang ? { lang } : undefined,
-  );
+  const transcript = lang ? await YoutubeTranscript.fetchTranscript(videoId, { lang }) : await YoutubeTranscript.fetchTranscript(videoId);
   return transcript.map((segment: TranscriptSegment) => decodeHtmlEntities(segment.text)).join(" ");
 }
 
 async function fetchViaLegacy(videoId: string, lang?: string): Promise<string> {
   const { YoutubeTranscript } = await import("youtube-transcript");
-  const transcript = await YoutubeTranscript.fetchTranscript(
-    videoId,
-    lang ? { lang } : undefined,
-  );
+  const transcript = lang ? await YoutubeTranscript.fetchTranscript(videoId, { lang }) : await YoutubeTranscript.fetchTranscript(videoId);
   return transcript.map((segment: TranscriptSegment) => decodeHtmlEntities(segment.text)).join(" ");
 }
 

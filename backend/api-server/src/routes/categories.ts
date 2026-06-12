@@ -20,10 +20,11 @@ router.get("/project/:projectId", async (req: Request, res: Response, next: Next
   try {
     const { projectId } = req.params;
     const categories = await db.query.knowledgeCategories.findMany({
-      where: eq(knowledgeCategories.projectId, projectId),
+      where: eq(knowledgeCategories.projectId, projectId as string),
       orderBy: (categories, { asc }) => [asc(categories.createdAt)],
     });
     res.json(categories);
+    return;
   } catch (error) {
     next(error);
   }
@@ -38,6 +39,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       .values({ projectId, name })
       .returning();
     res.status(201).json(category);
+    return;
   } catch (error) {
     next(error);
   }
@@ -51,12 +53,14 @@ router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => 
     const [category] = await db
       .update(knowledgeCategories)
       .set({ name, updatedAt: new Date() })
-      .where(eq(knowledgeCategories.id, id))
+      .where(eq(knowledgeCategories.id, id as string))
       .returning();
     if (!category) {
-      return res.status(404).json({ error: "Category not found" });
+      res.status(404).json({ error: "Category not found" });
+      return;
     }
     res.json(category);
+    return;
   } catch (error) {
     next(error);
   }
@@ -68,12 +72,14 @@ router.delete("/:id", async (req: Request, res: Response, next: NextFunction) =>
     const { id } = req.params;
     const [deleted] = await db
       .delete(knowledgeCategories)
-      .where(eq(knowledgeCategories.id, id))
+      .where(eq(knowledgeCategories.id, id as string))
       .returning();
     if (!deleted) {
-      return res.status(404).json({ error: "Category not found" });
+      res.status(404).json({ error: "Category not found" });
+      return;
     }
     res.status(204).send();
+    return;
   } catch (error) {
     next(error);
   }

@@ -355,7 +355,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
         const words = content.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((w: string) => w.length > 3).slice(0, 5);
         
         // Find exact/partial metadata matches (Category, Tag, Title, Notes)
-        let metadataMatches = [];
+        let metadataMatches: any[] = [];
         if (words.length > 0) {
           const conditions = words.map((w: string) => 
             or(

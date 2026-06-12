@@ -259,6 +259,12 @@ importers:
       '@google/genai':
         specifier: ^1.44.0
         version: 1.52.0
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../../database/db
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       p-limit:
         specifier: ^7.3.0
         version: 7.3.0

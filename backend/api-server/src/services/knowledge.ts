@@ -1,4 +1,4 @@
-import { db, knowledgeChunks, knowledgeSources } from "@workspace/db";
+import { db, knowledgeChunks, knowledgeSources, projects } from "@workspace/db";
 import { supabaseAdmin } from "../lib/supabase";
 import { ai } from "@workspace/integrations-gemini-ai";
 import mammoth from "mammoth";
@@ -62,12 +62,12 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     const headers = { "User-Agent": "Aria-AI-Knowledge-Base" };
     const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
     if (!repoRes.ok) throw new Error(`Failed to fetch github repo details for ${repoPath}`);
-    const repoData = await repoRes.json();
+    const repoData = await repoRes.json() as any;
     
     let readmeText = "";
     const readmeRes = await fetch(`https://api.github.com/repos/${repoPath}/readme`, { headers });
     if (readmeRes.ok) {
-      const readmeData = await readmeRes.json();
+      const readmeData = await readmeRes.json() as any;
       if (readmeData.content) {
         readmeText = Buffer.from(readmeData.content, "base64").toString("utf8");
       }
