@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { knowledgeSources, projects } from "@workspace/db";
+import { knowledgeCategories, knowledgeSources, projects } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
 import { processKnowledgeSource, extractSourceContent } from "../../services/knowledge";
@@ -30,6 +30,14 @@ const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for video/zips
 });
+
+async function categoryBelongsToProject(categoryId: string, projectId: string) {
+  const [category] = await db
+    .select({ id: knowledgeCategories.id })
+    .from(knowledgeCategories)
+    .where(and(eq(knowledgeCategories.id, categoryId), eq(knowledgeCategories.projectId, projectId)));
+  return Boolean(category);
+}
 
 // POST /files/upload - Upload file as knowledge source
 router.post("/upload", (req, res, next) => {
@@ -81,6 +89,12 @@ router.post("/upload", (req, res, next) => {
     if (!project) {
       if (localPath) fs.unlinkSync(localPath);
       res.status(403).json({ error: "Forbidden: You do not own this project" });
+      return;
+    }
+
+    if (!(await categoryBelongsToProject(categoryId, projectId))) {
+      if (localPath) fs.unlinkSync(localPath);
+      res.status(400).json({ error: "Category does not belong to this project" });
       return;
     }
 
@@ -170,7 +184,7 @@ router.post("/analyze", upload.single("file"), async (req, res) => {
     
     const userId = (req as any).auth?.userId || null;
     const resAi = await ai.models.generateContent(userId, {
-      model: "gemini-1.5-pro",
+      model: "gemini-2.5-flash",
       contents: prompt
     });
 
@@ -238,6 +252,11 @@ router.post("/url", async (req, res) => {
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
     if (!project) {
       res.status(403).json({ error: "Forbidden: You do not own this project" });
+      return;
+    }
+
+    if (!(await categoryBelongsToProject(categoryId, projectId))) {
+      res.status(400).json({ error: "Category does not belong to this project" });
       return;
     }
 
@@ -391,7 +410,13 @@ router.patch("/:id", async (req, res) => {
     };
 
     if (tag !== undefined) updates.tag = tag || null;
-    if (categoryId !== undefined) updates.categoryId = categoryId;
+    if (categoryId !== undefined) {
+      if (!(await categoryBelongsToProject(categoryId, existing.projectId))) {
+        res.status(400).json({ error: "Category does not belong to this project" });
+        return;
+      }
+      updates.categoryId = categoryId;
+    }
     if (notes !== undefined && existing.sourceType === "note") {
       if (!notes.trim()) {
         res.status(400).json({ error: "Note content cannot be empty" });
@@ -453,6 +478,7 @@ router.patch("/:id/category", async (req, res) => {
     const { categoryId } = req.body;
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!categoryId) { res.status(400).json({ error: "Missing categoryId" }); return; }
 
     const [result] = await db
       .select({ source: knowledgeSources })
@@ -462,6 +488,11 @@ router.patch("/:id/category", async (req, res) => {
 
     if (!result || !result.source) {
       res.status(404).json({ error: "Source not found or access denied" });
+      return;
+    }
+
+    if (!(await categoryBelongsToProject(categoryId, result.source.projectId))) {
+      res.status(400).json({ error: "Category does not belong to this project" });
       return;
     }
 

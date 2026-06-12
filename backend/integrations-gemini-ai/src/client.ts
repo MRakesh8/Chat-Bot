@@ -135,7 +135,7 @@ class GeminiFailoverModels {
     }
 
     const originalModel = options.model || "gemini-2.5-flash";
-    const modelsToTry = (method !== 'embedContent' && FALLBACK_MODELS.includes(originalModel)) ? FALLBACK_MODELS : [originalModel];
+    const modelsToTry = method === 'embedContent' ? [originalModel] : Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
     
     for (const key of keys) {
       const client = new GoogleGenAI({
@@ -147,7 +147,7 @@ class GeminiFailoverModels {
         const attemptOptions = { ...options, model: modelToUse };
         
         try {
-          console.log(`[Gemini Routing] Trying Key \${key.id} (System: \${key.isSystem}) with Model \${modelToUse}`);
+          console.log(`[Gemini Routing] Trying Key ${key.id} (System: ${key.isSystem}) with Model ${modelToUse}`);
           
           let result;
           if (method === 'generateContent') result = await client.models.generateContent(attemptOptions);
@@ -161,19 +161,18 @@ class GeminiFailoverModels {
           const isTimeout = err?.message?.toLowerCase().includes("timeout");
           
           if (status === 429) {
-            console.warn(`[Gemini Routing] Rate Limit on Key \${key.id}`);
+            console.warn(`[Gemini Routing] Rate Limit on Key ${key.id}`);
             await this._updateKeyFailure(key, '429', err.message);
             break; // Move to next key
           } else if (isTimeout) {
-            console.warn(`[Gemini Routing] Timeout on Key \${key.id}`);
+            console.warn(`[Gemini Routing] Timeout on Key ${key.id}`);
             await this._updateKeyFailure(key, 'timeout', err.message);
             break; // Move to next key
           } else if (isRetryableError(err)) {
-            console.warn(`[Gemini Routing] Retryable error on Key \${key.id}`);
+            console.warn(`[Gemini Routing] Retryable error on Key ${key.id}: ${err.message}`);
             await this._updateKeyFailure(key, 'other', err.message);
             break; // Move to next key
           } else {
-            // Unrecoverable error (e.g. 400 Bad Request)
             throw err;
           }
         }

@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { and, eq, desc, like, inArray, isNotNull, or, isNull, gt } from "drizzle-orm";
-import fs from "fs";
+import { and, eq, desc, like, inArray, isNotNull, or, isNull, gt, sql, ilike } from "drizzle-orm";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
+import { processKnowledgeSource } from "../../services/knowledge";
 import { db } from "@workspace/db";
-import { chatSessions, messages } from "@workspace/db";
+import { chatSessions, knowledgeCategories, knowledgeChunks, knowledgeSources, messages, projects } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CreateGeminiConversationBody,
@@ -18,6 +18,14 @@ import {
 } from "@workspace/api-zod";
 
 const router = Router();
+
+async function userOwnsProject(projectId: string, userId: string) {
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+  return Boolean(project);
+}
 
 // GET /gemini/conversations/search - MUST be before /:id routes
 router.get("/conversations/search", async (req, res) => {
@@ -76,6 +84,10 @@ router.post("/conversations", async (req, res) => {
       return;
     }
     const projectId = req.body.projectId || null;
+    if (projectId && !(await userOwnsProject(projectId, userId))) {
+      res.status(403).json({ error: "Forbidden: You do not own this project" });
+      return;
+    }
     const expiresAt = !projectId ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null;
     const [conversation] = await db
       .insert(chatSessions)
@@ -139,6 +151,10 @@ router.patch("/conversations/:id", async (req, res) => {
     const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, paramsParsed.data.id));
     if (!existing || existing.userId !== userId) {
       res.status(404).json({ error: "Conversation not found" }); return;
+    }
+    if (bodyParsed.data.projectId && !(await userOwnsProject(bodyParsed.data.projectId, userId))) {
+      res.status(403).json({ error: "Forbidden: You do not own this project" });
+      return;
     }
     const [updated] = await db
       .update(chatSessions)
@@ -298,7 +314,6 @@ router.post("/conversations/:id/messages", async (req, res) => {
       return;
     }
 
-    const { projects } = require("@workspace/db");
     let primaryProject = null;
     let validProjectIds: string[] = [];
 
@@ -306,19 +321,117 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
     // Prioritize passed projectIds, or fallback to conversation's projectId
     if (projectIds && projectIds.length > 0) {
-      dbProjectsList = await db.select().from(projects).where(inArray(projects.id, projectIds));
+      dbProjectsList = await db
+        .select()
+        .from(projects)
+        .where(and(inArray(projects.id, projectIds), eq(projects.userId, userId)));
       if (dbProjectsList.length > 0) {
         primaryProject = dbProjectsList[0];
         validProjectIds = dbProjectsList.map((p: any) => p.id);
       }
     } else if (conversation.projectId) {
-      const [res] = await db.select().from(projects).where(eq(projects.id, conversation.projectId));
+      const [res] = await db
+        .select()
+        .from(projects)
+        .where(and(eq(projects.id, conversation.projectId), eq(projects.userId, userId)));
       if (res) {
         dbProjectsList = [res];
         primaryProject = res;
         validProjectIds = [res.id];
       }
     }
+    // --- QUICK ADD TO KNOWLEDGE INTERCEPT ---
+    const isQuickAdd = /^(add to project|save to knowledge|save this|add this to project|add to knowledge)/i.test(content.trim());
+    if (isQuickAdd && primaryProject) {
+      const targetProjectId = primaryProject.id;
+      const existingCats = await db.select().from(knowledgeCategories).where(eq(knowledgeCategories.projectId, targetProjectId));
+      
+      const catList = existingCats.map((c: any) => c.name).join(", ");
+      
+      const prompt = `You are a data extractor. Analyze this text to save to project knowledge.
+Existing Categories: ${catList || 'None'}
+Text: """${content}"""
+
+Return strictly a JSON object with:
+"categoryName": string (best matching from existing, or invent a new concise one)
+"isNewCategory": boolean (true if categoryName is not in Existing Categories)
+"tags": string (comma separated tags)
+"notes": string (summarized notes or original content if brief. Make sure to capture the core info. Also put any secondary links here)
+"primaryLink": string | null (extract ONE main link: youtube, github, instagram, or website URL if present, otherwise null)
+"sourceType": string (must be exactly one of: "youtube", "github", "instagram", "website", or "note" if no link)`;
+
+      const resAi = await ai.models.generateContent(userId, {
+          model: "gemini-2.5-flash",
+          contents: prompt
+      });
+
+      let extracted = { categoryName: "General", isNewCategory: true, tags: "", notes: content, primaryLink: null, sourceType: "note" };
+      try {
+          const jsonStr = resAi.text?.replace(/```json/g, '').replace(/```/g, '').trim() || "{}";
+          extracted = JSON.parse(jsonStr);
+      } catch(e) {
+          req.log.warn("Failed to parse Quick Add JSON");
+      }
+      
+      let finalCategoryId;
+      const existingMatch = existingCats.find((c: any) => c.name.toLowerCase() === extracted.categoryName.toLowerCase());
+      if (extracted.isNewCategory || !existingMatch) {
+          const resNewCat = await db.insert(knowledgeCategories).values({
+              projectId: targetProjectId,
+              name: extracted.categoryName || "General"
+          }).returning();
+          finalCategoryId = (resNewCat as any[])[0].id;
+      } else {
+          finalCategoryId = existingMatch.id;
+      }
+      
+      const resRecord = await db.insert(knowledgeSources).values({
+          projectId: targetProjectId,
+          categoryId: finalCategoryId,
+          tag: extracted.tags || null,
+          title: "Quick Add Note",
+          notes: extracted.notes || content,
+          sourceType: extracted.sourceType || "note",
+          sourceUrl: extracted.primaryLink || null,
+          status: "pending"
+      }).returning();
+      const record = (resRecord as any[])[0];
+      
+      // Call process synchronously
+      try {
+          await processKnowledgeSource(record.id);
+      } catch (e) {
+          req.log.error({ err: e }, "Failed to process quick add knowledge");
+      }
+      
+      const successMsg = `**Knowledge Added Successfully**\n\n**Category:** ${extracted.categoryName}\n**Tags:** ${extracted.tags || 'None'}`;
+      
+      // Save user message
+      await db.insert(messages).values({
+          sessionId: conversationId as any,
+          sender: "user",
+          content,
+      });
+      
+      // Save assistant message
+      await db.insert(messages).values({
+          sessionId: conversationId as any,
+          sender: "assistant",
+          content: successMsg,
+      });
+
+      // SSE response
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      
+      res.write(`data: ${JSON.stringify({ content: successMsg })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      return;
+    }
+    // --- END QUICK ADD ---
+
     // Save user message
     await db.insert(messages).values({
       sessionId: conversationId as any,
@@ -347,9 +460,6 @@ router.post("/conversations/:id/messages", async (req, res) => {
     // Vector Search (RAG)
     let ragContext = "";
     try {
-      const { sql, ilike } = require("drizzle-orm");
-      const { knowledgeChunks, knowledgeSources, knowledgeCategories } = require("@workspace/db");
-
       if (validProjectIds.length > 0) {
         // Keyword extraction for simple keyword matching
         const words = content.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((w: string) => w.length > 3).slice(0, 5);

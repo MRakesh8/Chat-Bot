@@ -5,6 +5,7 @@ import mammoth from "mammoth";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { extractYouTubeId, fetchYouTubeTranscriptText } from "../lib/youtube";
+import { isIP } from "node:net";
 
 // Helper to chunk text
 function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
@@ -22,6 +23,50 @@ function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
   return chunks.filter((c) => c.length > 0);
 }
 
+function assertPublicHttpUrl(rawUrl: string | null | undefined) {
+  if (!rawUrl) throw new Error("URL is required.");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("Invalid URL.");
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Only HTTP and HTTPS URLs are supported.");
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    throw new Error("Local URLs are not supported.");
+  }
+
+  const ipVersion = isIP(hostname);
+  if (ipVersion === 4) {
+    const [a, b] = hostname.split(".").map(Number);
+    const isPrivate =
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a === 0;
+    if (isPrivate) throw new Error("Private network URLs are not supported.");
+  } else if (ipVersion === 6) {
+    if (
+      hostname === "::1" ||
+      hostname.startsWith("fc") ||
+      hostname.startsWith("fd") ||
+      hostname.startsWith("fe80:")
+    ) {
+      throw new Error("Private network URLs are not supported.");
+    }
+  }
+
+  return parsed.toString();
+}
+
 export async function extractSourceContent(params: { sourceType: string, sourceUrl?: string | null, fileBuffer?: Buffer, filename?: string, userId?: string | null }): Promise<string> {
   let extractedText = "";
   const { sourceType, sourceUrl, fileBuffer, filename } = params;
@@ -34,22 +79,23 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     try {
       const transcript = await fetchYouTubeTranscriptText(videoId);
       const res = await ai.models.generateContent(params.userId || null, {
-        model: "gemini-1.5-pro",
+        model: "gemini-2.5-flash",
         contents: `Please summarize and provide a detailed structured text representation of the following YouTube video transcript: \n\n${transcript.slice(0, 50000)}`
       });
       extractedText = res.text || transcript;
     } catch (err) {
       logger.warn({ err }, `YouTube transcript failed for ${videoId}. Falling back to direct URL Gemini summarization.`);
       const res = await ai.models.generateContent(params.userId || null, {
-        model: "gemini-1.5-pro",
+        model: "gemini-2.5-flash",
         contents: `Please summarize and provide a detailed description of the content for this YouTube video: ${sourceUrl}`
       });
       extractedText = res.text || "";
     }
   } else if (sourceType === "website") {
-    const res = await fetch(sourceUrl as string);
+    const safeUrl = assertPublicHttpUrl(sourceUrl);
+    const res = await fetch(safeUrl, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`Failed to fetch website: ${res.statusText}`);
-    const html = await res.text();
+    const html = (await res.text()).slice(0, 2_000_000);
     extractedText = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
       .replace(/<[^>]+>/g, ' ')
@@ -82,7 +128,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     }
     logger.info(`Extracting Instagram video content via Gemini for ${sourceUrl}`);
     const res = await ai.models.generateContent(params.userId || null, {
-      model: "gemini-1.5-pro",
+      model: "gemini-2.5-flash",
       contents: `Please describe the visual and audio content of this Instagram video/post in great detail: ${sourceUrl}`
     });
     extractedText = res.text || "";
@@ -123,7 +169,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       extractedText = res.text || "";
     } else if (lowerFilename.match(/\.(mp4|mp3|wav|mov|webm)$/)) {
         const res = await ai.models.generateContent(params.userId || null, {
-          model: "gemini-1.5-pro",
+          model: "gemini-2.5-flash",
           contents: [
             "Please transcribe the audio from this file, and describe any visual information if it is a video. Return the full text transcript.",
             { inlineData: { mimeType: "video/mp4", data: fileBuffer.toString("base64") } }

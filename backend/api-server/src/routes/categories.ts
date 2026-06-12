@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { db } from "@workspace/db";
-import { knowledgeCategories } from "@workspace/db/schema";
+import { knowledgeCategories, projects } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -15,10 +15,40 @@ const renameCategorySchema = z.object({
   name: z.string().min(1).max(255),
 });
 
+async function userOwnsProject(projectId: string, userId: string) {
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+  return Boolean(project);
+}
+
+async function userOwnsCategory(categoryId: string, userId: string) {
+  const [category] = await db
+    .select({ id: knowledgeCategories.id })
+    .from(knowledgeCategories)
+    .innerJoin(projects, eq(knowledgeCategories.projectId, projects.id))
+    .where(and(eq(knowledgeCategories.id, categoryId), eq(projects.userId, userId)));
+  return Boolean(category);
+}
+
 // Get categories for a project
 router.get("/project/:projectId", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { projectId } = req.params;
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const projectId = String(req.params.projectId);
+    if (!z.string().uuid().safeParse(projectId).success) {
+      res.status(400).json({ error: "Invalid project id" });
+      return;
+    }
+    if (!(await userOwnsProject(projectId, userId))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const categories = await db.query.knowledgeCategories.findMany({
       where: eq(knowledgeCategories.projectId, projectId as string),
       orderBy: (categories, { asc }) => [asc(categories.createdAt)],
@@ -33,7 +63,16 @@ router.get("/project/:projectId", async (req: Request, res: Response, next: Next
 // Create a category
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     const { projectId, name } = createCategorySchema.parse(req.body);
+    if (!(await userOwnsProject(projectId, userId))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const [category] = await db
       .insert(knowledgeCategories)
       .values({ projectId, name })
@@ -48,8 +87,21 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 // Rename a category
 router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const id = String(req.params.id);
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid category id" });
+      return;
+    }
     const { name } = renameCategorySchema.parse(req.body);
+    if (!(await userOwnsCategory(id, userId))) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
     const [category] = await db
       .update(knowledgeCategories)
       .set({ name, updatedAt: new Date() })
@@ -69,7 +121,20 @@ router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => 
 // Delete a category
 router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const id = String(req.params.id);
+    if (!z.string().uuid().safeParse(id).success) {
+      res.status(400).json({ error: "Invalid category id" });
+      return;
+    }
+    if (!(await userOwnsCategory(id, userId))) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
     const [deleted] = await db
       .delete(knowledgeCategories)
       .where(eq(knowledgeCategories.id, id as string))
