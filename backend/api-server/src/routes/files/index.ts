@@ -7,8 +7,9 @@ import { db } from "@workspace/db";
 import { knowledgeSources, projects } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
-import { processKnowledgeSource } from "../../services/knowledge";
+import { processKnowledgeSource, extractSourceContent } from "../../services/knowledge";
 import { extractYouTubeId } from "../../lib/youtube";
+import { ai } from "@workspace/integrations-gemini-ai";
 
 const router = Router();
 
@@ -116,6 +117,7 @@ router.post("/upload", (req, res, next) => {
         projectId,
         categoryId,
         tag: tag || null,
+        title: req.body.title || null,
         notes: notes || null,
         filename: originalname || null,
         fileId: fileId || null,
@@ -135,34 +137,96 @@ router.post("/upload", (req, res, next) => {
   }
 });
 
+// POST /files/analyze - Extract metadata before saving
+router.post("/analyze", upload.single("file"), async (req, res) => {
+  try {
+    const { sourceType, sourceUrl } = req.body;
+    let fileBuffer;
+    let filename;
+    let localPath;
+    
+    if (req.file) {
+      localPath = req.file.path;
+      fileBuffer = fs.readFileSync(localPath);
+      filename = req.file.originalname;
+    }
+
+    if (!sourceType) {
+      if (localPath) fs.unlinkSync(localPath);
+      res.status(400).json({ error: "Missing sourceType" });
+      return;
+    }
+
+    const extractedText = await extractSourceContent({
+      sourceType,
+      sourceUrl,
+      fileBuffer,
+      filename
+    });
+
+    if (localPath) fs.unlinkSync(localPath);
+
+    const prompt = `Based on the following extracted text from a knowledge source, suggest a concise title, 2-3 relevant tags, and brief summary notes. Return strictly valid JSON with keys: "title" (string), "tags" (comma-separated string), "notes" (string). \n\nText: ${extractedText.substring(0, 30000)}`;
+    
+    const userId = (req as any).auth?.userId || null;
+    const resAi = await ai.models.generateContent(userId, {
+      model: "gemini-1.5-pro",
+      contents: prompt
+    });
+
+    let result = { title: "", tags: "", notes: "" };
+    try {
+      const jsonStr = resAi.text?.replace(/```json/g, '').replace(/```/g, '').trim() || "{}";
+      result = JSON.parse(jsonStr);
+    } catch (e) {
+      logger.warn("Failed to parse JSON from AI suggestion");
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    req.log.error({ err }, "Error analyzing source");
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ error: err.message || "Failed to analyze source" });
+  }
+});
+
 // POST /files/url - Add non-file knowledge (Website, YouTube, Instagram, GitHub, Note)
 router.post("/url", async (req, res) => {
   try {
-    const { projectId, categoryId, tag, sourceType, sourceUrl, notes } = req.body;
+    const { projectId, categoryId, tag, sourceType, sourceUrl, sourceUrls, notes, title } = req.body;
     
     if (!projectId || !categoryId || !sourceType) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
 
+    const urlsToProcess = sourceUrls ? (Array.isArray(sourceUrls) ? sourceUrls : [sourceUrls]) : [sourceUrl];
+
     if (sourceType === "note" && !notes?.trim()) {
       res.status(400).json({ error: "Note content is required" });
       return;
     }
 
-    if (["website", "youtube", "github"].includes(sourceType) && !sourceUrl?.trim()) {
-      res.status(400).json({ error: "URL is required" });
-      return;
-    }
+    for (const url of urlsToProcess) {
+      if (["website", "youtube", "github", "instagram"].includes(sourceType) && !url?.trim()) {
+        res.status(400).json({ error: "URL is required" });
+        return;
+      }
 
-    if (sourceType === "youtube" && !extractYouTubeId(sourceUrl.trim())) {
-      res.status(400).json({ error: "Invalid YouTube URL" });
-      return;
-    }
+      if (sourceType === "youtube" && !extractYouTubeId(url.trim())) {
+        res.status(400).json({ error: "Invalid YouTube URL" });
+        return;
+      }
 
-    if (sourceType === "github" && !sourceUrl.trim().match(/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/i)) {
-      res.status(400).json({ error: "Invalid GitHub repository URL" });
-      return;
+      if (sourceType === "github" && !url.trim().match(/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/i)) {
+        res.status(400).json({ error: "Invalid GitHub repository URL" });
+        return;
+      }
+
+      if (sourceType === "instagram" && !url.trim().match(/^https?:\/\/(www\.)?instagram\.com\/.*$/i)) {
+        res.status(400).json({ error: "Invalid Instagram URL" });
+        return;
+      }
     }
 
     const userId = (req as any).auth?.userId;
@@ -177,24 +241,29 @@ router.post("/url", async (req, res) => {
       return;
     }
 
-    const [record] = await db
-      .insert(knowledgeSources)
-      .values({
-        projectId,
-        categoryId,
-        tag: tag || null,
-        sourceType,
-        sourceUrl: sourceUrl || null,
-        notes: notes || null,
-        status: "pending",
-      })
-      .returning();
+    const records = [];
+    for (const url of urlsToProcess) {
+      const [record] = await db
+        .insert(knowledgeSources)
+        .values({
+          projectId,
+          categoryId,
+          tag: tag || null,
+          title: title || null,
+          sourceType,
+          sourceUrl: url || null,
+          notes: notes || null,
+          status: "pending",
+        })
+        .returning();
 
-    processKnowledgeSource(record.id).catch((e) => {
-      req.log.error({ err: e }, "Async processing failed for source");
-    });
+      processKnowledgeSource(record.id).catch((e) => {
+        req.log.error({ err: e }, "Async processing failed for source");
+      });
+      records.push(record);
+    }
 
-    res.status(201).json(record);
+    res.status(201).json(records.length === 1 ? records[0] : records);
   } catch (err) {
     req.log.error({ err }, "Error saving source");
     res.status(500).json({ error: "Internal server error" });
@@ -330,7 +399,7 @@ router.patch("/:id", async (req, res) => {
       }
       updates.notes = notes;
     }
-    if (sourceUrl !== undefined && ["website", "youtube", "github"].includes(existing.sourceType)) {
+    if (sourceUrl !== undefined && ["website", "youtube", "github", "instagram"].includes(existing.sourceType)) {
       if (!sourceUrl.trim()) {
         res.status(400).json({ error: "URL cannot be empty" });
         return;
@@ -341,6 +410,10 @@ router.patch("/:id", async (req, res) => {
       }
       if (existing.sourceType === "github" && !sourceUrl.trim().match(/^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+/i)) {
         res.status(400).json({ error: "Invalid GitHub repository URL" });
+        return;
+      }
+      if (existing.sourceType === "instagram" && !sourceUrl.trim().match(/^https?:\/\/(www\.)?instagram\.com\/.*$/i)) {
+        res.status(400).json({ error: "Invalid Instagram URL" });
         return;
       }
       updates.sourceUrl = sourceUrl.trim();

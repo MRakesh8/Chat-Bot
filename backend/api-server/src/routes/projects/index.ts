@@ -193,7 +193,7 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
     
     // Embed and insert each message as a knowledge chunk
     for (const content of contents) {
-      const embedRes = await ai.models.embedContent({
+      const embedRes = await ai.models.embedContent(userId, {
         model: "gemini-embedding-2",
         contents: content,
         config: { outputDimensionality: 768 },
@@ -314,11 +314,11 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
   return [];
 }
 
-async function buildProjectKnowledgeContext(projectId: string, query: string): Promise<string> {
+async function buildProjectKnowledgeContext(projectId: string, userId: string, query: string): Promise<string> {
   if (!query.trim()) return "";
 
   try {
-    const embedRes = await ai.models.embedContent({
+    const embedRes = await ai.models.embedContent(userId, {
       model: "gemini-embedding-2",
       contents: query,
       config: { outputDimensionality: 768 },
@@ -402,7 +402,7 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
     // Build multimodal parts for current message
     const fileParts = fileIds && fileIds.length > 0 ? await buildFileParts(fileIds) : [];
     const youtubeContext = messageContent ? await fetchYouTubeTranscriptsForMessage(messageContent) : "";
-    const ragContext = await buildProjectKnowledgeContext(project.id, messageContent);
+    const ragContext = await buildProjectKnowledgeContext(project.id, project.userId, messageContent);
 
     const currentParts: GeminiPart[] = [
       ...fileParts,
@@ -430,7 +430,7 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
 
     let fullResponse = "";
 
-    const stream = await ai.models.generateContentStream({
+    const stream = await ai.models.generateContentStream(project.userId, {
       model: "gemini-2.5-flash",
       contents: chatMessages,
       config: { maxOutputTokens: 8192 },

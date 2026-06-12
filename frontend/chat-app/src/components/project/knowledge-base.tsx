@@ -91,6 +91,8 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   const [githubUrl, setGithubUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [tag, setTag] = useState("");
+  const [draftData, setDraftData] = useState<{ title: string; tags: string; notes: string; file?: File; sourceUrl?: string; sourceType?: string } | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,32 +162,129 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   });
 
   // --- MUTATIONS: KNOWLEDGE ---
+  const analyzeMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      let res;
+      if (payload instanceof FormData) {
+        res = await authFetch(apiUrl("/api/files/analyze"), { method: "POST", body: payload });
+      } else {
+        res = await authFetch(apiUrl("/api/files/analyze"), { method: "POST", body: JSON.stringify(payload) });
+      }
+      if (!res.ok) throw new Error(await parseApiError(res, "Analysis failed"));
+      return res.json();
+    },
+    onSuccess: (data, variables) => {
+      let sourceType = "";
+      let sourceUrl = "";
+      let file = undefined;
+      
+      if (variables instanceof FormData) {
+        sourceType = "file";
+        file = variables.get("file") as File;
+      } else {
+        sourceType = variables.sourceType;
+        sourceUrl = variables.sourceUrl;
+      }
+      
+      setDraftData({
+        title: data.title || "",
+        tags: data.tags || "",
+        notes: data.notes || "",
+        file,
+        sourceType,
+        sourceUrl
+      });
+      setIsAnalyzing(false);
+    },
+    onError: (err: any) => {
+      setIsAnalyzing(false);
+      toast({ title: "Analysis Error", description: err.message, variant: "destructive" });
+    }
+  });
+
+  const handleAnalyze = async (type: string, url?: string, file?: File) => {
+    setIsAnalyzing(true);
+    if (file) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("sourceType", "file");
+      analyzeMutation.mutate(formData);
+    } else if (url) {
+      analyzeMutation.mutate({ sourceType: type, sourceUrl: url });
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!draftData || !activeCategoryId) return;
+    
+    if (draftData.file) {
+      const formData = new FormData();
+      formData.append("file", draftData.file);
+      formData.append("projectId", projectId);
+      formData.append("categoryId", activeCategoryId);
+      formData.append("title", draftData.title);
+      if (draftData.tags) formData.append("tag", draftData.tags);
+      if (draftData.notes) formData.append("notes", draftData.notes);
+      
+      setIsUploadingFile(true);
+      try {
+        const res = await authFetch(apiUrl("/api/files/upload"), {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) throw new Error(await parseApiError(res, "Failed to upload file"));
+        toast({ title: "File Uploaded", description: "Processing in the background." });
+        resetAddForm();
+      } catch (err: any) {
+        toast({ title: "Upload Error", description: err.message, variant: "destructive" });
+      } finally {
+        setIsUploadingFile(false);
+      }
+    } else {
+      addSourceUrlMutation.mutate({
+        sourceType: draftData.sourceType!,
+        sourceUrl: draftData.sourceUrl!,
+        notesText: draftData.notes,
+        // @ts-ignore
+        title: draftData.title,
+        tag: draftData.tags
+      });
+    }
+  };
+
+  const resetAddForm = () => {
+    setIsAddKnowledgeOpen(false);
+    setDraftData(null);
+    setWebsiteUrl("");
+    setVideoUrl("");
+    setGithubUrl("");
+    setNotes("");
+    setTag("");
+    queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
+  };
+
   const addSourceUrlMutation = useMutation({
-    mutationFn: async ({ sourceUrl, sourceType, notesText }: { sourceUrl?: string; sourceType: string; notesText?: string }) => {
+    mutationFn: async ({ sourceUrl, sourceUrls, sourceType, notesText, title, tag }: any) => {
       if (!activeCategoryId) throw new Error("Please select a category first");
       const res = await authFetch(apiUrl("/api/files/url"), {
         method: "POST",
         body: JSON.stringify({
           projectId,
           categoryId: activeCategoryId,
-          tag: tag.trim() || undefined,
+          tag: tag?.trim() || undefined,
           sourceType,
           sourceUrl: sourceUrl?.trim(),
+          sourceUrls,
           notes: notesText?.trim(),
+          title: title?.trim(),
         }),
       });
       if (!res.ok) throw new Error(await parseApiError(res, "Failed to add source"));
       return res.json();
     },
     onSuccess: () => {
-      setWebsiteUrl("");
-      setVideoUrl("");
-      setGithubUrl("");
-      setNotes("");
-      setTag("");
-      setIsAddKnowledgeOpen(false);
+      resetAddForm();
       toast({ title: "Knowledge Added", description: "Processing in the background." });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -294,29 +393,8 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("projectId", projectId);
-    formData.append("categoryId", activeCategoryId);
-    if (tag.trim()) formData.append("tag", tag.trim());
-
-    setIsUploadingFile(true);
-    try {
-      const res = await authFetch(apiUrl("/api/files/upload"), {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error(await parseApiError(res, "Failed to upload file"));
-      toast({ title: "File Uploaded", description: "Processing in the background." });
-      setIsAddKnowledgeOpen(false);
-      setTag("");
-      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
-    } catch (err: any) {
-      toast({ title: "Upload Error", description: err.message, variant: "destructive" });
-    } finally {
-      setIsUploadingFile(false);
-      e.target.value = "";
-    }
+    handleAnalyze("file", undefined, file);
+    e.target.value = "";
   };
 
   const getIcon = (type: string) => {
@@ -440,53 +518,92 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                     </div>
                     
                     <Tabs defaultValue="file" className="w-full">
-                      <TabsList className="grid w-full grid-cols-5 mb-4 h-auto">
-                        <TabsTrigger value="file" className="text-xs sm:text-sm">File</TabsTrigger>
-                        <TabsTrigger value="website" className="text-xs sm:text-sm">Website</TabsTrigger>
-                        <TabsTrigger value="video" className="text-xs sm:text-sm">Video</TabsTrigger>
-                        <TabsTrigger value="github" className="text-xs sm:text-sm">GitHub</TabsTrigger>
-                        <TabsTrigger value="note" className="text-xs sm:text-sm">Note</TabsTrigger>
-                      </TabsList>
-                      
-                      <TabsContent value="file" className="space-y-4">
-                        <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center text-center bg-muted/30 hover:bg-muted/50 transition-colors">
-                          <Upload className="w-8 h-8 text-muted-foreground mb-4" />
-                          <p className="text-sm font-medium mb-1">Click to upload a file</p>
-                          <p className="text-xs text-muted-foreground mb-4">Supports PDF, DOCX, TXT, CSV, MP4, MP3, Images, ZIP</p>
-                          <Button
-                            type="button"
-                            disabled={isUploadingFile}
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                            {isUploadingFile ? "Uploading..." : "Select File"}
-                          </Button>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            className="hidden"
-                            accept=".pdf,.docx,.txt,.md,.csv,.pptx,.mp4,.mp3,.wav,.mov,.webm,.png,.jpg,.jpeg,.webp,.zip"
-                            onChange={handleFileUpload}
-                            disabled={isUploadingFile}
-                          />
+                      {draftData ? (
+                        <div className="space-y-4 mt-4">
+                          <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground border border-border">
+                            Review the AI-suggested metadata before saving. You can edit these fields.
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Title</label>
+                            <Input value={draftData.title} onChange={(e) => setDraftData({ ...draftData, title: e.target.value })} />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Tags (Comma-separated)</label>
+                            <Input value={draftData.tags} onChange={(e) => setDraftData({ ...draftData, tags: e.target.value })} />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Summary Notes</label>
+                            <Textarea className="min-h-[100px]" value={draftData.notes} onChange={(e) => setDraftData({ ...draftData, notes: e.target.value })} />
+                          </div>
+                          <div className="flex gap-2 justify-end pt-4">
+                            <Button variant="ghost" onClick={() => setDraftData(null)}>Cancel</Button>
+                            <Button onClick={handleSaveDraft} disabled={isUploadingFile || addSourceUrlMutation.isPending}>
+                              {isUploadingFile || addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                              Save Knowledge
+                            </Button>
+                          </div>
                         </div>
-                      </TabsContent>
-                      
-                      <TabsContent value="website" className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Website URL</label>
-                          <Input placeholder="https://example.com/docs" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} />
-                          <p className="text-xs text-muted-foreground">Add a web page to scrape and index its content.</p>
+                      ) : isAnalyzing ? (
+                        <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                           <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                           <p className="text-sm font-medium text-muted-foreground animate-pulse">AI is analyzing content and generating suggestions...</p>
                         </div>
-                        <Button
-                          className="w-full"
-                          onClick={() => addSourceUrlMutation.mutate({ sourceUrl: websiteUrl, sourceType: "website" })}
-                          disabled={!websiteUrl.trim() || addSourceUrlMutation.isPending}
-                        >
-                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                          Add Website
-                        </Button>
-                      </TabsContent>
+                      ) : (
+                        <>
+                          <TabsList className="grid w-full grid-cols-5 mb-4 h-auto">
+                            <TabsTrigger value="file" className="text-xs sm:text-sm">File</TabsTrigger>
+                            <TabsTrigger value="website" className="text-xs sm:text-sm">Website</TabsTrigger>
+                            <TabsTrigger value="video" className="text-xs sm:text-sm">Video</TabsTrigger>
+                            <TabsTrigger value="github" className="text-xs sm:text-sm">GitHub</TabsTrigger>
+                            <TabsTrigger value="note" className="text-xs sm:text-sm">Note</TabsTrigger>
+                          </TabsList>
+                          
+                          <TabsContent value="file" className="space-y-4">
+                            <div className="border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center text-center bg-muted/30 hover:bg-muted/50 transition-colors">
+                              <Upload className="w-8 h-8 text-muted-foreground mb-4" />
+                              <p className="text-sm font-medium mb-1">Click to upload a file</p>
+                              <p className="text-xs text-muted-foreground mb-4">Supports PDF, DOCX, TXT, CSV, MP4, MP3, Images, ZIP</p>
+                              <Button
+                                type="button"
+                                disabled={isUploadingFile}
+                                onClick={() => fileInputRef.current?.click()}
+                              >
+                                {isUploadingFile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                {isUploadingFile ? "Uploading..." : "Select File"}
+                              </Button>
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                className="hidden"
+                                accept=".pdf,.docx,.txt,.md,.csv,.pptx,.mp4,.mp3,.wav,.mov,.webm,.png,.jpg,.jpeg,.webp,.zip"
+                                onChange={handleFileUpload}
+                                disabled={isUploadingFile}
+                              />
+                            </div>
+                          </TabsContent>
+                          
+                          <TabsContent value="website" className="space-y-4">
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Website URL</label>
+                              <Textarea placeholder="https://example.com/docs&#10;https://example.com/guide&#10;(one URL per line)" className="min-h-[100px]" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} />
+                              <p className="text-xs text-muted-foreground">Add web pages to scrape and index their content.</p>
+                            </div>
+                            <Button
+                              className="w-full"
+                              onClick={() => {
+                                const urls = websiteUrl.split('\n').filter(u => u.trim());
+                                if (urls.length === 1) {
+                                  handleAnalyze("website", urls[0]);
+                                } else {
+                                  addSourceUrlMutation.mutate({ sourceType: "website", sourceUrls: urls } as any);
+                                }
+                              }}
+                              disabled={!websiteUrl.trim() || addSourceUrlMutation.isPending || isAnalyzing}
+                            >
+                              {(addSourceUrlMutation.isPending || isAnalyzing) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                              Add Website
+                            </Button>
+                          </TabsContent>
 
                       <TabsContent value="video" className="space-y-4">
                         <div className="space-y-2">
@@ -501,11 +618,11 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                               toast({ title: "Error", description: "Please enter a valid YouTube URL", variant: "destructive" });
                               return;
                             }
-                            addSourceUrlMutation.mutate({ sourceUrl: videoUrl, sourceType: "youtube" });
+                            handleAnalyze("youtube", videoUrl);
                           }}
-                          disabled={!videoUrl.trim() || addSourceUrlMutation.isPending}
+                          disabled={!videoUrl.trim() || addSourceUrlMutation.isPending || isAnalyzing}
                         >
-                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          {(addSourceUrlMutation.isPending || isAnalyzing) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Add Video
                         </Button>
                       </TabsContent>
@@ -522,11 +639,11 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                               toast({ title: "Error", description: "Please enter a valid GitHub repository URL", variant: "destructive" });
                               return;
                             }
-                            addSourceUrlMutation.mutate({ sourceUrl: githubUrl, sourceType: "github" });
+                            handleAnalyze("github", githubUrl);
                           }}
-                          disabled={!githubUrl.trim() || addSourceUrlMutation.isPending}
+                          disabled={!githubUrl.trim() || addSourceUrlMutation.isPending || isAnalyzing}
                         >
-                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          {(addSourceUrlMutation.isPending || isAnalyzing) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Add Repository
                         </Button>
                       </TabsContent>
@@ -550,6 +667,8 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           Save Note
                         </Button>
                       </TabsContent>
+                        </>
+                      )}
                     </Tabs>
                   </div>
                 </DialogContent>

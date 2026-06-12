@@ -347,36 +347,75 @@ router.post("/conversations/:id/messages", async (req, res) => {
     // Vector Search (RAG)
     let ragContext = "";
     try {
-      const embedRes = await ai.models.embedContent({
-        model: "gemini-embedding-2",
-        contents: content,
-        config: { outputDimensionality: 768 },
-      });
-      const userVector = embedRes.embeddings?.[0]?.values;
-      
-      if (userVector && validProjectIds.length > 0) {
-        const { sql } = require("drizzle-orm");
-        const { knowledgeChunks } = require("@workspace/db");
-        
-        let similarChunks = await db
-          .select()
-          .from(knowledgeChunks)
-          .where(and(inArray(knowledgeChunks.projectId, validProjectIds), isNotNull(knowledgeChunks.embedding)))
-          .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
-          .limit(10);
+      const { sql, ilike } = require("drizzle-orm");
+      const { knowledgeChunks, knowledgeSources, knowledgeCategories } = require("@workspace/db");
 
-        if (similarChunks.length === 0) {
+      if (validProjectIds.length > 0) {
+        // Keyword extraction for simple keyword matching
+        const words = content.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((w: string) => w.length > 3).slice(0, 5);
+        
+        // Find exact/partial metadata matches (Category, Tag, Title, Notes)
+        let metadataMatches = [];
+        if (words.length > 0) {
+          const conditions = words.map((w: string) => 
+            or(
+              ilike(knowledgeSources.tag, `%${w}%`),
+              ilike(knowledgeSources.title, `%${w}%`),
+              ilike(knowledgeSources.notes, `%${w}%`)
+            )
+          );
+          
+          metadataMatches = await db
+            .select({
+              id: knowledgeSources.id,
+              title: knowledgeSources.title,
+              tag: knowledgeSources.tag,
+              notes: knowledgeSources.notes,
+              sourceType: knowledgeSources.sourceType,
+              sourceUrl: knowledgeSources.sourceUrl,
+            })
+            .from(knowledgeSources)
+            .where(and(inArray(knowledgeSources.projectId, validProjectIds), or(...conditions)))
+            .limit(5);
+        }
+
+        // Vector Search for content matches
+        const embedRes = await ai.models.embedContent(userId, {
+          model: "gemini-embedding-2",
+          contents: content,
+          config: { outputDimensionality: 768 },
+        });
+        const userVector = embedRes.embeddings?.[0]?.values;
+        
+        let similarChunks: any[] = [];
+        if (userVector) {
           similarChunks = await db
-            .select()
+            .select({
+               chunkText: knowledgeChunks.chunkText,
+               sourceId: knowledgeChunks.knowledgeSourceId
+            })
             .from(knowledgeChunks)
-            .where(inArray(knowledgeChunks.projectId, validProjectIds))
-            .orderBy(desc(knowledgeChunks.createdAt))
+            .where(and(inArray(knowledgeChunks.projectId, validProjectIds), isNotNull(knowledgeChunks.embedding)))
+            .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
             .limit(10);
         }
+        
+        if (metadataMatches.length > 0 || similarChunks.length > 0) {
+          ragContext = "Here is the retrieved knowledge from the project (Priority: Meta/Title Matches > Content Matches):\n\n";
           
-        if (similarChunks.length > 0) {
-          ragContext = "Here are retrieved file/chat knowledge chunks from the selected projects. This is part of Project Knowledge, alongside each project's Knowledge & Instructions:\n\n" + 
-            similarChunks.map((c: any) => `--- Retrieved Chunk ---\n${c.chunkText}`).join("\n\n");
+          if (metadataMatches.length > 0) {
+            ragContext += "--- Top Metadata/Title Matches ---\n";
+            metadataMatches.forEach((m: any) => {
+               ragContext += `Title: ${m.title || 'Untitled'}\nType: ${m.sourceType}\nTags: ${m.tag || 'None'}\nNotes/Summary: ${m.notes || 'None'}\nURL: ${m.sourceUrl || 'N/A'}\n\n`;
+            });
+          }
+
+          if (similarChunks.length > 0) {
+             ragContext += "--- Top Content (Vector) Matches ---\n";
+             similarChunks.forEach((c: any) => {
+               ragContext += `Content Snippet:\n${c.chunkText}\n\n`;
+             });
+          }
         }
       }
     } catch (err) {
@@ -425,7 +464,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
     let fullResponse = "";
 
-    const stream = await ai.models.generateContentStream({
+    const stream = await ai.models.generateContentStream(userId, {
       model: "gemini-2.5-flash",
       contents: chatMessages,
       config: { maxOutputTokens: 8192 },
@@ -469,17 +508,17 @@ router.post("/conversations/:id/messages", async (req, res) => {
     req.log.error({ err }, "Error in streaming message");
     
     const status = err?.status || err?.response?.status;
-    const isRateLimited = status === 429 || err?.message?.includes("429");
+    const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
 
     if (!res.headersSent) {
-      if (isRateLimited) {
-        res.status(429).json({ error: "AI service is busy. Please try again later." });
+      if (isBusy) {
+        res.status(503).json({ error: "AI service is temporarily busy. Please try again in a few moments." });
       } else {
         res.status(500).json({ error: "Internal server error" });
       }
     } else {
-      if (isRateLimited) {
-        res.write(`data: ${JSON.stringify({ error: "AI service is busy. Please try again later." })}\n\n`);
+      if (isBusy) {
+        res.write(`data: ${JSON.stringify({ error: "AI service is temporarily busy. Please try again in a few moments." })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
       }

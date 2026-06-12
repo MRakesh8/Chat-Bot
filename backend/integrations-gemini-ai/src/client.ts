@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { db, apiKeys, userApiSettings } from "@workspace/db";
+import { eq, and, isNull, asc } from "drizzle-orm";
 
 if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
   throw new Error(
@@ -8,135 +10,175 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
-// Load all available API keys from environment variables
-const API_KEYS = [
-  process.env.GEMINI_API_KEY_1,
-  process.env.GEMINI_API_KEY_2,
-  process.env.GEMINI_API_KEY_3,
-  process.env.AI_INTEGRATIONS_GEMINI_API_KEY // keep original as fallback
-].filter(Boolean) as string[];
-
-if (API_KEYS.length === 0) {
-  console.warn("No GEMINI_API_KEY_* or AI_INTEGRATIONS_GEMINI_API_KEY set. Using fallback free key.");
-  API_KEYS.push("YOUR_FREE_GEMINI_API_KEY");
-}
-
-// Global state for round-robin rotation
-let currentKeyIndex = 0;
-
-// Create client instances for each key
-const clients = API_KEYS.map(key => new GoogleGenAI({
-  apiKey: key,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: baseUrl,
-  },
-}));
-
 // Models for fallback
 const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
 
-// Helper to determine if an error is a 429 or 404
-const isRateLimitOrNotFoundError = (err: any) => {
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const isRetryableError = (err: any) => {
   const status = err?.status || err?.response?.status;
-  return status === 429 || status === 404 || err?.message?.includes("429") || err?.message?.includes("404");
+  return status === 429 || status === 404 || status === 503 || 
+         err?.message?.includes("429") || err?.message?.includes("404") || err?.message?.includes("503") || err?.message?.includes("timeout");
 };
 
 class GeminiFailoverModels {
-  async generateContent(options: any) {
-    return this._executeWithFailover('generateContent', options);
+  async generateContent(userId: string | null, options: any) {
+    return this._executeWithRouting(userId, 'generateContent', options);
   }
 
-  async generateContentStream(options: any) {
-    return this._executeWithFailover('generateContentStream', options);
+  async generateContentStream(userId: string | null, options: any) {
+    return this._executeWithRouting(userId, 'generateContentStream', options);
   }
 
-  async embedContent(options: any) {
-    // Embeddings just rotate keys, no model fallback
-    return this._executeKeyRotationOnly('embedContent', options);
+  async embedContent(userId: string | null, options: any) {
+    return this._executeWithRouting(userId, 'embedContent', options);
   }
 
-  private async _executeWithFailover(method: 'generateContent' | 'generateContentStream', options: any) {
-    const originalModel = options.model || "gemini-2.5-flash";
-    const modelsToTry = FALLBACK_MODELS.includes(originalModel) ? FALLBACK_MODELS : [originalModel];
+  private async _fetchAndResetKeys(userId: string | null) {
+    // 1. Fetch Mode
+    let mode = "auto";
+    if (userId) {
+      const settings = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
+      if (settings.length > 0) mode = settings[0].apiMode;
+    }
+
+    // 2. Fetch Keys
+    let userKeys: any[] = [];
+    if (userId) {
+       userKeys = await db.select().from(apiKeys).where(eq(apiKeys.userId, userId));
+    }
+    const systemKeys = await db.select().from(apiKeys).where(isNull(apiKeys.userId));
     
-    // We will iterate across all keys, and for each key, across all models
-    // Max attempts = number of keys * number of models
-    let attemptCount = 0;
-    const maxAttempts = clients.length * modelsToTry.length;
+    let keys = [...userKeys, ...systemKeys];
 
-    while (attemptCount < maxAttempts) {
-      // Calculate current key and model
-      const keyIndex = (currentKeyIndex + Math.floor(attemptCount / modelsToTry.length)) % clients.length;
-      const modelIndex = attemptCount % modelsToTry.length;
-      const modelToUse = modelsToTry[modelIndex];
-
-      const client = clients[keyIndex];
-      const attemptOptions = { ...options, model: modelToUse };
-
-      try {
-        console.log(`[Gemini] Attempt ${attemptCount + 1}/${maxAttempts} - Key Index: ${keyIndex}, Model: ${modelToUse}`);
-        const result = await (client.models[method] as any)(attemptOptions);
-        
-        // If successful, advance the global round-robin index for the NEXT request
-        if (attemptCount === 0) {
-           // Advance globally only on first attempt success to maintain round robin
-           currentKeyIndex = (currentKeyIndex + 1) % clients.length;
-        } else {
-           // If we fell back, start next request from the next working key
-           currentKeyIndex = (keyIndex + 1) % clients.length;
-        }
-
-        console.log(`[Gemini] Success on Attempt ${attemptCount + 1}`);
-        return result;
-      } catch (err: any) {
-        if (isRateLimitOrNotFoundError(err)) {
-          console.warn(`[Gemini] Rate limit hit on Attempt ${attemptCount + 1} (Key ${keyIndex}, Model ${modelToUse})`);
-          attemptCount++;
-        } else {
-          // If it's not a rate limit error (e.g. bad request, parsing error), throw immediately
-          console.error(`[Gemini] Non-429 error on Attempt ${attemptCount + 1}:`, err.message);
-          throw err;
-        }
-      }
+    // 3. Reset logic
+    const now = new Date();
+    for (const key of keys) {
+       // Reset if it's a new day (simple UTC check for now)
+       if (key.lastResetAt.getUTCDate() !== now.getUTCDate() || key.lastResetAt.getUTCMonth() !== now.getUTCMonth()) {
+         await db.update(apiKeys).set({
+           dailyUsed: 0,
+           status: "healthy",
+           cooldownUntil: null,
+           lastResetAt: now
+         }).where(eq(apiKeys.id, key.id));
+         key.dailyUsed = 0;
+         key.status = "healthy";
+         key.cooldownUntil = null;
+         key.lastResetAt = now;
+       } else if (key.status === "cooldown" && key.cooldownUntil && now > key.cooldownUntil) {
+         await db.update(apiKeys).set({ status: "healthy", cooldownUntil: null }).where(eq(apiKeys.id, key.id));
+         key.status = "healthy";
+         key.cooldownUntil = null;
+       }
     }
 
-    console.error("[Gemini] All keys and fallback models exhausted due to rate limits.");
-    // Throw an explicit error object with status 429 so route handlers can catch it
-    throw { status: 429, message: "AI service is busy. Please try again in a few moments." };
+    // Filter available
+    let availableKeys = keys.filter(k => k.status === "healthy");
+
+    // 4. Sort based on mode
+    if (mode === "auto") {
+      // Auto: User keys first, then System keys
+      availableKeys.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1));
+    } else if (mode === "user_first") {
+      availableKeys.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1));
+    } else if (mode === "system_first") {
+      availableKeys.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? -1 : 1));
+    }
+
+    return availableKeys;
   }
 
-  private async _executeKeyRotationOnly(method: 'embedContent', options: any) {
-    let attemptCount = 0;
-    const maxAttempts = clients.length;
+  private async _updateKeyFailure(key: any, errorType: 'timeout' | '429' | 'other', errMessage: string) {
+    const now = new Date();
+    let cooldownMinutes = 0;
+    let status = "cooldown";
 
-    while (attemptCount < maxAttempts) {
-      const keyIndex = (currentKeyIndex + attemptCount) % clients.length;
-      const client = clients[keyIndex];
+    if (errorType === 'timeout') cooldownMinutes = 2;
+    else if (errorType === '429') cooldownMinutes = 15;
+    else {
+      cooldownMinutes = 1;
+    }
 
-      try {
-        console.log(`[Gemini Embedding] Attempt ${attemptCount + 1}/${maxAttempts} - Key Index: ${keyIndex}`);
-        const result = await (client.models[method] as any)(options);
+    const cooldownUntil = new Date(now.getTime() + cooldownMinutes * 60000);
+    
+    await db.update(apiKeys).set({
+      status,
+      cooldownUntil,
+      lastError: errMessage,
+    }).where(eq(apiKeys.id, key.id));
+  }
+
+  private async _updateKeySuccess(key: any) {
+    const now = new Date();
+    const newUsed = key.dailyUsed + 1;
+    let status = "healthy";
+
+    if (key.dailyLimit !== null && newUsed >= key.dailyLimit) {
+      status = "exhausted";
+    }
+
+    await db.update(apiKeys).set({
+      dailyUsed: newUsed,
+      lastSuccess: now,
+      status
+    }).where(eq(apiKeys.id, key.id));
+  }
+
+  private async _executeWithRouting(userId: string | null, method: 'generateContent' | 'generateContentStream' | 'embedContent', options: any) {
+    const keys = await this._fetchAndResetKeys(userId);
+
+    if (keys.length === 0) {
+      throw { status: 503, message: "AI service is currently unavailable. Please try again later or add your own API key." };
+    }
+
+    const originalModel = options.model || "gemini-2.5-flash";
+    const modelsToTry = (method !== 'embedContent' && FALLBACK_MODELS.includes(originalModel)) ? FALLBACK_MODELS : [originalModel];
+    
+    for (const key of keys) {
+      const client = new GoogleGenAI({
+        apiKey: key.apiKey,
+        httpOptions: { apiVersion: "", baseUrl: baseUrl }
+      });
+
+      for (const modelToUse of modelsToTry) {
+        const attemptOptions = { ...options, model: modelToUse };
         
-        if (attemptCount === 0) {
-           currentKeyIndex = (currentKeyIndex + 1) % clients.length;
-        } else {
-           currentKeyIndex = (keyIndex + 1) % clients.length;
-        }
+        try {
+          console.log(`[Gemini Routing] Trying Key \${key.id} (System: \${key.isSystem}) with Model \${modelToUse}`);
+          
+          let result;
+          if (method === 'generateContent') result = await client.models.generateContent(attemptOptions);
+          else if (method === 'generateContentStream') result = await client.models.generateContentStream(attemptOptions);
+          else if (method === 'embedContent') result = await client.models.embedContent(attemptOptions as any);
 
-        return result;
-      } catch (err: any) {
-        if (isRateLimitOrNotFoundError(err)) {
-          console.warn(`[Gemini Embedding] Rate limit hit on Attempt ${attemptCount + 1} (Key ${keyIndex})`);
-          attemptCount++;
-        } else {
-          throw err;
+          await this._updateKeySuccess(key);
+          return result;
+        } catch (err: any) {
+          const status = err?.status || err?.response?.status;
+          const isTimeout = err?.message?.toLowerCase().includes("timeout");
+          
+          if (status === 429) {
+            console.warn(`[Gemini Routing] Rate Limit on Key \${key.id}`);
+            await this._updateKeyFailure(key, '429', err.message);
+            break; // Move to next key
+          } else if (isTimeout) {
+            console.warn(`[Gemini Routing] Timeout on Key \${key.id}`);
+            await this._updateKeyFailure(key, 'timeout', err.message);
+            break; // Move to next key
+          } else if (isRetryableError(err)) {
+            console.warn(`[Gemini Routing] Retryable error on Key \${key.id}`);
+            await this._updateKeyFailure(key, 'other', err.message);
+            break; // Move to next key
+          } else {
+            // Unrecoverable error (e.g. 400 Bad Request)
+            throw err;
+          }
         }
       }
     }
 
-    console.error("[Gemini Embedding] All keys exhausted due to rate limits.");
-    throw { status: 429, message: "AI service is busy. Please try again in a few moments." };
+    throw { status: 503, message: "AI service is currently unavailable. Please try again later or add your own API key." };
   }
 }
 

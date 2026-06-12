@@ -6,6 +6,7 @@ import filesRouter from "./files";
 import projectsRouter from "./projects";
 import reportsRouter from "./reports";
 import categoriesRouter from "./categories";
+import apiKeysRouter from "./api-keys";
 
 const router: IRouter = Router();
 
@@ -15,5 +16,6 @@ router.use("/files", filesRouter);
 router.use("/projects", projectsRouter);
 router.use("/reports", reportsRouter);
 router.use("/categories", categoriesRouter);
+router.use("/api-keys", apiKeysRouter);
 
 export default router;

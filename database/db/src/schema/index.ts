@@ -68,6 +68,7 @@ export const knowledgeSources = pgTable("knowledge_sources", {
   categoryId: uuid("category_id")
     .references(() => knowledgeCategories.id, { onDelete: "set null" }),
   tag: varchar("tag", { length: 255 }),
+  title: text("title"),
   filename: text("filename"), // Optional, if it's a file
   sourceUrl: text("source_url"), // For website, youtube, etc.
   fileId: varchar("file_id", { length: 255 }), // Storage ID if uploaded
@@ -140,10 +141,34 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }), // null = system key
+  keyName: varchar("key_name", { length: 255 }),
+  apiKey: text("api_key").notNull(),
+  isSystem: boolean("is_system").default(false).notNull(),
+  dailyLimit: integer("daily_limit"), // null = no limit (for user keys), 20 for system keys
+  dailyUsed: integer("daily_used").default(0).notNull(),
+  lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
+  cooldownUntil: timestamp("cooldown_until"),
+  lastError: text("last_error"),
+  lastSuccess: timestamp("last_success"),
+  status: varchar("status", { length: 50 }).default("healthy").notNull(), // healthy, cooldown, exhausted, disabled
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const userApiSettings = pgTable("user_api_settings", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  apiMode: varchar("api_mode", { length: 50 }).default("auto").notNull(), // auto, user_first, system_first
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
   auditLogs: many(auditLogs),
+  apiKeys: many(apiKeys),
+  apiSettings: one(userApiSettings, { fields: [users.id], references: [userApiSettings.userId] }),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
