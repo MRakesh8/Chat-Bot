@@ -1,10 +1,12 @@
 import pg from "pg";
+import { config } from "dotenv";
+config({ path: "../../.env" });
 
 const { Client } = pg;
 
 async function setup() {
   const client = new Client({
-    connectionString: "postgresql://postgres:3MKhSQsllY88rei4@db.dirvyhkvyplwtnenbuqo.supabase.co:5432/postgres",
+    connectionString: process.env.DATABASE_URL,
   });
 
   try {

@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/sidebar";
 import { useTheme } from "@/contexts/ThemeContext";
+import { ApiKeysSettings } from "@/components/ApiKeysSettings";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -51,6 +52,8 @@ export default function SettingsPage() {
               <button disabled className="px-3 py-1.5 bg-muted rounded-md text-sm text-foreground">Select</button>
             </div>
           </section>
+
+          <ApiKeysSettings />
         </div>
       </div>
     </div>
