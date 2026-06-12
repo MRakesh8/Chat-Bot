@@ -1,11 +1,44 @@
-import { db, knowledgeChunks, knowledgeSources, projects } from "@workspace/db";
+import { db, knowledgeCategories, knowledgeChunks, knowledgeSources, projects } from "@workspace/db";
 import { supabaseAdmin } from "../lib/supabase";
 import { ai } from "@workspace/integrations-gemini-ai";
 import mammoth from "mammoth";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql, or, ilike } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { extractYouTubeId, fetchYouTubeTranscriptText } from "../lib/youtube";
 import { isIP } from "node:net";
+
+const RETRY_DELAYS_MS = [5 * 60_000, 15 * 60_000, 30 * 60_000];
+const MAX_RETRY_COUNT = RETRY_DELAYS_MS.length;
+const SUPPORTED_FILE_EXTENSIONS = new Set([
+  "pdf",
+  "docx",
+  "txt",
+  "md",
+  "csv",
+  "pptx",
+  "zip",
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+]);
+
+type LinkBuckets = {
+  websiteLinks: string[];
+  videoLinks: string[];
+  githubLinks: string[];
+};
+
+type KnowledgeAnalysis = LinkBuckets & {
+  categoryName: string;
+  title: string;
+  tags: string[];
+  notes: string;
+  summary: string;
+  sourceType: string;
+  sourceUrl: string | null;
+  keywordIndex: string;
+};
 
 // Helper to chunk text
 function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
@@ -65,6 +98,352 @@ function assertPublicHttpUrl(rawUrl: string | null | undefined) {
   }
 
   return parsed.toString();
+}
+
+function uniqueStrings(values: Array<string | null | undefined>, limit?: number) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+    if (limit && result.length >= limit) break;
+  }
+  return result;
+}
+
+function extractLinks(text: string): LinkBuckets {
+  const urls = uniqueStrings(text.match(/https?:\/\/[^\s<>"')\]]+/gi) ?? []);
+  const buckets: LinkBuckets = { websiteLinks: [], videoLinks: [], githubLinks: [] };
+
+  for (const rawUrl of urls) {
+    const url = rawUrl.replace(/[.,;:!?]+$/, "");
+    if (/^https?:\/\/(www\.)?github\.com\//i.test(url)) {
+      buckets.githubLinks.push(url);
+    } else if (/(youtube\.com|youtu\.be|instagram\.com\/(reel|p|tv|stories|[^/]+\/reel))/i.test(url)) {
+      buckets.videoLinks.push(url);
+    } else {
+      buckets.websiteLinks.push(url);
+    }
+  }
+
+  return {
+    websiteLinks: uniqueStrings(buckets.websiteLinks),
+    videoLinks: uniqueStrings(buckets.videoLinks),
+    githubLinks: uniqueStrings(buckets.githubLinks),
+  };
+}
+
+function sourceTypeFromLinks(links: LinkBuckets, fallback = "note") {
+  if (links.githubLinks.length > 0) return "github";
+  const firstVideo = links.videoLinks[0];
+  if (firstVideo && /instagram\.com/i.test(firstVideo)) return "instagram";
+  if (firstVideo) return "youtube";
+  if (links.websiteLinks.length > 0) return "website";
+  return fallback;
+}
+
+function primaryUrlForSourceType(sourceType: string, links: LinkBuckets) {
+  if (sourceType === "github") return links.githubLinks[0] ?? null;
+  if (sourceType === "youtube" || sourceType === "instagram") return links.videoLinks[0] ?? null;
+  if (sourceType === "website") return links.websiteLinks[0] ?? null;
+  return links.websiteLinks[0] ?? links.videoLinks[0] ?? links.githubLinks[0] ?? null;
+}
+
+function normalizeTags(input: unknown) {
+  const values = Array.isArray(input)
+    ? input.flatMap((tag) => String(tag).split(","))
+    : String(input ?? "").split(",");
+  return uniqueStrings(values.map((tag) => tag.trim()).filter(Boolean), 10).slice(0, 10);
+}
+
+export function stripSaveCommand(content: string) {
+  return content
+    .replace(/^\s*(add|save)\s+to\s+(project|knowledge)\s*[:\-]?\s*/i, "")
+    .replace(/^\s*(remember|store)\s+this\s*[:\-]?\s*/i, "")
+    .trim();
+}
+
+function safeJsonFromModel(text: string | undefined) {
+  if (!text) return {};
+  try {
+    return JSON.parse(text.replace(/```json/gi, "").replace(/```/g, "").trim());
+  } catch {
+    return {};
+  }
+}
+
+async function generateSummary(userId: string | null, text: string) {
+  const res = await ai.models.generateContent(userId, {
+    model: "gemini-2.5-flash",
+    contents: `Summarize this knowledge source for retrieval. Keep the important named tools, links, entities, and use cases.\n\n${text.slice(0, 30000)}`,
+  });
+  return res.text?.trim() || text.slice(0, 1000);
+}
+
+export function isKnowledgeSaveCommand(content: string) {
+  return /^\s*(add\s+to\s+project|save\s+to\s+project|save\s+to\s+knowledge|add\s+to\s+knowledge|remember\s+this|store\s+this)\b/i.test(content);
+}
+
+export async function analyzeKnowledgeContent(params: {
+  projectId: string;
+  userId: string | null;
+  content: string;
+  sourceType?: string;
+  sourceUrl?: string | null;
+}) {
+  const cleanContent = stripSaveCommand(params.content);
+  const explicitLinks = extractLinks(`${cleanContent}\n${params.sourceUrl ?? ""}`);
+  const categories = await db
+    .select({ name: knowledgeCategories.name })
+    .from(knowledgeCategories)
+    .where(eq(knowledgeCategories.projectId, params.projectId));
+
+  const sourceType = params.sourceType && params.sourceType !== "file"
+    ? params.sourceType
+    : sourceTypeFromLinks(explicitLinks, params.sourceType || "note");
+  const sourceUrl = params.sourceUrl ?? primaryUrlForSourceType(sourceType, explicitLinks);
+
+  const prompt = `Analyze this project knowledge item.
+Existing categories: ${categories.map((c) => c.name).join(", ") || "None"}
+Source type hint: ${sourceType}
+Content:
+"""${cleanContent.slice(0, 30000)}"""
+
+Return strictly valid JSON:
+{
+  "categoryName": "best existing category or concise new category",
+  "title": "short useful title",
+  "tags": ["3 to 10 concise tags"],
+  "notes": "brief useful notes",
+  "summary": "retrieval summary preserving tools, links, names, and use cases",
+  "websiteLinks": ["all website links"],
+  "videoLinks": ["all youtube or instagram video/post links"],
+  "githubLinks": ["all github links"],
+  "keywords": ["important searchable keywords"]
+}`;
+
+  const res = await ai.models.generateContent(params.userId, {
+    model: "gemini-2.5-flash",
+    contents: prompt,
+  });
+  const parsed: any = safeJsonFromModel(res.text);
+  const tags = normalizeTags(parsed.tags);
+  const websiteLinks = uniqueStrings([...(parsed.websiteLinks ?? []), ...explicitLinks.websiteLinks]);
+  const videoLinks = uniqueStrings([...(parsed.videoLinks ?? []), ...explicitLinks.videoLinks]);
+  const githubLinks = uniqueStrings([...(parsed.githubLinks ?? []), ...explicitLinks.githubLinks]);
+  const keywordIndex = uniqueStrings([
+    ...(Array.isArray(parsed.keywords) ? parsed.keywords : []),
+    ...tags,
+    parsed.categoryName,
+    parsed.title,
+    cleanContent,
+    ...websiteLinks,
+    ...videoLinks,
+    ...githubLinks,
+  ]).join(" ").slice(0, 12000);
+
+  return {
+    categoryName: String(parsed.categoryName || categories[0]?.name || "General").trim().slice(0, 255),
+    title: String(parsed.title || cleanContent.slice(0, 80) || "Knowledge Item").trim(),
+    tags: tags.length > 0 ? tags : uniqueStrings(cleanContent.split(/\W+/).filter((w) => w.length > 3), 10).slice(0, 10),
+    notes: String(parsed.notes || parsed.summary || cleanContent).trim(),
+    summary: String(parsed.summary || parsed.notes || cleanContent).trim(),
+    websiteLinks,
+    videoLinks,
+    githubLinks,
+    sourceType,
+    sourceUrl,
+    keywordIndex,
+  } satisfies KnowledgeAnalysis;
+}
+
+export async function ensureKnowledgeCategory(projectId: string, categoryName: string) {
+  const existing = await db
+    .select()
+    .from(knowledgeCategories)
+    .where(eq(knowledgeCategories.projectId, projectId));
+  const match = existing.find((category) => category.name.toLowerCase() === categoryName.toLowerCase());
+  if (match) return match;
+
+  const [created] = await db
+    .insert(knowledgeCategories)
+    .values({ projectId, name: categoryName || "General" })
+    .returning();
+  return created;
+}
+
+function retryDelayForAttempt(retryCount: number) {
+  return RETRY_DELAYS_MS[Math.min(retryCount, RETRY_DELAYS_MS.length - 1)];
+}
+
+function scheduleKnowledgeRepair(sourceId: string, retryCount: number) {
+  if (retryCount >= MAX_RETRY_COUNT) return;
+  const delayMs = retryDelayForAttempt(Math.max(0, retryCount - 1));
+  setTimeout(() => {
+    processKnowledgeSource(sourceId, { force: true }).catch((err) => {
+      logger.error({ err, sourceId }, "Scheduled knowledge repair failed");
+    });
+  }, delayMs).unref?.();
+}
+
+export async function saveAutoKnowledgeItem(params: {
+  projectId: string;
+  userId: string | null;
+  content: string;
+}) {
+  const analysis = await analyzeKnowledgeContent(params);
+  const category = await ensureKnowledgeCategory(params.projectId, analysis.categoryName);
+  const [record] = await db
+    .insert(knowledgeSources)
+    .values({
+      projectId: params.projectId,
+      categoryId: category.id,
+      tag: analysis.tags.join(", "),
+      title: analysis.title,
+      notes: analysis.notes,
+      summary: analysis.summary,
+      rawContent: stripSaveCommand(params.content),
+      websiteLinks: analysis.websiteLinks,
+      videoLinks: analysis.videoLinks,
+      githubLinks: analysis.githubLinks,
+      sourceType: analysis.sourceType,
+      sourceUrl: analysis.sourceUrl,
+      keywordIndex: analysis.keywordIndex,
+      status: "pending",
+    })
+    .returning();
+
+  await processKnowledgeSource(record.id, { force: true });
+  const [processed] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, record.id));
+  return {
+    record: processed ?? record,
+    category,
+    analysis,
+  };
+}
+
+export async function searchProjectKnowledge(params: {
+  projectIds: string[];
+  userId: string | null;
+  query: string;
+  limit?: number;
+}) {
+  if (params.projectIds.length === 0 || !params.query.trim()) return "";
+
+  const limit = params.limit ?? 12;
+  const words = uniqueStrings(
+    params.query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 2),
+    8,
+  );
+
+  let metadataMatches: Array<any> = [];
+  if (words.length > 0) {
+    const conditions = words.flatMap((word) => [
+      ilike(knowledgeCategories.name, `%${word}%`),
+      ilike(knowledgeSources.tag, `%${word}%`),
+      ilike(knowledgeSources.title, `%${word}%`),
+      ilike(knowledgeSources.notes, `%${word}%`),
+      ilike(knowledgeSources.summary, `%${word}%`),
+      ilike(knowledgeSources.keywordIndex, `%${word}%`),
+      ilike(knowledgeSources.sourceUrl, `%${word}%`),
+    ]);
+    metadataMatches = await db
+      .select({
+        id: knowledgeSources.id,
+        title: knowledgeSources.title,
+        tag: knowledgeSources.tag,
+        notes: knowledgeSources.notes,
+        summary: knowledgeSources.summary,
+        sourceType: knowledgeSources.sourceType,
+        sourceUrl: knowledgeSources.sourceUrl,
+        websiteLinks: knowledgeSources.websiteLinks,
+        videoLinks: knowledgeSources.videoLinks,
+        githubLinks: knowledgeSources.githubLinks,
+        categoryName: knowledgeCategories.name,
+      })
+      .from(knowledgeSources)
+      .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
+      .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions)))
+      .limit(limit);
+  }
+
+  let similarChunks: Array<any> = [];
+  try {
+    const embedRes = await ai.models.embedContent(params.userId, {
+      model: "gemini-embedding-2",
+      contents: params.query,
+      config: { outputDimensionality: 768 },
+    });
+    const userVector = embedRes.embeddings?.[0]?.values;
+    if (userVector) {
+      similarChunks = await db
+        .select({
+          chunkText: knowledgeChunks.chunkText,
+          sourceId: knowledgeChunks.knowledgeSourceId,
+          title: knowledgeSources.title,
+          tag: knowledgeSources.tag,
+          sourceType: knowledgeSources.sourceType,
+          sourceUrl: knowledgeSources.sourceUrl,
+          websiteLinks: knowledgeSources.websiteLinks,
+          videoLinks: knowledgeSources.videoLinks,
+          githubLinks: knowledgeSources.githubLinks,
+          categoryName: knowledgeCategories.name,
+        })
+        .from(knowledgeChunks)
+        .leftJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
+        .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
+        .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding)))
+        .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
+        .limit(limit);
+    }
+  } catch (err) {
+    logger.error({ err }, "Vector knowledge search failed");
+  }
+
+  if (metadataMatches.length === 0 && similarChunks.length === 0) return "";
+
+  const lines = ["Here is the most relevant saved project knowledge, ranked with category/tag/keyword matches first, then vector similarity:"];
+  if (metadataMatches.length > 0) {
+    lines.push("\n--- Category, Tag, Link, and Keyword Matches ---");
+    for (const match of metadataMatches) {
+      lines.push([
+        `Knowledge ID: ${match.id}`,
+        `Category: ${match.categoryName || "Uncategorized"}`,
+        `Title: ${match.title || "Untitled"}`,
+        `Tags: ${match.tag || "None"}`,
+        `Type: ${match.sourceType}`,
+        `Website Links: ${(match.websiteLinks ?? []).join(", ") || "None"}`,
+        `Video Links: ${(match.videoLinks ?? []).join(", ") || "None"}`,
+        `GitHub Links: ${(match.githubLinks ?? []).join(", ") || "None"}`,
+        `Summary/Notes: ${match.summary || match.notes || "None"}`,
+      ].join("\n"));
+    }
+  }
+
+  if (similarChunks.length > 0) {
+    lines.push("\n--- Vector Content Matches ---");
+    for (const chunk of similarChunks) {
+      lines.push([
+        `Knowledge ID: ${chunk.sourceId}`,
+        `Category: ${chunk.categoryName || "Uncategorized"}`,
+        `Title: ${chunk.title || "Untitled"}`,
+        `Tags: ${chunk.tag || "None"}`,
+        `Type: ${chunk.sourceType || "unknown"}`,
+        `Links: ${[...(chunk.websiteLinks ?? []), ...(chunk.videoLinks ?? []), ...(chunk.githubLinks ?? [])].join(", ") || chunk.sourceUrl || "None"}`,
+        `Content Snippet: ${chunk.chunkText}`,
+      ].join("\n"));
+    }
+  }
+
+  return lines.join("\n\n");
 }
 
 export async function extractSourceContent(params: { sourceType: string, sourceUrl?: string | null, fileBuffer?: Buffer, filename?: string, userId?: string | null }): Promise<string> {
@@ -127,11 +506,16 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       throw new Error("Instagram source URL is missing.");
     }
     logger.info(`Extracting Instagram video content via Gemini for ${sourceUrl}`);
-    const res = await ai.models.generateContent(params.userId || null, {
-      model: "gemini-2.5-flash",
-      contents: `Please describe the visual and audio content of this Instagram video/post in great detail: ${sourceUrl}`
-    });
-    extractedText = res.text || "";
+    try {
+      const res = await ai.models.generateContent(params.userId || null, {
+        model: "gemini-2.5-flash",
+        contents: `Extract any available public metadata, caption, visible text, and likely topic for this Instagram reel/post/video. If media content is unavailable, still create a useful searchable note from the URL: ${sourceUrl}`
+      });
+      extractedText = res.text || `Instagram source: ${sourceUrl}`;
+    } catch (err) {
+      logger.warn({ err }, `Instagram metadata extraction failed for ${sourceUrl}. Saving link only.`);
+      extractedText = `Instagram source: ${sourceUrl}`;
+    }
   } else if (sourceType === "video") {
     if (sourceUrl) {
       throw new Error("Direct Video URL scraping not fully supported. Please upload video file instead.");
@@ -140,6 +524,10 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
 
   if (fileBuffer && filename) {
     const lowerFilename = filename.toLowerCase();
+    const extension = lowerFilename.split(".").pop() || "";
+    if (!SUPPORTED_FILE_EXTENSIONS.has(extension)) {
+      throw new Error(`Unsupported file type: ${filename}`);
+    }
     if (lowerFilename.endsWith(".pdf")) {
       const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: fileBuffer });
@@ -152,30 +540,32 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     } else if (lowerFilename.endsWith(".docx")) {
       const parsed = await mammoth.extractRawText({ buffer: fileBuffer });
       extractedText = parsed.value;
-    } else if (lowerFilename.endsWith(".txt") || lowerFilename.endsWith(".md") || lowerFilename.endsWith(".csv")) {
+    } else if (lowerFilename.endsWith(".txt") || lowerFilename.endsWith(".md")) {
       extractedText = fileBuffer.toString("utf-8");
+    } else if (lowerFilename.endsWith(".csv")) {
+      extractedText = fileBuffer
+        .toString("utf-8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((row, index) => `Row ${index + 1}: ${row}`)
+        .join("\n");
     } else if (lowerFilename.endsWith(".pptx")) {
       const { parseOffice } = await import("officeparser");
       extractedText = String(await parseOffice(fileBuffer));
     } else if (lowerFilename.match(/\.(png|jpe?g|webp)$/)) {
-      const imageMime = "image/jpeg";
+      const imageMime = lowerFilename.endsWith(".png")
+        ? "image/png"
+        : lowerFilename.endsWith(".webp")
+          ? "image/webp"
+          : "image/jpeg";
       const res = await ai.models.generateContent(params.userId || null, {
         model: "gemini-2.5-flash",
         contents: [
-          "Please describe this image in great detail, including any text written in it. This will be used for vector search retrieval.",
+          "OCR and describe this image. Extract all visible text first, then summarize the image for searchable project knowledge.",
           { inlineData: { mimeType: imageMime, data: fileBuffer.toString("base64") } }
         ]
       });
       extractedText = res.text || "";
-    } else if (lowerFilename.match(/\.(mp4|mp3|wav|mov|webm)$/)) {
-        const res = await ai.models.generateContent(params.userId || null, {
-          model: "gemini-2.5-flash",
-          contents: [
-            "Please transcribe the audio from this file, and describe any visual information if it is a video. Return the full text transcript.",
-            { inlineData: { mimeType: "video/mp4", data: fileBuffer.toString("base64") } }
-          ]
-        });
-        extractedText = res.text || "";
     } else if (lowerFilename.endsWith(".zip")) {
       const AdmZipModule = await import("adm-zip");
       const AdmZip = AdmZipModule.default || AdmZipModule;
@@ -185,9 +575,18 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       for (const zipEntry of zipEntries) {
         if (!zipEntry.isDirectory) {
           const ext = zipEntry.name.split('.').pop()?.toLowerCase();
-          if (["txt", "md", "csv"].includes(ext || "")) {
-            combinedText += `\n\n--- File: ${zipEntry.entryName} ---\n`;
-            combinedText += zipEntry.getData().toString("utf8");
+          if (ext && SUPPORTED_FILE_EXTENSIONS.has(ext) && ext !== "zip") {
+            try {
+              const nestedText = await extractSourceContent({
+                sourceType: "file",
+                fileBuffer: zipEntry.getData(),
+                filename: zipEntry.entryName,
+                userId: params.userId || null,
+              });
+              combinedText += `\n\n--- File: ${zipEntry.entryName} ---\n${nestedText}`;
+            } catch (err) {
+              logger.warn({ err }, `Skipping unsupported or unreadable ZIP entry ${zipEntry.entryName}`);
+            }
           }
         }
       }
@@ -205,24 +604,29 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
   return extractedText;
 }
 
-export async function processKnowledgeSource(sourceId: string) {
+export async function processKnowledgeSource(sourceId: string, options: { force?: boolean } = {}) {
   try {
     const [source] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, sourceId));
     if (!source) throw new Error(`Source ${sourceId} not found`);
     const [project] = await db.select().from(projects).where(eq(projects.id, source.projectId));
     const userId = project?.userId || null;
 
-    if (source.status === "processed") {
+    if (source.status === "processed" && !options.force) {
       logger.info(`Source ${sourceId} is already processed, skipping`);
-      return;
+      return source;
     }
 
-    if (source.status === "processing") {
+    if (source.status === "processing" && !options.force) {
       logger.info(`Source ${sourceId} is already being processed`);
-      return;
+      return source;
     }
 
-    await db.update(knowledgeSources).set({ status: "processing" }).where(eq(knowledgeSources.id, sourceId));
+    await db.update(knowledgeSources).set({
+      status: "processing",
+      lastError: null,
+      nextRetryAt: null,
+      updatedAt: new Date(),
+    }).where(eq(knowledgeSources.id, sourceId));
     await db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledgeSourceId, sourceId));
 
     let extractedText = "";
@@ -251,6 +655,19 @@ export async function processKnowledgeSource(sourceId: string) {
           userId
         });
       }
+
+      const links = extractLinks(`${source.sourceUrl ?? ""}\n${source.notes ?? ""}\n${extractedText}`);
+      const summary = await generateSummary(userId, extractedText);
+      const keywordIndex = uniqueStrings([
+        source.title,
+        source.tag,
+        source.notes,
+        summary,
+        extractedText.slice(0, 10000),
+        ...links.websiteLinks,
+        ...links.videoLinks,
+        ...links.githubLinks,
+      ]).join(" ").slice(0, 12000);
 
       const chunks = chunkText(extractedText);
       logger.info(`Extracted ${chunks.length} chunks from ${sourceId}`);
@@ -292,8 +709,21 @@ export async function processKnowledgeSource(sourceId: string) {
       }
 
       // Successful retrieval test point - we assume success if chunks > 0 saved
-      await db.update(knowledgeSources).set({ status: "processed" }).where(eq(knowledgeSources.id, sourceId));
+      const [updated] = await db.update(knowledgeSources).set({
+        status: "processed",
+        rawContent: extractedText,
+        summary,
+        keywordIndex,
+        websiteLinks: uniqueStrings([...(source.websiteLinks ?? []), ...links.websiteLinks]),
+        videoLinks: uniqueStrings([...(source.videoLinks ?? []), ...links.videoLinks]),
+        githubLinks: uniqueStrings([...(source.githubLinks ?? []), ...links.githubLinks]),
+        retryCount: 0,
+        nextRetryAt: null,
+        lastError: null,
+        updatedAt: new Date(),
+      }).where(eq(knowledgeSources.id, sourceId)).returning();
       logger.info(`Successfully processed source ${sourceId}`);
+      return updated;
 
     } catch (err: any) {
       logger.error({ err }, `Processing pipeline failed for source ${sourceId}`);
@@ -301,6 +731,20 @@ export async function processKnowledgeSource(sourceId: string) {
     }
   } catch (error) {
     logger.error({ err: error }, `Error processing source ${sourceId}`);
-    await db.update(knowledgeSources).set({ status: "error" }).where(eq(knowledgeSources.id, sourceId));
+    const [current] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, sourceId));
+    const nextRetryCount = Math.min((current?.retryCount ?? 0) + 1, MAX_RETRY_COUNT);
+    const shouldRetry = nextRetryCount <= MAX_RETRY_COUNT;
+    const nextRetryAt = shouldRetry && nextRetryCount < MAX_RETRY_COUNT
+      ? new Date(Date.now() + retryDelayForAttempt(nextRetryCount - 1))
+      : null;
+    await db.update(knowledgeSources).set({
+      status: "error",
+      retryCount: nextRetryCount,
+      nextRetryAt,
+      lastError: error instanceof Error ? error.message : String(error),
+      updatedAt: new Date(),
+    }).where(eq(knowledgeSources.id, sourceId));
+    if (nextRetryAt) scheduleKnowledgeRepair(sourceId, nextRetryCount);
+    return current;
   }
 }

@@ -71,10 +71,19 @@ export const knowledgeSources = pgTable("knowledge_sources", {
   title: text("title"),
   filename: text("filename"), // Optional, if it's a file
   sourceUrl: text("source_url"), // For website, youtube, etc.
+  websiteLinks: jsonb("website_links").$type<string[]>().default([]).notNull(),
+  videoLinks: jsonb("video_links").$type<string[]>().default([]).notNull(),
+  githubLinks: jsonb("github_links").$type<string[]>().default([]).notNull(),
   fileId: varchar("file_id", { length: 255 }), // Storage ID if uploaded
   sourceType: varchar("source_type", { length: 50 }).notNull(), // file, website, youtube, instagram, github, note
   notes: text("notes"),
+  rawContent: text("raw_content"),
+  summary: text("summary"),
+  keywordIndex: text("keyword_index"),
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, processing, processed, error
+  retryCount: integer("retry_count").default(0).notNull(),
+  nextRetryAt: timestamp("next_retry_at"),
+  lastError: text("last_error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

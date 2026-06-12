@@ -62,12 +62,19 @@ type KnowledgeSource = {
   projectId: string;
   categoryId: string;
   tag: string | null;
+  title: string | null;
   filename: string | null;
   fileId: string | null;
   sourceType: string;
   sourceUrl: string | null;
+  websiteLinks: string[];
+  videoLinks: string[];
+  githubLinks: string[];
   notes: string | null;
+  summary: string | null;
   status: "pending" | "processing" | "processed" | "error";
+  lastError: string | null;
+  retryCount: number;
   createdAt: string;
 };
 
@@ -702,15 +709,24 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           </div>
                           <div className="flex flex-col min-w-0 flex-1">
                             <span
-                              className="text-sm font-medium text-foreground truncate"
-                              title={source.filename || source.sourceUrl || source.notes?.slice(0, 80) || "Text Note"}
+                              className="text-sm font-medium text-foreground line-clamp-2"
+                              title={source.title || source.filename || source.sourceUrl || source.notes?.slice(0, 80) || "Knowledge Item"}
                             >
-                              {source.filename || source.sourceUrl || (source.sourceType === "note" ? (source.notes?.slice(0, 60) || "Text Note") : "Text Note")}
+                              {source.title || source.filename || source.sourceUrl || "Knowledge Item"}
                             </span>
                             {source.tag && (
-                              <span className="inline-flex w-fit max-w-full mt-1.5 text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20 font-medium truncate">
-                                {source.tag}
-                              </span>
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {source.tag.split(',').slice(0, 3).map(t => (
+                                  <span key={t} className="inline-flex w-fit max-w-full text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium truncate">
+                                    {t.trim()}
+                                  </span>
+                                ))}
+                                {source.tag.split(',').length > 3 && (
+                                  <span className="inline-flex w-fit max-w-full text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border font-medium truncate">
+                                    +{source.tag.split(',').length - 3}
+                                  </span>
+                                )}
+                              </div>
                             )}
                             <div className="flex flex-wrap items-center gap-2 mt-1.5">
                               <span className="text-xs text-muted-foreground capitalize">
@@ -760,21 +776,28 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       </div>
                       
                       {/* Status indicator bar at bottom */}
-                      <div className="mt-4 flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden relative">
-                          {source.status === "processed" && <div className="absolute inset-y-0 left-0 bg-emerald-500 w-full"></div>}
-                          {source.status === "error" && <div className="absolute inset-y-0 left-0 bg-destructive w-full"></div>}
-                          {(source.status === "pending" || source.status === "processing") && (
-                            <div className="absolute inset-y-0 left-0 bg-blue-500 w-1/2 animate-pulse rounded-full"></div>
+                        <div className="flex flex-col flex-1 w-full mt-4">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden relative">
+                              {source.status === "processed" && <div className="absolute inset-y-0 left-0 bg-emerald-500 w-full"></div>}
+                              {source.status === "error" && <div className="absolute inset-y-0 left-0 bg-destructive w-full"></div>}
+                              {(source.status === "pending" || source.status === "processing") && (
+                                <div className="absolute inset-y-0 left-0 bg-blue-500 w-1/2 animate-pulse rounded-full"></div>
+                              )}
+                            </div>
+                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+                              source.status === "processed" ? "text-emerald-500" :
+                              source.status === "error" ? "text-destructive" : "text-blue-500"
+                            }`}>
+                              {source.status}
+                            </span>
+                          </div>
+                          {source.status === "error" && source.lastError && (
+                            <p className="text-xs text-destructive mt-1.5 line-clamp-1" title={source.lastError}>
+                              {source.lastError}
+                            </p>
                           )}
                         </div>
-                        <span className={`text-[10px] font-semibold uppercase tracking-wider ${
-                          source.status === "processed" ? "text-emerald-500" :
-                          source.status === "error" ? "text-destructive" : "text-blue-500"
-                        }`}>
-                          {source.status}
-                        </span>
-                      </div>
                     </div>
                   ))}
                 </div>
