@@ -581,7 +581,6 @@ RULES FOR ALL RESPONSES:
       finalSystemPrompt = `${SYSTEM_PROMPT}\n\nSelected Project Knowledge & Instructions:\n${projectPrompts}\n${PROJECT_BRAIN_DIRECTIVE}\n${STRICT_DIRECTIVES}`;
     } else {
       finalSystemPrompt = primaryProject?.systemPrompt || SYSTEM_PROMPT;
-      finalSystemPrompt += `\n${STRICT_DIRECTIVES}`;
     }
     
     if (useNormalAi === false && validProjectIds.length === 0) {
