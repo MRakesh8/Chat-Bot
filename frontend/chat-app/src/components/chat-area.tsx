@@ -26,12 +26,14 @@ import {
   StopCircle,
   X,
   CheckCircle2,
+  Search,
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import { RotatingStatus } from "@/components/rotating-status";
 import { ArtifactViewer } from "@/components/ArtifactViewer";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -127,12 +129,12 @@ const MemoizedMessage = memo(function MemoizedMessage({
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight, rehypeSanitize]}
             components={{
-              code({ node, inline, className, children, ...props }) {
+              code({ node, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || "");
                 const lang = match ? match[1] : "";
                 const isArtifact = ["html", "css", "jsx", "tsx", "react"].includes(lang);
 
-                if (!inline && isArtifact && onOpenArtifact) {
+                if (isArtifact && onOpenArtifact) {
                   const extractText = (n: any): string => {
                     if (n.type === "text") return n.value || "";
                     if (n.children) return n.children.map(extractText).join("");
@@ -649,7 +651,7 @@ export function ChatArea() {
                 <Input
                   placeholder="Search in conversation..."
                   value={chatSearchQuery}
-                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  onChange={(e: any) => setChatSearchQuery(e.target.value)}
                   className="pl-9 h-9 bg-background/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/50"
                 />
               </div>
@@ -684,12 +686,12 @@ export function ChatArea() {
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeHighlight, rehypeSanitize]}
                           components={{
-                            code({ node, inline, className, children, ...props }) {
+                            code({ node, className, children, ...props }: any) {
                               const match = /language-(\w+)/.exec(className || "");
                               const lang = match ? match[1] : "";
                               const isArtifact = ["html", "css", "jsx", "tsx", "react"].includes(lang);
 
-                              if (!inline && isArtifact) {
+                              if (isArtifact) {
                                 const extractText = (n: any): string => {
                                   if (n.type === "text") return n.value || "";
                                   if (n.children) return n.children.map(extractText).join("");

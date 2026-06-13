@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { apiBaseUrl } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api-url";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Service = {
@@ -45,10 +45,12 @@ export default function ConnectedServicesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const getHeaders = () => {
-    return session?.access_token
-      ? { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }
-      : { "Content-Type": "application/json" };
+  const getHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (session?.access_token) {
+      headers.Authorization = `Bearer ${session.access_token}`;
+    }
+    return headers;
   };
 
   const { data: services = [], isLoading } = useQuery<Service[]>({
