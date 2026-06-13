@@ -157,25 +157,26 @@ class GeminiFailoverModels {
           await this._updateKeySuccess(key);
           return result;
         } catch (err: any) {
-          const status = err?.status || err?.response?.status;
+          const status = err?.status || err?.response?.status || 'unknown';
           const isTimeout = err?.message?.toLowerCase().includes("timeout");
+          const keySlot = key.isSystem ? `System API ${key.id.substring(0,4)}` : `User API ${key.id.substring(0,4)}`;
           
-          const logData = `Provider: Gemini | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: ${status || 'unknown'} | Reason: ${err.message}`;
+          const logOutput = `Provider: Gemini\nModel: ${modelToUse}\nKey Slot: ${keySlot}\nHTTP Status: ${status}\nError: ${err.message}\n----------------------------------------`;
           
           if (status === 429) {
-            console.warn(`[Gemini Routing] Rate Limit - ${logData}`);
+            console.warn(`[Gemini Routing] Rate Limit:\n${logOutput}`);
             await this._updateKeyFailure(key, '429', err.message);
             break; // Move to next key
           } else if (isTimeout) {
-            console.warn(`[Gemini Routing] Timeout - ${logData}`);
+            console.warn(`[Gemini Routing] Timeout:\n${logOutput}`);
             await this._updateKeyFailure(key, 'timeout', err.message);
             break; // Move to next key
           } else if (isRetryableError(err)) {
-            console.warn(`[Gemini Routing] Retryable Error - ${logData}`);
+            console.warn(`[Gemini Routing] Retryable Error:\n${logOutput}`);
             await this._updateKeyFailure(key, 'other', err.message);
             break; // Move to next key
           } else {
-            console.error(`[Gemini Routing] Non-Retryable Error - ${logData}`);
+            console.error(`[Gemini Routing] Non-Retryable Error:\n${logOutput}`);
             throw err;
           }
         }
