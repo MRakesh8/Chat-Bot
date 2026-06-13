@@ -1,4 +1,4 @@
-import { db, knowledgeCategories, knowledgeChunks, knowledgeSources, projects } from "@workspace/db";
+import { db, knowledgeCategories, knowledgeChunks, knowledgeSources, projects, knowledgeRetrievalCache } from "@workspace/db";
 import { supabaseAdmin } from "../lib/supabase";
 import { ai } from "@workspace/integrations-gemini-ai";
 import mammoth from "mammoth";
@@ -296,6 +296,14 @@ function scheduleKnowledgeRepair(sourceId: string, retryCount: number) {
   }, delayMs).unref?.();
 }
 
+export async function invalidateKnowledgeCache(projectId: string) {
+  try {
+    await db.delete(knowledgeRetrievalCache).where(eq(knowledgeRetrievalCache.projectId, projectId as any));
+  } catch (err) {
+    logger.error({ err, projectId }, "Failed to invalidate knowledge cache");
+  }
+}
+
 export async function saveAutoKnowledgeItem(params: {
   projectId: string;
   userId: string | null;
@@ -306,7 +314,7 @@ export async function saveAutoKnowledgeItem(params: {
 
   // --- Duplicate Detection ---
   // Try to find if this knowledge already exists using semantic search
-  const similarContent = await searchProjectKnowledge({
+  const { contextString: similarContent } = await searchProjectKnowledge({
     projectIds: [params.projectId],
     userId: params.userId,
     query: analysis.title + " " + analysis.summary,
@@ -403,6 +411,8 @@ Return strictly valid JSON:
         await processKnowledgeSource(updatedRecord.id, { force: true });
         const [processed] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, updatedRecord.id));
         
+        await invalidateKnowledgeCache(params.projectId);
+
         return {
           record: processed ?? updatedRecord,
           category,
@@ -415,9 +425,11 @@ Return strictly valid JSON:
 
   // --- End Duplicate Detection ---
 
+  const kbId = `KB-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
   const [record] = await db
     .insert(knowledgeSources)
     .values({
+      kbId,
       projectId: params.projectId,
       categoryId: category.id,
       tag: analysis.tags.join(", "),
@@ -439,6 +451,9 @@ Return strictly valid JSON:
 
   await processKnowledgeSource(record.id, { force: true });
   const [processed] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, record.id));
+  
+  await invalidateKnowledgeCache(params.projectId);
+  
   return {
     record: processed ?? record,
     category,
@@ -452,10 +467,10 @@ export async function searchProjectKnowledge(params: {
   userId: string | null;
   query: string;
   limit?: number;
-}) {
-  if (params.projectIds.length === 0 || !params.query.trim()) return "";
+}): Promise<{ contextString: string, retrievedIds: string[] }> {
+  if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
 
-  const limit = params.limit ?? 12;
+  const limit = params.limit ?? 3;
   const words = uniqueStrings(
     params.query
       .toLowerCase()
@@ -529,42 +544,69 @@ export async function searchProjectKnowledge(params: {
     logger.error({ err }, "Vector knowledge search failed");
   }
 
-  if (metadataMatches.length === 0 && similarChunks.length === 0) return "";
+  if (metadataMatches.length === 0 && similarChunks.length === 0) return { contextString: "", retrievedIds: [] };
 
-  const lines = ["Here is the most relevant saved project knowledge, ranked with category/tag/keyword matches first, then vector similarity:"];
-  if (metadataMatches.length > 0) {
-    lines.push("\n--- Category, Tag, Link, and Keyword Matches ---");
-    for (const match of metadataMatches) {
-      lines.push([
-        `Knowledge ID: ${match.id}`,
-        `Category: ${match.categoryName || "Uncategorized"}`,
-        `Title: ${match.title || "Untitled"}`,
-        `Tags: ${match.tag || "None"}`,
-        `Type: ${match.sourceType}`,
-        `Website Links: ${(match.websiteLinks ?? []).join(", ") || "None"}`,
-        `Video Links: ${(match.videoLinks ?? []).join(", ") || "None"}`,
-        `GitHub Links: ${(match.githubLinks ?? []).join(", ") || "None"}`,
-        `Summary/Notes: ${match.summary || match.notes || "None"}`,
-      ].join("\n"));
+  const MAX_CHUNKS = 3;
+  const MAX_CHARS = 3000;
+  let currentChars = 0;
+  let chunkCount = 0;
+
+  const finalItems: string[] = [];
+  const retrievedIdsSet = new Set<string>();
+
+  const tryAddItem = (itemStr: string, id: string) => {
+    if (chunkCount >= MAX_CHUNKS) return false;
+    if (currentChars + itemStr.length > MAX_CHARS && chunkCount > 0) return false;
+    
+    finalItems.push(itemStr);
+    retrievedIdsSet.add(id);
+    currentChars += itemStr.length;
+    chunkCount++;
+    return true;
+  };
+
+  const lines = ["Here is the most relevant saved project knowledge:"];
+  
+  // Prefer metadata matches first
+  for (const match of metadataMatches) {
+    if (chunkCount >= MAX_CHUNKS) break;
+    const itemStr = [
+      `Knowledge ID: ${match.kbId || match.id}`,
+      `Category: ${match.categoryName || "Uncategorized"}`,
+      `Title: ${match.title || "Untitled"}`,
+      `Tags: ${match.tag || "None"}`,
+      `Type: ${match.sourceType}`,
+      `Website Links: ${(match.websiteLinks ?? []).join(", ") || "None"}`,
+      `Video Links: ${(match.videoLinks ?? []).join(", ") || "None"}`,
+      `GitHub Links: ${(match.githubLinks ?? []).join(", ") || "None"}`,
+      `Summary/Notes: ${match.summary || match.notes || "None"}`,
+    ].join("\n");
+    tryAddItem(itemStr, match.kbId || match.id);
+  }
+
+  for (const chunk of similarChunks) {
+    if (chunkCount >= MAX_CHUNKS) break;
+    const itemStr = [
+      `Knowledge ID: ${chunk.kbId || chunk.sourceId}`,
+      `Category: ${chunk.categoryName || "Uncategorized"}`,
+      `Title: ${chunk.title || "Untitled"}`,
+      `Tags: ${chunk.tag || "None"}`,
+      `Type: ${chunk.sourceType || "unknown"}`,
+      `Links: ${[...(chunk.websiteLinks ?? []), ...(chunk.videoLinks ?? []), ...(chunk.githubLinks ?? [])].join(", ") || chunk.sourceUrl || "None"}`,
+      `Content Snippet: ${chunk.chunkText}`,
+    ].join("\n");
+    // Prevent adding same chunk source multiple times if already added in metadata
+    if (!retrievedIdsSet.has(chunk.kbId || chunk.sourceId)) {
+      tryAddItem(itemStr, chunk.kbId || chunk.sourceId);
     }
   }
 
-  if (similarChunks.length > 0) {
-    lines.push("\n--- Vector Content Matches ---");
-    for (const chunk of similarChunks) {
-      lines.push([
-        `Knowledge ID: ${chunk.sourceId}`,
-        `Category: ${chunk.categoryName || "Uncategorized"}`,
-        `Title: ${chunk.title || "Untitled"}`,
-        `Tags: ${chunk.tag || "None"}`,
-        `Type: ${chunk.sourceType || "unknown"}`,
-        `Links: ${[...(chunk.websiteLinks ?? []), ...(chunk.videoLinks ?? []), ...(chunk.githubLinks ?? [])].join(", ") || chunk.sourceUrl || "None"}`,
-        `Content Snippet: ${chunk.chunkText}`,
-      ].join("\n"));
-    }
-  }
+  lines.push(...finalItems);
 
-  return lines.join("\n\n");
+  return {
+    contextString: lines.join("\n\n"),
+    retrievedIds: Array.from(retrievedIdsSet)
+  };
 }
 
 export async function extractSourceContent(params: { sourceType: string, sourceUrl?: string | null, fileBuffer?: Buffer, filename?: string, userId?: string | null }): Promise<string> {

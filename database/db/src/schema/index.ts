@@ -62,6 +62,7 @@ export const knowledgeCategories = pgTable("knowledge_categories", {
 
 export const knowledgeSources = pgTable("knowledge_sources", {
   id: uuid("id").primaryKey().defaultRandom(),
+  kbId: varchar("kb_id", { length: 50 }).unique(),
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" })
     .notNull(),
@@ -171,6 +172,16 @@ export const apiKeys = pgTable("api_keys", {
 export const userApiSettings = pgTable("user_api_settings", {
   userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   apiMode: varchar("api_mode", { length: 50 }).default("auto").notNull(), // auto, user_first, system_first
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const knowledgeRetrievalCache = pgTable("knowledge_retrieval_cache", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  resultText: text("result_text").notNull(),
+  retrievedIds: jsonb("retrieved_ids").$type<string[]>().default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

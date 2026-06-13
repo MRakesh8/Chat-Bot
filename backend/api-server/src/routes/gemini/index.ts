@@ -8,7 +8,8 @@ import {
   stripSaveCommand,
 } from "../../services/knowledge";
 import { db } from "@workspace/db";
-import { chatSessions, messages, projects } from "@workspace/db";
+import { chatSessions, messages, projects, knowledgeRetrievalCache } from "@workspace/db";
+import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   CreateGeminiConversationBody,
@@ -440,18 +441,66 @@ router.post("/conversations/:id/messages", async (req, res) => {
     // Fetch YouTube transcripts if any URLs are in the message
     const youtubeContext = await fetchYouTubeTranscriptsForMessage(content);
 
-    // Vector Search (RAG)
+    // Vector Search (RAG) with Caching
     let ragContext = "";
+    let retrievedIds: string[] = [];
     try {
       if (validProjectIds.length > 0) {
-        ragContext = await searchProjectKnowledge({
-          projectIds: validProjectIds,
-          userId,
-          query: content,
-        });
+        // Detect secrets to skip cache
+        const secretRegex = /(?:api_key|password|secret|token|auth|bearer)/i;
+        const containsSecret = secretRegex.test(content);
+        
+        let cacheKey = null;
+        if (!containsSecret) {
+          const queryHash = crypto.createHash("sha256").update(content).digest("hex");
+          // Use first project ID for cache key (usually only 1 project is selected)
+          cacheKey = `${validProjectIds[0]}_${queryHash}`;
+          
+          const [cached] = await db.select()
+            .from(knowledgeRetrievalCache)
+            .where(eq(knowledgeRetrievalCache.key, cacheKey));
+            
+          if (cached) {
+            ragContext = cached.resultText;
+            retrievedIds = cached.retrievedIds as string[];
+          }
+        }
+        
+        if (!ragContext && !retrievedIds.length) {
+          const res = await searchProjectKnowledge({
+            projectIds: validProjectIds,
+            userId,
+            query: content,
+          });
+          ragContext = res.contextString;
+          retrievedIds = res.retrievedIds;
+          
+          if (cacheKey && (ragContext || retrievedIds.length > 0)) {
+            await db.insert(knowledgeRetrievalCache).values({
+              key: cacheKey,
+              projectId: validProjectIds[0] as any,
+              resultText: ragContext,
+              retrievedIds: retrievedIds
+            }).onConflictDoNothing(); // Ignore if another request cached it simultaneously
+          }
+        }
       }
     } catch (err) {
       req.log.error({ err }, "Error performing vector search");
+    }
+
+    // Prepare tracking block
+    let trackingBlock = "";
+    if (retrievedIds.length > 0) {
+      trackingBlock = `[INTERNAL SYSTEM TRACKING]
+Source: PROJECT_KNOWLEDGE
+Retrieved IDs: [${retrievedIds.join(", ")}]
+Retrieved Count: ${retrievedIds.length}`;
+    } else {
+      trackingBlock = `[INTERNAL SYSTEM TRACKING]
+Source: GENERAL_AI_KNOWLEDGE
+Retrieved IDs: []
+Retrieved Count: 0`;
     }
 
     // Current user message parts: files first, then transcript context, then RAG context, then text
@@ -459,15 +508,29 @@ router.post("/conversations/:id/messages", async (req, res) => {
       ...fileParts,
       ...(youtubeContext ? [{ text: youtubeContext }] : []),
       ...(ragContext ? [{ text: ragContext }] : []),
+      { text: trackingBlock },
       ...(content.trim() ? [{ text: content }] : []),
     ];
+
+    const STRICT_DIRECTIVES = `
+=========================================
+RETRIEVAL AND ANSWER CONTROL DIRECTIVES
+=========================================
+1. Answer ONLY the user's specific question.
+2. If relevant knowledge was provided in the context: Answer using THAT knowledge ONLY.
+3. If NO relevant knowledge is found in the context: Use your general AI knowledge as a fallback.
+4. NEVER summarize the project, consolidate knowledge, organize knowledge, rewrite the entire project, or dump all knowledge UNLESS the user explicitly asks you to do so (e.g., "Summarize the project").
+5. VALIDATION CHECK: Before generating your final response, internally ask yourself "Does this directly answer the user's question?". If NO, re-evaluate and ensure you answer the question directly.
+=========================================
+`;
 
     let finalSystemPrompt = SYSTEM_PROMPT;
     if (validProjectIds.length > 0) {
       const projectPrompts = dbProjectsList.map((p: any) => `Project: ${p.name}\nKnowledge & Instructions:\n${p.systemPrompt}`).join("\n\n---\n\n");
-      finalSystemPrompt = `${SYSTEM_PROMPT}\n\nSelected Project Knowledge & Instructions:\n${projectPrompts}\n${PROJECT_BRAIN_DIRECTIVE}`;
+      finalSystemPrompt = `${SYSTEM_PROMPT}\n\nSelected Project Knowledge & Instructions:\n${projectPrompts}\n${PROJECT_BRAIN_DIRECTIVE}\n${STRICT_DIRECTIVES}`;
     } else {
       finalSystemPrompt = primaryProject?.systemPrompt || SYSTEM_PROMPT;
+      finalSystemPrompt += `\n${STRICT_DIRECTIVES}`;
     }
     
     if (useNormalAi === false && validProjectIds.length === 0) {
