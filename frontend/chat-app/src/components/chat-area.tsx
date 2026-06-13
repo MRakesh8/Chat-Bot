@@ -11,6 +11,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
@@ -119,7 +120,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
           </div>
         )}
         <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight, rehypeSanitize]}>
             {msg.content}
           </ReactMarkdown>
         </div>
@@ -606,7 +607,7 @@ export function ChatArea() {
                         <span className="text-xs font-medium text-primary">Aria is typing...</span>
                       </div>
                       <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight, rehypeSanitize]}>
                           {streamingContent}
                         </ReactMarkdown>
                       </div>

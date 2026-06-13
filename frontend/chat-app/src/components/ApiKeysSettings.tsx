@@ -73,7 +73,7 @@ export function ApiKeysSettings() {
         fetchSettings();
       } else {
         const json = await res.json();
-        setError(json.error || "Failed to add key");
+        setError(json.message || json.error || "Failed to add key");
       }
     } catch (err) {
       setError("An unexpected error occurred");

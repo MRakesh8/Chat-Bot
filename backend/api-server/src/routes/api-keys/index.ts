@@ -54,7 +54,33 @@ router.get("/", async (req, res): Promise<any> => {
 
     res.json(safeKeys);
   } catch (err: any) {
+    req.log.error({ err }, "Failed to fetch API keys");
     res.status(500).json({ error: "Failed to fetch API keys" });
+  }
+});
+
+// GET /api/api-keys/debug
+// Diagnostic endpoint for API keys
+router.get("/debug", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const keys = await db.select().from(userApiKeys).where(eq(userApiKeys.userId, userId));
+    res.json({
+      userId,
+      keyCount: keys.length,
+      keys: keys.map(k => ({
+        id: k.id,
+        name: k.name,
+        provider: k.provider,
+        status: k.status,
+        maskedKey: k.maskedKey
+      }))
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to debug API keys");
+    res.status(500).json({ error: "Failed to debug API keys" });
   }
 });
 
@@ -76,6 +102,24 @@ router.post("/", async (req, res): Promise<any> => {
 
     const encryptedKey = crypto.encrypt(parsed.data.apiKey);
     const maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
+
+    // Duplicate detection
+    const isDuplicate = existingKeys.some(k => {
+      try {
+        const decrypted = crypto.decrypt(k.encryptedKey);
+        return decrypted === parsed.data.apiKey;
+      } catch {
+        return false;
+      }
+    });
+
+    if (isDuplicate) {
+      return res.status(409).json({
+        success: false,
+        code: "DUPLICATE_KEY",
+        message: "This API key already exists."
+      });
+    }
 
     await db.insert(userApiKeys).values({
       userId,

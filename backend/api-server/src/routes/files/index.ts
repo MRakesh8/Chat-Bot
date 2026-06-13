@@ -29,6 +29,26 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for video/zips
+  fileFilter: (_req, file, cb) => {
+    const allowedMimeTypes = [
+      "application/pdf",
+      "text/plain",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
+      "application/zip",
+      "application/x-zip-compressed",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "video/mp4",
+      "video/webm",
+      "text/csv",
+    ];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file type"));
+    }
+  },
 });
 
 async function categoryBelongsToProject(categoryId: string, projectId: string) {
