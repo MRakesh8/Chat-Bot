@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { connectedServices } from "@workspace/db/src/schema";
+import { connectedServices } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();

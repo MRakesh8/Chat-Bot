@@ -7,7 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:frontend": "node scripts/dev-frontend.mjs",
     "dev:backend": "node scripts/dev-backend.mjs",
-    "build": "corepack pnpm run typecheck && corepack pnpm -r --if-present run build",
+    "build": "node scripts/validate-imports.mjs && corepack pnpm run typecheck && corepack pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "corepack pnpm run typecheck:libs && corepack pnpm -r --filter \"./frontend/**\" --filter \"./backend/**\" --filter \"./database/**\" --filter \"./shared/**\" --filter \"./scripts\" --if-present run typecheck"
   },
