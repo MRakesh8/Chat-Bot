@@ -1,146 +1,221 @@
 import { Router } from "express";
-import { db, apiKeys, userApiSettings } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, userApiKeys, crypto, userApiSettings } from "@workspace/db";
+import { eq, and, ne } from "drizzle-orm";
 import { z } from "zod";
+import { GoogleGenAI } from "@google/genai";
 
 const router = Router();
 
 const AddKeyBody = z.object({
-  keyName: z.string().max(255).optional(),
+  name: z.string().max(255).optional(),
+  provider: z.string().default("gemini"),
   apiKey: z.string().min(1),
 });
 
-const UpdateModeBody = z.object({
-  apiMode: z.enum(["auto", "user_first", "system_first"]),
+const UpdateKeyBody = z.object({
+  name: z.string().max(255).optional(),
+  apiKey: z.string().optional(),
 });
 
+// Test API Key logic
+async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" } });
+    await client.models.generateContent({ model: "gemini-2.5-flash", contents: "test" });
+    return { success: true, message: "API key verified successfully." };
+  } catch (e: any) {
+    if (e?.status === 429) return { success: false, message: "Quota Exceeded" };
+    return { success: false, message: "Invalid API key." };
+  }
+}
+
 // GET /api/api-keys
-// List all user keys and their mode
-router.get("/", async (req, res) => {
+// List all user keys
+router.get("/", async (req, res): Promise<any> => {
   try {
     const userId = (req as any).auth?.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const keys = await db.select().from(apiKeys).where(eq(apiKeys.userId, userId));
-    const [settings] = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
-
+    const keys = await db.select().from(userApiKeys).where(eq(userApiKeys.userId, userId));
     const safeKeys = keys.map(k => ({
       id: k.id,
-      keyName: k.keyName,
-      // Only show the last 4 characters of the API key
-      apiKeyEnding: k.apiKey.slice(-4),
+      name: k.name,
+      provider: k.provider,
+      maskedKey: k.maskedKey,
+      isPrimary: k.isPrimary,
+      isEnabled: k.isEnabled,
       status: k.status,
+      lastSuccess: k.lastSuccess,
+      lastFailure: k.lastFailure,
+      failureReason: k.failureReason,
+      cooldownRemaining: k.cooldownUntil && k.cooldownUntil.getTime() > Date.now() ? Math.ceil((k.cooldownUntil.getTime() - Date.now()) / 60000) : 0,
       createdAt: k.createdAt,
     }));
 
-    res.json({
-      keys: safeKeys,
-      mode: settings?.apiMode || "auto",
-    });
+    res.json(safeKeys);
   } catch (err: any) {
     res.status(500).json({ error: "Failed to fetch API keys" });
   }
 });
 
 // POST /api/api-keys
-// Add a new user API key (max 3)
-router.post("/", async (req, res) => {
+// Add a new user API key (max 5)
+router.post("/", async (req, res): Promise<any> => {
   try {
     const userId = (req as any).auth?.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const parsed = AddKeyBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid body" });
-      return;
-    }
+    if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const existingKeys = await db.select().from(apiKeys).where(eq(apiKeys.userId, userId));
-    if (existingKeys.length >= 3) {
-      res.status(400).json({ error: "Maximum of 3 user API keys allowed" });
-      return;
-    }
+    const existingKeys = await db.select().from(userApiKeys).where(eq(userApiKeys.userId, userId));
+    if (existingKeys.length >= 5) return res.status(400).json({ error: "Maximum of 5 user API keys allowed" });
 
-    const [newKey] = await db.insert(apiKeys).values({
+    const testRes = await testGeminiKey(parsed.data.apiKey);
+    if (!testRes.success) return res.status(400).json({ error: testRes.message });
+
+    const encryptedKey = crypto.encrypt(parsed.data.apiKey);
+    const maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
+
+    await db.insert(userApiKeys).values({
       userId,
-      keyName: parsed.data.keyName || `User Key ${existingKeys.length + 1}`,
-      apiKey: parsed.data.apiKey,
+      name: parsed.data.name || `${parsed.data.provider.toUpperCase()} Key ${existingKeys.length + 1}`,
+      provider: parsed.data.provider,
+      encryptedKey,
+      maskedKey,
       isSystem: false,
-      dailyLimit: null, // No limit for user keys
-      status: "healthy",
-    }).returning();
-
-    res.status(201).json({
-      id: newKey.id,
-      keyName: newKey.keyName,
-      apiKeyEnding: newKey.apiKey.slice(-4),
-      status: newKey.status,
-      createdAt: newKey.createdAt,
+      isPrimary: existingKeys.length === 0,
+      isEnabled: true,
+      status: "HEALTHY",
+      lastSuccess: new Date(),
     });
+
+    res.status(201).json({ success: true, message: "API key added successfully." });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to add API key" });
   }
 });
 
-// DELETE /api/api-keys/:id
-// Delete a user API key
-router.delete("/:id", async (req, res) => {
+// PUT /api/api-keys/:id
+router.put("/:id", async (req, res): Promise<any> => {
   try {
     const userId = (req as any).auth?.userId;
     const { id } = req.params;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const parsed = UpdateKeyBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+    const existing = await db.select().from(userApiKeys).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
+    if (!existing.length) return res.status(404).json({ error: "Key not found" });
+
+    let updateData: any = {};
+    if (parsed.data.name) updateData.name = parsed.data.name;
+
+    if (parsed.data.apiKey) {
+      const testRes = await testGeminiKey(parsed.data.apiKey);
+      if (!testRes.success) return res.status(400).json({ error: testRes.message });
+      updateData.encryptedKey = crypto.encrypt(parsed.data.apiKey);
+      updateData.maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
+      updateData.status = "HEALTHY";
+      updateData.lastSuccess = new Date();
+      updateData.isEnabled = true;
     }
 
-    const [deleted] = await db.delete(apiKeys)
-      .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, userId)))
-      .returning();
+    await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, id));
+    res.json({ success: true, message: "API key updated." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update API key" });
+  }
+});
 
-    if (!deleted) {
-      res.status(404).json({ error: "API key not found" });
-      return;
-    }
+// DELETE /api/api-keys/:id
+router.delete("/:id", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    const { id } = req.params;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    res.status(204).send();
+    const [deleted] = await db.delete(userApiKeys).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId))).returning();
+    if (!deleted) return res.status(404).json({ error: "API key not found" });
+
+    res.status(200).json({ success: true, message: "API key deleted." });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to delete API key" });
   }
 });
 
-// PATCH /api/api-keys/settings
-// Update API mode
-router.patch("/settings", async (req, res) => {
+// POST /api/api-keys/:id/test
+router.post("/:id/test", async (req, res): Promise<any> => {
   try {
     const userId = (req as any).auth?.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+    const { id } = req.params;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const parsed = UpdateModeBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid API mode" });
-      return;
-    }
+    const existing = await db.select().from(userApiKeys).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
+    if (!existing.length) return res.status(404).json({ error: "Key not found" });
 
-    const [settings] = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
-    
-    if (settings) {
-      await db.update(userApiSettings).set({ apiMode: parsed.data.apiMode }).where(eq(userApiSettings.userId, userId));
+    const decryptedKey = crypto.decrypt(existing[0].encryptedKey);
+    const testRes = await testGeminiKey(decryptedKey || existing[0].encryptedKey);
+
+    if (testRes.success) {
+      await db.update(userApiKeys).set({ status: "HEALTHY", isEnabled: true, lastSuccess: new Date() }).where(eq(userApiKeys.id, id));
+      res.json({ status: "Healthy" });
     } else {
-      await db.insert(userApiSettings).values({ userId, apiMode: parsed.data.apiMode });
+      if (testRes.message === "Quota Exceeded") {
+        await db.update(userApiKeys).set({ status: "QUOTA_EXCEEDED" }).where(eq(userApiKeys.id, id));
+        res.json({ status: "Quota Exceeded" });
+      } else {
+        await db.update(userApiKeys).set({ status: "INVALID", isEnabled: false }).where(eq(userApiKeys.id, id));
+        res.json({ status: "Invalid" });
+      }
     }
-
-    res.json({ mode: parsed.data.apiMode });
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to update API settings" });
+    res.status(500).json({ error: "Failed to test API key" });
+  }
+});
+
+// PATCH /api/api-keys/:id/enable
+router.patch("/:id/enable", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    const { id } = req.params;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    await db.update(userApiKeys).set({ isEnabled: true, status: "HEALTHY" }).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
+    res.json({ success: true, message: "Key enabled." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to enable API key" });
+  }
+});
+
+// PATCH /api/api-keys/:id/disable
+router.patch("/:id/disable", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    const { id } = req.params;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    await db.update(userApiKeys).set({ isEnabled: false, status: "DISABLED" }).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
+    res.json({ success: true, message: "Key disabled." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to disable API key" });
+  }
+});
+
+// PATCH /api/api-keys/:id/primary
+router.patch("/:id/primary", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    const { id } = req.params;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    
+    // Set all others to false
+    await db.update(userApiKeys).set({ isPrimary: false }).where(and(eq(userApiKeys.userId, userId), ne(userApiKeys.id, id)));
+    // Set target to true
+    await db.update(userApiKeys).set({ isPrimary: true }).where(and(eq(userApiKeys.userId, userId), eq(userApiKeys.id, id)));
+    
+    res.json({ success: true, message: "Primary key updated." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update primary key" });
   }
 });
 

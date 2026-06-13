@@ -45,6 +45,13 @@ export function useChatStream() {
         signal: controller.signal,
       });
 
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const json = await response.json();
+        if (json.error) throw new Error(json.error);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -100,9 +107,24 @@ export function useChatStream() {
         return;
       }
       console.error("Error streaming message:", error);
+      console.log("FRONTEND_ERROR_RECEIVED");
       setIsStreaming(false);
+      console.log("UI_LOADING_CLEARED");
       setStreamingContent("");
       abortControllerRef.current = null;
+      
+      queryClient.setQueryData(getListGeminiMessagesQueryKey(conversationId), (old: any) => {
+        const errorMsg = {
+          id: "error-" + Date.now(),
+          sender: "ai",
+          content: "AI service temporarily unavailable. Please try again later.",
+          createdAt: new Date().toISOString(),
+          isError: true
+        };
+        if (!old) return [errorMsg];
+        return [...old, errorMsg];
+      });
+
       await queryClient.invalidateQueries({
         queryKey: getListGeminiMessagesQueryKey(conversationId),
       });

@@ -712,28 +712,26 @@ RULES FOR ALL RESPONSES:
     
     const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
 
+    console.log("BACKEND_ERROR_SENT");
+
     if (!res.headersSent) {
-      if (isBusy || isQuotaError) {
-        res.status(200).json({ error: errorMessage }); // Important: don't throw 503, return graceful json if requested directly
-      } else {
-        res.status(500).json({ 
-          step: currentStep, 
-          error: errorMessage, 
-          stack: err?.stack || ""
-        });
-      }
-    } else {
-      if (isBusy || isQuotaError) {
-        // Stream graceful error message to the UI as assistant content if possible, or error chunk
-        res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
-      } else {
-        res.write(`data: ${JSON.stringify({ 
-          step: currentStep, 
-          error: errorMessage 
-        })}\n\n`);
-      }
-      res.end();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.status(200);
     }
+    
+    if (isBusy || isQuotaError) {
+      // Stream graceful error message to the UI as assistant content if possible, or error chunk
+      res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ 
+        step: currentStep, 
+        error: errorMessage 
+      })}\n\n`);
+    }
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
   }
 });
 

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { db, apiKeys, userApiSettings } from "@workspace/db";
+import { db, userApiKeys, userApiSettings } from "@workspace/db";
 import { eq, and, isNull, asc } from "drizzle-orm";
 
 if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
@@ -47,9 +47,9 @@ class GeminiFailoverModels {
     // 2. Fetch Keys
     let userKeys: any[] = [];
     if (userId) {
-       userKeys = await db.select().from(apiKeys).where(eq(apiKeys.userId, userId));
+       userKeys = await db.select().from(userApiKeys).where(and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true)));
     }
-    const systemKeys = await db.select().from(apiKeys).where(isNull(apiKeys.userId));
+    const systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     
     let keys = [...userKeys, ...systemKeys];
 
@@ -58,88 +58,108 @@ class GeminiFailoverModels {
     for (const key of keys) {
        // Reset if it's a new day (simple UTC check for now)
        if (key.lastResetAt.getUTCDate() !== now.getUTCDate() || key.lastResetAt.getUTCMonth() !== now.getUTCMonth()) {
-         await db.update(apiKeys).set({
+         await db.update(userApiKeys).set({
            dailyUsed: 0,
-           status: "healthy",
+           status: "HEALTHY",
            cooldownUntil: null,
            lastResetAt: now
-         }).where(eq(apiKeys.id, key.id));
+         }).where(eq(userApiKeys.id, key.id));
          key.dailyUsed = 0;
-         key.status = "healthy";
+         key.status = "HEALTHY";
          key.cooldownUntil = null;
          key.lastResetAt = now;
-       } else if (key.status === "cooldown" && key.cooldownUntil && now > key.cooldownUntil) {
-         await db.update(apiKeys).set({ status: "healthy", cooldownUntil: null }).where(eq(apiKeys.id, key.id));
-         key.status = "healthy";
+       } else if (key.status === "COOLDOWN" && key.cooldownUntil && now > key.cooldownUntil) {
+         await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null }).where(eq(userApiKeys.id, key.id));
+         key.status = "HEALTHY";
          key.cooldownUntil = null;
        }
     }
 
     // Filter available
-    let availableKeys = keys.filter(k => k.status === "healthy");
+    let availableKeys = keys.filter(k => k.status === "HEALTHY");
 
-    // 4. Sort based on mode
-    if (mode === "auto") {
-      // Auto: User keys first, then System keys
-      availableKeys.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1));
-    } else if (mode === "user_first") {
-      availableKeys.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1));
-    } else if (mode === "system_first") {
-      availableKeys.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? -1 : 1));
-    }
+    // 4. Sort based on mode and primary status
+    availableKeys.sort((a, b) => {
+      // Primary keys first
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      
+      if (mode === "auto" || mode === "user_first") {
+        return (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1);
+      } else if (mode === "system_first") {
+        return (a.isSystem === b.isSystem ? 0 : a.isSystem ? -1 : 1);
+      }
+      return 0;
+    });
 
     return availableKeys;
   }
 
-  private async _updateKeyFailure(key: any, errorType: 'timeout' | '429' | 'other', errMessage: string) {
+  private async _updateKeyFailure(key: any, errorType: 'timeout' | '429' | '403' | 'other', errMessage: string, retryAfter?: number) {
     const now = new Date();
     let cooldownMinutes = 0;
-    let status = "cooldown";
+    let status = "COOLDOWN";
+    let isEnabled = key.isEnabled;
 
-    if (errorType === 'timeout') cooldownMinutes = 2;
-    else if (errorType === '429') cooldownMinutes = 15;
-    else {
+    if (errorType === '403') {
+      status = "INVALID";
+      isEnabled = false;
+    } else if (errorType === 'timeout') {
+      cooldownMinutes = 2;
+    } else if (errorType === '429') {
+      status = "QUOTA_EXCEEDED";
+      cooldownMinutes = retryAfter ? Math.ceil(retryAfter / 60) : 15;
+    } else {
       cooldownMinutes = 1;
+      status = "UNHEALTHY";
     }
 
-    const cooldownUntil = new Date(now.getTime() + cooldownMinutes * 60000);
+    const cooldownUntil = cooldownMinutes > 0 ? new Date(now.getTime() + cooldownMinutes * 60000) : null;
     
-    await db.update(apiKeys).set({
+    await db.update(userApiKeys).set({
       status,
       cooldownUntil,
-      lastError: errMessage,
-    }).where(eq(apiKeys.id, key.id));
+      isEnabled,
+      failureReason: errMessage,
+      lastFailure: now,
+      totalFailures: key.totalFailures + 1,
+      totalRequests: key.totalRequests + 1,
+    }).where(eq(userApiKeys.id, key.id));
   }
 
   private async _updateKeySuccess(key: any) {
     const now = new Date();
     const newUsed = key.dailyUsed + 1;
-    let status = "healthy";
+    let status = "HEALTHY";
 
     if (key.dailyLimit !== null && newUsed >= key.dailyLimit) {
-      status = "exhausted";
+      status = "QUOTA_EXCEEDED";
     }
 
-    await db.update(apiKeys).set({
+    await db.update(userApiKeys).set({
       dailyUsed: newUsed,
       lastSuccess: now,
+      totalRequests: key.totalRequests + 1,
       status
-    }).where(eq(apiKeys.id, key.id));
+    }).where(eq(userApiKeys.id, key.id));
   }
 
   private async _executeWithRouting(userId: string | null, method: 'generateContent' | 'generateContentStream' | 'embedContent', options: any) {
     const keys = await this._fetchAndResetKeys(userId);
 
     if (keys.length === 0) {
-      throw { status: 503, message: "AI service is currently unavailable. Please try again later or add your own API key." };
+      throw { success: false, code: "NO_HEALTHY_KEYS", status: 503, message: "All AI API keys are unavailable. Please add a new API key or wait for quota reset." };
     }
 
     const originalModel = options.model || "gemini-2.5-flash";
     const modelsToTry = method === 'embedContent' ? [originalModel] : Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
     
     for (const key of keys) {
+      // Import the crypto dynamically or rely on it being imported, wait db exports crypto
+      const { crypto } = await import("@workspace/db");
+      const decryptedKey = crypto.decrypt(key.encryptedKey);
+      
       const client = new GoogleGenAI({
-        apiKey: key.apiKey,
+        apiKey: decryptedKey || key.encryptedKey, // Fallback in case it's not encrypted correctly during migration
         httpOptions: { apiVersion: "", baseUrl: baseUrl }
       });
 
@@ -147,7 +167,7 @@ class GeminiFailoverModels {
         const attemptOptions = { ...options, model: modelToUse };
         
         try {
-          console.log(`[Gemini Routing] Provider: Gemini | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: Trying`);
+          console.log(`[Gemini Routing] Provider: ${key.provider} | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: Trying`);
           
           let result;
           if (method === 'generateContent') result = await client.models.generateContent(attemptOptions);
@@ -161,11 +181,17 @@ class GeminiFailoverModels {
           const isTimeout = err?.message?.toLowerCase().includes("timeout");
           const keySlot = key.isSystem ? `System API ${key.id.substring(0,4)}` : `User API ${key.id.substring(0,4)}`;
           
-          const logOutput = `Provider: Gemini\nModel: ${modelToUse}\nKey Slot: ${keySlot}\nHTTP Status: ${status}\nError: ${err.message}\n----------------------------------------`;
+          const logOutput = `Provider: ${key.provider}\nModel: ${modelToUse}\nKey Slot: ${keySlot}\nHTTP Status: ${status}\nError: ${err.message}\n----------------------------------------`;
           
           if (status === 429) {
             console.warn(`[Gemini Routing] Rate Limit:\n${logOutput}`);
-            await this._updateKeyFailure(key, '429', err.message);
+            const retryAfterHeader = err?.response?.headers?.get('retry-after');
+            const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
+            await this._updateKeyFailure(key, '429', err.message, retryAfter);
+            break; // Move to next key
+          } else if (status === 403) {
+            console.error(`[Gemini Routing] Permission Denied:\n${logOutput}`);
+            await this._updateKeyFailure(key, '403', err.message);
             break; // Move to next key
           } else if (isTimeout) {
             console.warn(`[Gemini Routing] Timeout:\n${logOutput}`);
@@ -183,11 +209,11 @@ class GeminiFailoverModels {
       }
     }
 
-    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning structured quota error.`);
+    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning structured NO_HEALTHY_KEYS error.`);
     throw {
       success: false,
-      type: "quota_exceeded",
-      message: "All AI providers are currently unavailable. Add a user API key or wait for quota reset."
+      code: "NO_HEALTHY_KEYS",
+      message: "All AI API keys are unavailable. Please add a new API key or wait for quota reset."
     };
   }
 }

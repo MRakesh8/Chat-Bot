@@ -87,8 +87,8 @@ const MemoizedMessage = memo(function MemoizedMessage({
         className={cn(
           "max-w-[88%] rounded-2xl px-5 py-3.5 text-sm shadow-sm",
           msg.role === "user"
-            ? "bg-[#2B2B2B] text-[#FFFFFF]"
-            : "border border-border bg-card text-card-foreground",
+            ? "bg-white/10 text-white backdrop-blur-md border border-white/5"
+            : "bg-transparent text-foreground",
           isSelected && "ring-2 ring-primary/50",
         )}
       >
@@ -409,32 +409,35 @@ export function ChatArea() {
   };
 
   const renderInput = (isCentered = false) => (
-    <div className={cn("mx-auto w-full max-w-3xl", isCentered ? "px-3" : "px-0")}>
-      {files.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {files.map((f, i) => (
-            <div key={`${f.file.name}-${i}`} className="flex max-w-full items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs text-foreground">
-              <span className="max-w-[180px] truncate">{f.file.name}</span>
-              {f.uploading ? (
-                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-              ) : (
-                <button onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))} className="shrink-0 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_18px_45px_rgba(0,0,0,0.10)] transition-all focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/10 dark:shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+    <div className={cn("mx-auto w-full max-w-3xl", !isCentered && "sticky bottom-4 z-20")}>
+      <div className={cn(
+        "relative flex flex-col overflow-hidden rounded-2xl transition-shadow",
+        "bg-card/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50",
+        isCentered ? "shadow-xl" : "shadow-lg"
+      )}>
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-2 p-3 pb-0">
+            {files.map((f, i) => (
+              <div key={`${f.file.name}-${i}`} className="flex max-w-full items-center gap-2 rounded-full bg-muted/50 px-3 py-1 text-xs text-foreground backdrop-blur">
+                <span className="max-w-[180px] truncate">{f.file.name}</span>
+                {f.uploading ? (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                ) : (
+                  <button onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))} className="shrink-0 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="How can I help you today?"
           rows={1}
-          className="min-h-[76px] max-h-[190px] w-full resize-none border-0 bg-transparent px-4 py-4 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0"
+          className="min-h-[60px] w-full resize-none bg-transparent px-4 py-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         />
         <div className="flex items-center justify-between px-3 pb-3">
           <div className="flex items-center gap-1">
@@ -498,7 +501,7 @@ export function ChatArea() {
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
       {conversationId ? (
-        <div className="z-10 flex h-14 shrink-0 items-center justify-between border-b border-border bg-background/85 px-14 backdrop-blur-md md:px-5">
+        <div className="z-10 flex h-14 shrink-0 items-center justify-between border-b border-white/5 bg-background/60 px-14 backdrop-blur-xl md:px-5 shadow-sm">
           <div className="flex min-w-0 items-center gap-2">
             <Button
               variant="ghost"

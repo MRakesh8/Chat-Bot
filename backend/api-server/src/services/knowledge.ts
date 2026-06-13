@@ -600,7 +600,12 @@ export async function searchProjectKnowledge(params: {
       categoryScore = 100;
     }
 
-    if (queryStr && lowerContent.includes(queryStr)) {
+    const lowerTitle = (candidate.title || "").toLowerCase();
+    const isExactEntity = lowerTitle === queryStr || lowerTag.split('/').map((s: string) => s.trim()).includes(queryStr);
+    
+    if (isExactEntity) {
+      entityScore = 180;
+    } else if (queryStr && lowerContent.includes(queryStr)) {
       entityScore = 60;
     }
 
@@ -612,9 +617,17 @@ export async function searchProjectKnowledge(params: {
     scoredCandidates.push({ ...candidate, retrievalScore: score });
   }
 
-  // 3. Sorting and Slicing
+  // 3. Sorting and Anti-Pollution Guard
   scoredCandidates.sort((a, b) => b.retrievalScore - a.retrievalScore);
-  const topCandidates = scoredCandidates.slice(0, params.limit ?? 5);
+  
+  let topCandidates = scoredCandidates;
+  if (topCandidates.length > 0) {
+    const topScore = topCandidates[0].retrievalScore;
+    // Anti-Pollution Guard: Discard candidates with score < 50% of top score
+    topCandidates = topCandidates.filter(c => c.retrievalScore >= topScore * 0.5);
+  }
+  
+  topCandidates = topCandidates.slice(0, params.limit ?? 5);
 
   // 4. Logging
   let debugLog = `Query: ${params.query}\n\n`;

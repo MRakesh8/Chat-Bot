@@ -10,7 +10,6 @@ import { ArrowLeft, Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutD
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DashboardLayout } from "../components/layout/dashboard-layout";
 import { apiUrl } from "@/lib/api-url";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -176,7 +175,7 @@ export default function AdminProjectEditPage() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center gap-4 mb-10">
           <Button
@@ -458,6 +457,6 @@ export default function AdminProjectEditPage() {
           </Tabs>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 }

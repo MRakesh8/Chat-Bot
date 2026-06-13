@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Pencil } from "lucide-react";
+import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Pencil, Edit2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { apiUrl } from "@/lib/api-url";
@@ -74,7 +74,7 @@ type KnowledgeSource = {
   steps: string[];
   notes: string | null;
   summary: string | null;
-  status: "pending" | "processing" | "processed" | "error";
+  status: "pending" | "processing" | "processed" | "error" | "FAILED" | "PARTIAL_SUCCESS" | "STORED";
   lastError: string | null;
   retryCount: number;
   createdAt: string;
@@ -93,6 +93,9 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   // Category Form State
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isCreateCategoryOpen, setIsCreateCategoryOpen] = useState(false);
+  const [renameCategoryName, setRenameCategoryName] = useState("");
+  const [renameCategoryId, setRenameCategoryId] = useState("");
+  const [isRenameCategoryOpen, setIsRenameCategoryOpen] = useState(false);
 
   // Knowledge Form State
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -152,6 +155,27 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       setNewCategoryName("");
       setIsCreateCategoryOpen(false);
       setActiveCategoryId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["knowledge-categories", projectId] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const renameCategoryMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const res = await authFetch(apiUrl(`/api/categories/${id}`), {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to rename category");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Category Renamed" });
+      setRenameCategoryName("");
+      setIsRenameCategoryOpen(false);
       queryClient.invalidateQueries({ queryKey: ["knowledge-categories", projectId] });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -453,6 +477,27 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
               </div>
             </DialogContent>
           </Dialog>
+          <Dialog open={isRenameCategoryOpen} onOpenChange={setIsRenameCategoryOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename Category</DialogTitle>
+                <DialogDescription>Enter a new name for this category.</DialogDescription>
+              </DialogHeader>
+              <div className="flex gap-2 mt-4">
+                <Input 
+                  placeholder="e.g., AI Tools" 
+                  value={renameCategoryName} 
+                  onChange={(e) => setRenameCategoryName(e.target.value)} 
+                />
+                <Button 
+                  onClick={() => renameCategoryMutation.mutate({ id: renameCategoryId, name: renameCategoryName })}
+                  disabled={!renameCategoryName.trim() || renameCategoryName === categories.find(c => c.id === renameCategoryId)?.name || renameCategoryMutation.isPending}
+                >
+                  {renameCategoryMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
@@ -482,6 +527,16 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setRenameCategoryId(cat.id); 
+                          setRenameCategoryName(cat.name); 
+                          setIsRenameCategoryOpen(true); 
+                        }}
+                      >
+                        <Edit2 className="w-4 h-4 mr-2" /> Rename
+                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="text-destructive focus:text-destructive"
                         onClick={(e) => { e.stopPropagation(); deleteCategoryMutation.mutate(cat.id); }}
@@ -698,130 +753,96 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                  {activeSources.map((source) => (
+                <div className="flex flex-col border-t border-border">
+                  {activeSources.map((source) => {
+                    const statusConfig = {
+                      processed: { color: "bg-emerald-500", text: "text-emerald-500", label: "Processed" },
+                      error: { color: "bg-destructive", text: "text-destructive", label: "Failed" },
+                      FAILED: { color: "bg-destructive", text: "text-destructive", label: "Failed" },
+                      PARTIAL_SUCCESS: { color: "bg-amber-500", text: "text-amber-500", label: "Partial Success" },
+                      STORED: { color: "bg-blue-500", text: "text-blue-500", label: "Stored" },
+                      pending: { color: "bg-blue-500 animate-pulse", text: "text-blue-500", label: "Pending" },
+                      processing: { color: "bg-blue-500 animate-pulse", text: "text-blue-500", label: "Processing" },
+                    }[source.status] || { color: "bg-muted-foreground", text: "text-muted-foreground", label: source.status };
+
+                    const previewText = source.summary || source.notes || (source.sourceType === "website" || source.sourceType === "youtube" || source.sourceType === "github" ? source.sourceUrl : source.filename) || "No preview available.";
+
+                    return (
                     <div 
                       key={source.id} 
-                      className="group flex flex-col p-4 rounded-xl border border-border bg-card hover:bg-muted/50 transition-all shadow-sm hover:shadow-md"
+                      onClick={() => openEditDialog(source)}
+                      className="group flex flex-col sm:flex-row items-start sm:items-center p-3 border-b border-border bg-card hover:bg-muted/30 cursor-pointer transition-colors w-full gap-4"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3 overflow-hidden">
-                          <div className="p-2 rounded-lg bg-background border border-border shadow-sm">
-                            {getIcon(source.sourceType)}
-                          </div>
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span
-                              className="text-sm font-medium text-foreground line-clamp-2"
-                              title={source.title || source.filename || source.sourceUrl || source.notes?.slice(0, 80) || "Knowledge Item"}
-                            >
-                              {source.title || source.filename || source.sourceUrl || "Knowledge Item"}
-                            </span>
-                            {source.tag && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {source.tag.split(',').slice(0, 3).map(t => (
-                                  <span key={t} className="inline-flex w-fit max-w-full text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium truncate">
-                                    {t.trim()}
-                                  </span>
-                                ))}
-                                {source.tag.split(',').length > 3 && (
-                                  <span className="inline-flex w-fit max-w-full text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border font-medium truncate">
-                                    +{source.tag.split(',').length - 3}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {((source.tools && source.tools.length > 0) || (source.steps && source.steps.length > 0)) && (
-                              <div className="flex flex-col gap-1 mt-2">
-                                {source.tools && source.tools.length > 0 && (
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tools:</span>
-                                    {source.tools.slice(0, 3).map((t: string) => (
-                                      <span key={t} className="text-[10px] bg-secondary text-secondary-foreground px-1.5 rounded">{t}</span>
-                                    ))}
-                                  </div>
-                                )}
-                                {source.steps && source.steps.length > 0 && (
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Steps:</span>
-                                    <span className="text-[10px] text-muted-foreground truncate">{source.steps.length} identified</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                              <span className="text-xs text-muted-foreground capitalize">
-                                {source.sourceType}
-                              </span>
-                              <span className="text-muted-foreground text-[10px]">•</span>
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(source.createdAt).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
+                      {/* Left: Source Icon & Title */}
+                      <div className="flex items-start gap-3 w-full sm:w-[25%] sm:min-w-[200px]">
+                        <div className="p-1.5 rounded-md bg-muted text-muted-foreground mt-0.5 shadow-sm border border-border">
+                          {getIcon(source.sourceType)}
                         </div>
-                        
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            onClick={() => openEditDialog(source)}
-                            title="Edit"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          {source.status !== "pending" && source.status !== "processing" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              onClick={() => reprocessSourceMutation.mutate(source.id)}
-                              disabled={reprocessSourceMutation.isPending}
-                              title="Reprocess"
-                            >
-                              {reprocessSourceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => deleteSourceMutation.mutate(source.id)}
-                            disabled={deleteSourceMutation.isPending}
-                            title="Delete"
-                          >
-                            {deleteSourceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          </Button>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-medium text-foreground truncate" title={source.tag || source.title || source.filename || "Knowledge Item"}>
+                            {source.tag ? source.tag.split(',')[0].trim() : source.title || source.filename || source.sourceUrl || "Knowledge Item"}
+                          </span>
+                          <span className="text-xs text-muted-foreground capitalize mt-0.5">
+                            {source.sourceType} • {new Date(source.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
                         </div>
                       </div>
-                      
-                      {/* Status indicator bar at bottom */}
-                        <div className="flex flex-col flex-1 w-full mt-4">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden relative">
-                              {source.status === "processed" && <div className="absolute inset-y-0 left-0 bg-emerald-500 w-full"></div>}
-                              {(source.status === "error" || source.status === "FAILED") && <div className="absolute inset-y-0 left-0 bg-destructive w-full"></div>}
-                              {source.status === "PARTIAL_SUCCESS" && <div className="absolute inset-y-0 left-0 bg-amber-500 w-full"></div>}
-                              {(source.status === "pending" || source.status === "processing" || source.status === "STORED") && (
-                                <div className="absolute inset-y-0 left-0 bg-blue-500 w-1/2 animate-pulse rounded-full"></div>
-                              )}
-                            </div>
-                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${
-                              source.status === "processed" ? "text-emerald-500" :
-                              (source.status === "error" || source.status === "FAILED") ? "text-destructive" :
-                              source.status === "PARTIAL_SUCCESS" ? "text-amber-500" : "text-blue-500"
-                            }`}>
-                              {source.status.replace('_', ' ')}
-                            </span>
-                          </div>
-                          {(source.status === "error" || source.status === "FAILED" || source.status === "PARTIAL_SUCCESS") && source.lastError && (
-                            <p className={`text-xs mt-1.5 line-clamp-1 ${source.status === "PARTIAL_SUCCESS" ? "text-amber-500/80" : "text-destructive"}`} title={source.lastError}>
-                              {source.lastError}
-                            </p>
-                          )}
+
+                      {/* Center: Preview Content */}
+                      <div className="flex-1 min-w-0 w-full mt-2 sm:mt-0">
+                        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed whitespace-pre-line">
+                          {previewText}
+                        </p>
+                      </div>
+
+                      {/* Right: Status & Actions */}
+                      <div className="flex items-center justify-end w-full sm:w-[15%] sm:min-w-[150px] mt-2 sm:mt-0 gap-3">
+                        <div 
+                          className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-full border border-border/50"
+                          title={source.lastError || "Status details"}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${statusConfig.color}`} />
+                          <span className={`text-[10px] font-semibold uppercase tracking-wider ${statusConfig.text}`}>
+                            {statusConfig.label}
+                          </span>
                         </div>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground opacity-50 group-hover:opacity-100 transition-opacity">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEditDialog(source); }}>
+                              <FileIcon className="w-4 h-4 mr-2" /> View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEditDialog(source); }}>
+                              <Pencil className="w-4 h-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {source.status !== "pending" && source.status !== "processing" && (
+                              <DropdownMenuItem 
+                                onClick={(e) => { e.stopPropagation(); reprocessSourceMutation.mutate(source.id); }}
+                                disabled={reprocessSourceMutation.isPending}
+                              >
+                                {reprocessSourceMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2" />} 
+                                Reprocess
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive"
+                              onClick={(e) => { e.stopPropagation(); deleteSourceMutation.mutate(source.id); }}
+                              disabled={deleteSourceMutation.isPending}
+                            >
+                              {deleteSourceMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />} 
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             </ScrollArea>

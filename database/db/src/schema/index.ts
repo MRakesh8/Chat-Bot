@@ -153,20 +153,28 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const apiKeys = pgTable("api_keys", {
+export const userApiKeys = pgTable("user_api_keys", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }), // null = system key
-  keyName: varchar("key_name", { length: 255 }),
-  apiKey: text("api_key").notNull(),
-  isSystem: boolean("is_system").default(false).notNull(),
+  name: varchar("name", { length: 255 }),
+  provider: varchar("provider", { length: 50 }).default("gemini").notNull(),
+  encryptedKey: text("encrypted_key").notNull(),
+  maskedKey: varchar("masked_key", { length: 50 }).notNull(),
+  isPrimary: boolean("is_primary").default(false).notNull(),
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  isSystem: boolean("is_system").default(false).notNull(), // Preserved for system keys
+  status: varchar("status", { length: 50 }).default("HEALTHY").notNull(), // HEALTHY, COOLDOWN, QUOTA_EXCEEDED, INVALID, UNHEALTHY
+  lastSuccess: timestamp("last_success"),
+  lastFailure: timestamp("last_failure"),
+  failureReason: text("failure_reason"),
+  cooldownUntil: timestamp("cooldown_until"),
+  totalRequests: integer("total_requests").default(0).notNull(),
+  totalFailures: integer("total_failures").default(0).notNull(),
   dailyLimit: integer("daily_limit"), // null = no limit (for user keys), 20 for system keys
   dailyUsed: integer("daily_used").default(0).notNull(),
   lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
-  cooldownUntil: timestamp("cooldown_until"),
-  lastError: text("last_error"),
-  lastSuccess: timestamp("last_success"),
-  status: varchar("status", { length: 50 }).default("healthy").notNull(), // healthy, cooldown, exhausted, disabled
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const userApiSettings = pgTable("user_api_settings", {
@@ -189,7 +197,7 @@ export const knowledgeRetrievalCache = pgTable("knowledge_retrieval_cache", {
 export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
   auditLogs: many(auditLogs),
-  apiKeys: many(apiKeys),
+  userApiKeys: many(userApiKeys),
   apiSettings: one(userApiSettings, { fields: [users.id], references: [userApiSettings.userId] }),
 }));
 

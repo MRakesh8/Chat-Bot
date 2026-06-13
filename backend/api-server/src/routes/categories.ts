@@ -3,16 +3,19 @@ import { db } from "@workspace/db";
 import { knowledgeCategories, projects } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { invalidateKnowledgeCache } from "../services/knowledge";
+
+import { logger } from "../lib/logger";
 
 const router = Router();
 
 const createCategorySchema = z.object({
   projectId: z.string().uuid(),
-  name: z.string().min(1).max(255),
+  name: z.string().trim().min(1).max(255),
 });
 
 const renameCategorySchema = z.object({
-  name: z.string().min(1).max(255),
+  name: z.string().trim().min(1).max(255),
 });
 
 async function userOwnsProject(projectId: string, userId: string) {
@@ -102,15 +105,42 @@ router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => 
       res.status(404).json({ error: "Category not found" });
       return;
     }
+    const [existingCategory] = await db
+      .select()
+      .from(knowledgeCategories)
+      .where(eq(knowledgeCategories.id, id));
+
+    if (!existingCategory) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
+
+    // Check for duplicates
+    const [duplicateCategory] = await db
+      .select({ id: knowledgeCategories.id })
+      .from(knowledgeCategories)
+      .where(and(eq(knowledgeCategories.projectId, existingCategory.projectId), eq(knowledgeCategories.name, name)));
+
+    if (duplicateCategory && duplicateCategory.id !== id) {
+      res.status(400).json({ error: "A category with this name already exists in this project" });
+      return;
+    }
+
     const [category] = await db
       .update(knowledgeCategories)
       .set({ name, updatedAt: new Date() })
       .where(eq(knowledgeCategories.id, id as string))
       .returning();
+
     if (!category) {
       res.status(404).json({ error: "Category not found" });
       return;
     }
+
+    logger.info(`Category Rename\n\nProject:\n${category.projectId}\n\nCategory ID:\n${category.id}\n\nOld:\n${existingCategory.name}\n\nNew:\n${category.name}\n\nResult:\nSuccess`);
+
+    await invalidateKnowledgeCache(category.projectId);
+
     res.json(category);
     return;
   } catch (error) {

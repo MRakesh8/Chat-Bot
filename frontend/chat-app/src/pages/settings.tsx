@@ -1,4 +1,3 @@
-import { Sidebar } from "@/components/sidebar";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ApiKeysSettings } from "@/components/ApiKeysSettings";
 
@@ -7,14 +6,13 @@ export default function SettingsPage() {
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-background">
-      <Sidebar className="hidden md:flex" />
       <div className="flex-1 overflow-y-auto p-6 text-foreground md:p-8">
-        <h1 className="text-3xl font-semibold mb-8">Settings</h1>
+        <h1 className="text-3xl font-semibold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60">Settings</h1>
         
         <div className="max-w-2xl space-y-8">
           <section className="space-y-4">
-            <h2 className="text-xl font-medium border-b border-border pb-2">Appearance</h2>
-            <div className="p-4 rounded-xl bg-card border border-border flex items-center justify-between">
+            <h2 className="text-xl font-medium border-b border-white/5 pb-2 text-foreground/80">Appearance</h2>
+            <div className="p-4 rounded-xl bg-card/40 border border-white/5 backdrop-blur-md flex items-center justify-between shadow-sm hover:bg-card/60 transition-colors">
               <div>
                 <h3 className="font-medium">Theme</h3>
                 <p className="text-sm text-muted-foreground">Customize the look and feel of Aria.</p>
@@ -32,8 +30,8 @@ export default function SettingsPage() {
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-xl font-medium border-b border-border pb-2">Language & Voice</h2>
-            <div className="p-4 rounded-xl bg-card border border-border flex items-center justify-between">
+            <h2 className="text-xl font-medium border-b border-white/5 pb-2 text-foreground/80">Language & Voice</h2>
+            <div className="p-4 rounded-xl bg-card/40 border border-white/5 backdrop-blur-md flex items-center justify-between shadow-sm hover:bg-card/60 transition-colors">
               <div>
                 <h3 className="font-medium">Language</h3>
                 <p className="text-sm text-muted-foreground">Select the primary language for interactions.</p>
@@ -44,7 +42,7 @@ export default function SettingsPage() {
               </select>
             </div>
             
-            <div className="p-4 rounded-xl bg-card border border-border flex items-center justify-between opacity-50 pointer-events-none">
+            <div className="p-4 rounded-xl bg-card/40 border border-white/5 backdrop-blur-md flex items-center justify-between shadow-sm opacity-50 pointer-events-none">
               <div>
                 <h3 className="font-medium">Voice Mode</h3>
                 <p className="text-sm text-muted-foreground">Choose Aria's spoken voice (Coming soon).</p>

@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2 } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
+import { useToast } from "@/hooks/use-toast";
 
 const MemoizedConversationItem = memo(function MemoizedConversationItem({
   conv,
@@ -46,10 +47,10 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer",
+        "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all cursor-pointer",
         isActive
-          ? "bg-sidebar-accent text-sidebar-foreground" 
-          : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+          ? "bg-primary/10 text-primary font-medium shadow-sm ring-1 ring-primary/20" 
+          : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground"
       )}
       onClick={() => onLocationChange(conv.id)}
     >
@@ -146,6 +147,8 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const token = session?.access_token;
@@ -263,11 +266,34 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
 
   const cancelEdit = useCallback(() => setEditingId(null), []);
 
+  const handleBack = useCallback(() => {
+    if (location.startsWith('/chat/')) {
+      setLocation('/');
+    } else if (location.startsWith('/admin/projects/')) {
+      setLocation('/admin/projects');
+    } else {
+      setLocation('/');
+    }
+    if (onClose) onClose();
+  }, [location, setLocation, onClose]);
+
   const reloadSidebar = async () => {
-    await Promise.all([
-      queryClient.refetchQueries({ queryKey: getListGeminiConversationsQueryKey() }),
-      queryClient.refetchQueries({ queryKey: ["admin-projects"] }),
-    ]);
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    const startTime = Date.now();
+    console.log('SIDEBAR_REFRESH_START');
+    
+    try {
+      await queryClient.refetchQueries();
+      const duration = Date.now() - startTime;
+      console.log(`SIDEBAR_REFRESH_SUCCESS\nDuration: ${duration} ms`);
+    } catch (err) {
+      const duration = Date.now() - startTime;
+      console.error(`SIDEBAR_REFRESH_FAILED\nDuration: ${duration} ms`, err);
+      toast({ title: "Unable to refresh. Please try again.", variant: "destructive" });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const typedConversations = conversations as Array<(NonNullable<typeof conversations>[number]) & { isFavorite?: boolean }> | undefined;
@@ -279,7 +305,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   }), [typedConversations, search, showFavorites]);
 
   return (
-    <div className={cn("w-full md:w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-full", className)}>
+    <div className={cn("w-full md:w-64 bg-sidebar/95 backdrop-blur-xl border-r border-white/5 flex flex-col h-full shadow-[4px_0_24px_rgba(0,0,0,0.2)]", className)}>
       <div className="p-4 border-b border-sidebar-border space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -298,9 +324,18 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           )}
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleBack}
+            className="w-10 h-10 bg-sidebar-accent hover:bg-sidebar-accent/80 border-border text-muted-foreground hover:text-sidebar-foreground shrink-0"
+            title="Back"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
           <Button 
             onClick={handleNewChat}
-            className="flex-1 justify-start gap-2 bg-sidebar-accent hover:bg-sidebar-accent/80 text-sidebar-foreground border border-border"
+            className="flex-1 justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-0 shadow-sm transition-all"
             variant="outline"
           >
             <Plus className="w-4 h-4" />
@@ -309,11 +344,12 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           <Button
             variant="outline"
             size="icon"
+            disabled={isRefreshing}
             onClick={reloadSidebar}
             className="w-10 h-10 bg-sidebar-accent hover:bg-sidebar-accent/80 border-border text-muted-foreground hover:text-sidebar-foreground shrink-0"
-            title="Reload chats"
+            title="Refresh"
           >
-            <RotateCcw className="w-4 h-4" />
+            {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
           </Button>
         </div>
         <div className="relative flex items-center gap-2">
@@ -368,9 +404,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-border bg-sidebar mt-auto flex-shrink-0">
+      <div className="p-4 border-t border-white/5 bg-sidebar/50 mt-auto flex-shrink-0">
         <div className="flex items-center gap-3 mb-4 px-2">
-          <Avatar className="h-8 w-8 ring-1 ring-border">
+          <Avatar className="h-8 w-8 ring-2 ring-white/10 shadow-sm">
             <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
             <AvatarFallback className="bg-sidebar-accent">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
           </Avatar>
@@ -380,17 +416,17 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         </div>
         
         <div className="space-y-1">
-          <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
+          <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
             <FolderKanban className="w-4 h-4" />
             Projects
           </Link>
-          <Link href="/settings" className="flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors">
+          <Link href="/settings" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
             <Settings className="w-4 h-4" />
             Settings
           </Link>
           <button 
             onClick={() => signOut()}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground rounded-lg transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all"
           >
             <LogOut className="w-4 h-4" />
             Log out

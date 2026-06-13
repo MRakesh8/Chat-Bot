@@ -1,40 +1,46 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { apiKeys } from "@workspace/db";
+import { userApiKeys } from "@workspace/db";
 
 const router = Router();
 
 // GET /api/system/ai-status
 router.get("/ai-status", async (req, res) => {
   try {
-    const allKeys = await db.select().from(apiKeys);
+    const allKeys = await db.select().from(userApiKeys);
     
     const systemKeys = allKeys.filter(k => k.isSystem).map(k => ({
-      slot: `System API ${k.id.substring(0, 4)}`,
-      healthy: k.status === 'healthy',
+      slot: `System ${k.provider.toUpperCase()} Key ${k.id.substring(0, 4)}`,
+      provider: k.provider,
+      healthy: k.status === 'HEALTHY',
       status: k.status,
       remainingQuota: k.dailyLimit ? k.dailyLimit - k.dailyUsed : null,
       dailyUsed: k.dailyUsed,
       dailyLimit: k.dailyLimit,
-      lastError: k.lastError,
+      lastError: k.failureReason,
+      lastSuccess: k.lastSuccess,
+      lastFailure: k.lastFailure,
       cooldownUntil: k.cooldownUntil
     }));
 
     const userKeys = allKeys.filter(k => !k.isSystem).map(k => ({
-      slot: `User API ${k.id.substring(0, 4)}`,
+      slot: `${k.name || `User ${k.provider.toUpperCase()} Key`} (${k.id.substring(0, 4)})`,
+      provider: k.provider,
       userId: k.userId,
-      healthy: k.status === 'healthy',
+      healthy: k.status === 'HEALTHY',
       status: k.status,
       remainingQuota: k.dailyLimit ? k.dailyLimit - k.dailyUsed : null,
       dailyUsed: k.dailyUsed,
       dailyLimit: k.dailyLimit,
-      lastError: k.lastError,
+      lastError: k.failureReason,
+      lastSuccess: k.lastSuccess,
+      lastFailure: k.lastFailure,
       cooldownUntil: k.cooldownUntil
     }));
 
     res.json({
       success: true,
-      activeProvider: "Gemini",
+      activeProvider: "Multi-Provider",
       systemKeys,
       userKeys
     });

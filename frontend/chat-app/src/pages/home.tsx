@@ -2,20 +2,77 @@ import { useAuth } from "../contexts/AuthContext";
 import { Link, Redirect, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { ArrowRight, BrainCircuit, Zap, Lock, Sparkles } from "lucide-react";
+import { ArrowRight, BrainCircuit, Zap, Lock, Sparkles, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 export default function Home() {
   const { user, signOut } = useAuth();
   const [, setLocation] = useLocation();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const { toast } = useToast();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  const handleGoogleAuth = async () => {
+    try {
+      setIsAuthenticating(true);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}${basePath}/chat`,
+        },
+      });
+      if (error) throw error;
+    } catch (error) {
+      setIsAuthenticating(false);
+      toast({
+        title: "Authentication failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <>
       {user && <Redirect to="/chat" />}
       <div className="min-h-screen bg-background flex flex-col relative overflow-hidden text-foreground">
-        {/* Decorative background glow */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/20 rounded-full blur-[120px] pointer-events-none" />
+        {/* Animated Gradient Background */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          <motion.div
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.5, 0.3],
+              x: [0, 100, 0],
+              y: [0, -50, 0],
+            }}
+            transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+            className="absolute -top-[20%] -left-[10%] w-[50vw] h-[50vw] rounded-full bg-purple-600/20 blur-[120px]"
+          />
+          <motion.div
+            animate={{
+              scale: [1, 1.5, 1],
+              opacity: [0.2, 0.4, 0.2],
+              x: [0, -100, 0],
+              y: [0, 100, 0],
+            }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className="absolute top-[20%] right-[0%] w-[40vw] h-[40vw] rounded-full bg-indigo-600/20 blur-[100px]"
+          />
+          <motion.div
+            animate={{
+              scale: [1, 1.3, 1],
+              opacity: [0.3, 0.6, 0.3],
+              x: [0, 50, 0],
+              y: [0, 50, 0],
+            }}
+            transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+            className="absolute bottom-[-10%] left-[20%] w-[60vw] h-[60vw] rounded-full bg-blue-600/20 blur-[150px]"
+          />
+          {/* Subtle noise overlay */}
+          <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+        </div>
 
         {/* Navigation */}
         <header className="px-6 py-4 flex items-center justify-between z-10">
@@ -42,21 +99,24 @@ export default function Home() {
                 </Button>
               </>
             ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setLocation("/sign-in")}
-                >
-                  Sign In
-                </Button>
-                <Button
-                  className="bg-white text-black hover:bg-zinc-200"
-                  onClick={() => setLocation("/sign-up")}
-                >
-                  Get Started
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                className="bg-background/50 backdrop-blur-sm border-white/10 hover:bg-white/10"
+                onClick={handleGoogleAuth}
+                disabled={isAuthenticating}
+              >
+                {isAuthenticating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 mr-2" aria-hidden="true">
+                    <path d="M12.0003 4.75C13.7703 4.75 15.3553 5.36002 16.6053 6.54998L20.0303 3.125C17.9502 1.19 15.2353 0 12.0003 0C7.31028 0 3.25527 2.69 1.28027 6.60998L5.27028 9.70498C6.21525 6.86002 8.87028 4.75 12.0003 4.75Z" fill="#EA4335" />
+                    <path d="M23.49 12.275C23.49 11.49 23.415 10.73 23.3 10H12V14.51H18.47C18.18 15.99 17.34 17.25 16.08 18.1L19.945 21.1C22.2 19.01 23.49 15.92 23.49 12.275Z" fill="#4285F4" />
+                    <path d="M5.26498 14.2949C5.02498 13.5699 4.88501 12.7999 4.88501 11.9999C4.88501 11.1999 5.01998 10.4299 5.26498 9.7049L1.275 6.60986C0.46 8.22986 0 10.0599 0 11.9999C0 13.9399 0.46 15.7699 1.28 17.3899L5.26498 14.2949Z" fill="#FBBC05" />
+                    <path d="M12.0004 24.0001C15.2404 24.0001 17.9654 22.935 19.9454 21.095L16.0804 18.095C15.0054 18.82 13.6204 19.245 12.0004 19.245C8.8704 19.245 6.21537 17.135 5.26538 14.29L1.27539 17.385C3.25539 21.31 7.3104 24.0001 12.0004 24.0001Z" fill="#34A853" />
+                  </svg>
+                )}
+                Continue with Google
+              </Button>
             )}
           </div>
         </header>
@@ -97,12 +157,36 @@ export default function Home() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="mt-10 flex flex-col sm:flex-row items-center gap-4"
           >
-            <Link href="/sign-up">
-              <Button size="lg" className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 shadow-[0_0_30px_-5px_rgba(124,58,237,0.4)]">
-                Start chatting free
+            {!user ? (
+              <Button 
+                onClick={handleGoogleAuth}
+                disabled={isAuthenticating}
+                size="lg" 
+                className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 shadow-[0_0_30px_-5px_rgba(124,58,237,0.4)]"
+              >
+                {isAuthenticating ? (
+                  <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                ) : (
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 mr-3 bg-white rounded-full p-0.5" aria-hidden="true">
+                    <path d="M12.0003 4.75C13.7703 4.75 15.3553 5.36002 16.6053 6.54998L20.0303 3.125C17.9502 1.19 15.2353 0 12.0003 0C7.31028 0 3.25527 2.69 1.28027 6.60998L5.27028 9.70498C6.21525 6.86002 8.87028 4.75 12.0003 4.75Z" fill="#EA4335" />
+                    <path d="M23.49 12.275C23.49 11.49 23.415 10.73 23.3 10H12V14.51H18.47C18.18 15.99 17.34 17.25 16.08 18.1L19.945 21.1C22.2 19.01 23.49 15.92 23.49 12.275Z" fill="#4285F4" />
+                    <path d="M5.26498 14.2949C5.02498 13.5699 4.88501 12.7999 4.88501 11.9999C4.88501 11.1999 5.01998 10.4299 5.26498 9.7049L1.275 6.60986C0.46 8.22986 0 10.0599 0 11.9999C0 13.9399 0.46 15.7699 1.28 17.3899L5.26498 14.2949Z" fill="#FBBC05" />
+                    <path d="M12.0004 24.0001C15.2404 24.0001 17.9654 22.935 19.9454 21.095L16.0804 18.095C15.0054 18.82 13.6204 19.245 12.0004 19.245C8.8704 19.245 6.21537 17.135 5.26538 14.29L1.27539 17.385C3.25539 21.31 7.3104 24.0001 12.0004 24.0001Z" fill="#34A853" />
+                  </svg>
+                )}
+                Continue with Google
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
-            </Link>
+            ) : (
+              <Button 
+                onClick={() => setLocation("/chat")}
+                size="lg" 
+                className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 shadow-[0_0_30px_-5px_rgba(124,58,237,0.4)]"
+              >
+                Go to Workspace
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            )}
           </motion.div>
         </main>
 
@@ -115,7 +199,7 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5 }}
-                className="p-6 rounded-2xl bg-card border border-border backdrop-blur-sm"
+                className="p-6 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-card/60 transition-colors"
               >
                 <div className="w-12 h-12 rounded-lg bg-violet-500/20 flex items-center justify-center mb-6">
                   <BrainCircuit className="w-6 h-6 text-violet-400" />
@@ -129,7 +213,7 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.1 }}
-                className="p-6 rounded-2xl bg-card border border-border backdrop-blur-sm"
+                className="p-6 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-card/60 transition-colors"
               >
                 <div className="w-12 h-12 rounded-lg bg-indigo-500/20 flex items-center justify-center mb-6">
                   <Zap className="w-6 h-6 text-indigo-400" />
@@ -143,7 +227,7 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.2 }}
-                className="p-6 rounded-2xl bg-card border border-border backdrop-blur-sm"
+                className="p-6 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-card/60 transition-colors"
               >
                 <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-6">
                   <Lock className="w-6 h-6 text-blue-400" />

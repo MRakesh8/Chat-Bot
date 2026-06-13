@@ -28,7 +28,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { DashboardLayout } from "../components/layout/dashboard-layout";
 import { apiUrl } from "@/lib/api-url";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -140,7 +139,7 @@ export default function AdminProjectsPage() {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
@@ -149,7 +148,7 @@ export default function AdminProjectsPage() {
               variant="ghost"
               size="icon"
               onClick={() => setLocation("/chat")}
-              className="text-muted-foreground hover:text-foreground border border-border hover:bg-muted"
+              className="text-foreground/70 hover:text-foreground border border-white/5 hover:bg-white/5 backdrop-blur-sm"
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
@@ -170,18 +169,18 @@ export default function AdminProjectsPage() {
         {/* Overview Stats */}
         {!isLoading && projectList && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-card border border-border rounded-2xl p-5 flex flex-col justify-center">
-              <p className="text-muted-foreground text-sm font-medium mb-1">Total Projects</p>
+            <div className="bg-card/40 border border-white/5 backdrop-blur-md shadow-sm rounded-2xl p-5 flex flex-col justify-center">
+              <p className="text-foreground/70 text-sm font-medium mb-1">Total Projects</p>
               <p className="text-3xl font-bold text-foreground">{projectList.length}</p>
             </div>
-            <div className="bg-card border border-border rounded-2xl p-5 flex flex-col justify-center">
-              <p className="text-muted-foreground text-sm font-medium mb-1">Active Assistants</p>
+            <div className="bg-card/40 border border-white/5 backdrop-blur-md shadow-sm rounded-2xl p-5 flex flex-col justify-center">
+              <p className="text-foreground/70 text-sm font-medium mb-1">Active Assistants</p>
               <p className="text-3xl font-bold text-foreground flex items-center gap-2">
                 {projectList.filter(p => p.isActive).length}
                 <span className="w-2 h-2 rounded-full bg-green-500 ml-2"></span>
               </p>
             </div>
-            <div className="bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-2xl p-5 flex flex-col justify-center relative overflow-hidden">
+            <div className="bg-gradient-to-br from-violet-600/10 to-indigo-600/10 border border-indigo-500/20 backdrop-blur-md rounded-2xl p-5 flex flex-col justify-center relative overflow-hidden shadow-sm">
               <div className="absolute top-0 right-0 p-4 opacity-10">
                 <Globe className="w-16 h-16" />
               </div>
@@ -198,7 +197,7 @@ export default function AdminProjectsPage() {
           </div>
         ) : !projectList?.length ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-card border border-border flex items-center justify-center">
+            <div className="w-16 h-16 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
               <FolderOpen className="w-8 h-8 text-muted-foreground" />
             </div>
             <div>
@@ -334,6 +333,6 @@ export default function AdminProjectsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 }
