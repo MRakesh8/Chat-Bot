@@ -37,6 +37,7 @@ type KnowledgeAnalysis = LinkBuckets & {
   steps: string[];
   notes: string;
   summary: string;
+  cleanedContent: string;
   sourceType: string;
   sourceUrl: string | null;
   keywordIndex: string;

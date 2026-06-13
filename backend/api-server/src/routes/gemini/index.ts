@@ -311,6 +311,7 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
 
 // POST /gemini/conversations/:id/messages (SSE streaming)
 router.post("/conversations/:id/messages", async (req, res) => {
+  let currentStep = "INITIALIZATION";
   try {
     const paramsParsed = SendGeminiMessageParams.safeParse({ id: req.params.id });
     if (!paramsParsed.success) {
@@ -324,11 +325,20 @@ router.post("/conversations/:id/messages", async (req, res) => {
     }
 
     const conversationId = paramsParsed.data.id;
-    const { content, fileIds, projectIds, useNormalAi } = bodyParsed.data as any;
+    const { content = "", fileIds = [], projectIds = [], useNormalAi = false } = bodyParsed.data as any;
 
+    const requestStartTime = performance.now();
+
+    if (!content.trim() && (!fileIds || fileIds.length === 0)) {
+      res.status(400).json({ error: "Message content or file required" });
+      return;
+    }
+
+    currentStep = "USER_AUTH_CHECK";
     const userId = (req as any).auth?.userId ?? null;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
+    currentStep = "CONVERSATION_LOOKUP";
     // Verify conversation exists and belongs to user
     const [conversation] = await db
       .select()
@@ -339,6 +349,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
       return;
     }
 
+    currentStep = "PROJECT_LOOKUP";
     let primaryProject = null;
     let validProjectIds: string[] = [];
 
@@ -366,6 +377,9 @@ router.post("/conversations/:id/messages", async (req, res) => {
       }
     }
     
+    if (primaryProject) req.log.info(`[PROJECT_FOUND] id: ${primaryProject.id}`);
+
+    currentStep = "QUICK_ADD_KNOWLEDGE";
     // --- QUICK ADD TO KNOWLEDGE INTERCEPT ---
     if (isKnowledgeSaveCommand(content) && primaryProject) {
       const targetProjectId = primaryProject.id;
@@ -418,13 +432,16 @@ router.post("/conversations/:id/messages", async (req, res) => {
     }
     // --- END QUICK ADD ---
 
+    currentStep = "MESSAGE_SAVED_USER";
     // Save user message
     await db.insert(messages).values({
       sessionId: conversationId as any,
       sender: "user",
-      content,
+      content: content || "",
     });
+    req.log.info("[MESSAGE_SAVED] user message saved");
 
+    currentStep = "HISTORY_LOOKUP";
     // Load all previous messages (history before the current one)
     const history = await db
       .select()
@@ -433,16 +450,27 @@ router.post("/conversations/:id/messages", async (req, res) => {
       .orderBy(messages.createdAt);
 
     // All messages except the last (just saved) one = chat history
-    const historyWithoutCurrent = history.slice(0, -1);
+    // Strip out conversational fluff to prevent few-shot learning of bad behavior
+    const historyWithoutCurrent = history.slice(0, -1).map(m => {
+       if (m.sender === "assistant") {
+         let text = m.content || "";
+         text = text.replace(/^(Understood!|I will|Here's|Let's)[^\n]*\n/gi, "").trim();
+         text = text.replace(/^Project Structure:?\s*\n/gi, "").trim();
+         return { ...m, content: text };
+       }
+       return m;
+    });
 
     // Build file parts for the current message
     const fileParts = fileIds && fileIds.length > 0
       ? await buildFileParts(fileIds)
       : [];
 
+    currentStep = "YOUTUBE_TRANSCRIPT_FETCH";
     // Fetch YouTube transcripts if any URLs are in the message
-    const youtubeContext = await fetchYouTubeTranscriptsForMessage(content);
+    const youtubeContext = await fetchYouTubeTranscriptsForMessage(content || "");
 
+    currentStep = "KNOWLEDGE_RETRIEVAL";
     // Vector Search (RAG) with Caching
     let ragContext = "";
     let retrievedIds: string[] = [];
@@ -463,19 +491,24 @@ router.post("/conversations/:id/messages", async (req, res) => {
             .where(eq(knowledgeRetrievalCache.key, cacheKey));
             
           if (cached) {
+            req.log.info("[CACHE_HIT] Knowledge retrieved from cache");
             ragContext = cached.resultText;
             retrievedIds = cached.retrievedIds as string[];
           }
         }
         
         if (!ragContext && !retrievedIds.length) {
+          req.log.info("[CACHE_MISS] Fetching knowledge from DB");
+          const retrievalStartTime = performance.now();
           const res = await searchProjectKnowledge({
             projectIds: validProjectIds,
             userId,
             query: content,
           });
-          ragContext = res.contextString;
-          retrievedIds = res.retrievedIds;
+          req.log.info(`[PERFORMANCE] Retrieval time: ${(performance.now() - retrievalStartTime).toFixed(2)}ms`);
+          
+          ragContext = res?.contextString || "";
+          retrievedIds = res?.retrievedIds || [];
           
           if (cacheKey && (ragContext || retrievedIds.length > 0)) {
             await db.insert(knowledgeRetrievalCache).values({
@@ -505,6 +538,9 @@ Retrieved IDs: []
 Retrieved Count: 0`;
     }
 
+    req.log.info(`[KNOWLEDGE_RETRIEVED] ${retrievedIds.length} items`);
+
+    currentStep = "PROMPT_GENERATION";
     // Current user message parts: files first, then transcript context, then RAG context, then text
     const currentParts: GeminiPart[] = [
       ...fileParts,
@@ -566,6 +602,9 @@ RULES FOR ALL RESPONSES:
       { role: "user", parts: currentParts },
     ];
 
+    req.log.info("[PROMPT_GENERATED] preparing to send to Gemini");
+
+    currentStep = "GEMINI_REQUEST";
     // SSE headers
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -574,27 +613,73 @@ RULES FOR ALL RESPONSES:
 
     let fullResponse = "";
 
-    const stream = await ai.models.generateContentStream(userId, {
-      model: "gemini-2.5-flash",
-      contents: chatMessages,
-      config: { maxOutputTokens: 8192 },
-    });
+    req.log.info("[GEMINI_REQUEST] calling generateContentStream");
+    
+    let stream;
+    let retries = 0;
+    let streamStarted = false;
+    let generationStartTime = performance.now();
+    
+    while (retries < 4 && !streamStarted) {
+      try {
+        stream = await ai.models.generateContentStream(userId, {
+          model: "gemini-2.5-flash",
+          contents: chatMessages,
+          config: { maxOutputTokens: 8192 },
+        });
 
-    for await (const chunk of stream) {
-      const text = chunk.text;
-      if (text) {
-        fullResponse += text;
-        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        let chunkCount = 0;
+        let isFirstChunkWhitespace = false;
+
+        for await (const chunk of stream) {
+          streamStarted = true;
+          chunkCount++;
+          const text = chunk.text;
+          
+          if (chunkCount === 1 && (!text || !text.trim())) {
+             isFirstChunkWhitespace = true;
+          }
+          
+          if (text && !isFirstChunkWhitespace) {
+            fullResponse += text;
+            res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+          }
+        }
+        
+        if (isFirstChunkWhitespace && chunkCount <= 2) {
+           throw new Error("Validation failed: empty response");
+        }
+        
+        break; // Success
+      } catch (err: any) {
+        retries++;
+        const status = err?.status || err?.response?.status;
+        const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503") || err?.message?.includes("Validation failed");
+        
+        if (isBusy && retries < 4 && !streamStarted) {
+          const backoff = retries === 1 ? 2000 : retries === 2 ? 5000 : 10000;
+          req.log.warn(`Gemini busy/failed. Retrying in ${backoff}ms... (Attempt ${retries})`);
+          await new Promise(r => setTimeout(r, backoff));
+        } else {
+           throw err;
+        }
       }
     }
+    
+    req.log.info(`[PERFORMANCE] Gemini generation time: ${(performance.now() - generationStartTime).toFixed(2)}ms`);
+    req.log.info(`[PERFORMANCE] Total request time: ${(performance.now() - requestStartTime).toFixed(2)}ms`);
+    req.log.info("[GEMINI_RESPONSE] streaming complete");
 
+    currentStep = "MESSAGE_SAVED_ASSISTANT";
     // Save assistant message
     await db.insert(messages).values({
       sessionId: conversationId as any,
       sender: "assistant",
       content: fullResponse,
     });
+    req.log.info("[MESSAGE_SAVED] assistant message saved");
 
+    currentStep = "TITLE_UPDATE";
     // Count total messages to detect first exchange (user + assistant = 2)
     const allMessages = await db
       .select()
@@ -615,7 +700,7 @@ RULES FOR ALL RESPONSES:
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err: any) {
-    req.log.error({ err }, "Error in streaming message");
+    req.log.error({ err, currentStep }, `Error in streaming message at step: ${currentStep}`);
     
     const status = err?.status || err?.response?.status;
     const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
@@ -624,13 +709,20 @@ RULES FOR ALL RESPONSES:
       if (isBusy) {
         res.status(503).json({ error: "AI service is temporarily busy. Please try again in a few moments." });
       } else {
-        res.status(500).json({ error: "Internal server error" });
+        res.status(500).json({ 
+          step: currentStep, 
+          error: err?.message || "Internal server error", 
+          stack: err?.stack || ""
+        });
       }
     } else {
       if (isBusy) {
         res.write(`data: ${JSON.stringify({ error: "AI service is temporarily busy. Please try again in a few moments." })}\n\n`);
       } else {
-        res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
+        res.write(`data: ${JSON.stringify({ 
+          step: currentStep, 
+          error: err?.message || "Stream error" 
+        })}\n\n`);
       }
       res.end();
     }
