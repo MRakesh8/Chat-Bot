@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import {
   getGetGeminiConversationQueryKey,
@@ -51,6 +51,88 @@ function greeting() {
   if (hour < 17) return "Good afternoon";
   return "Good evening";
 }
+
+const MemoizedMessage = memo(function MemoizedMessage({
+  msg,
+  basePath,
+  hasSelectedProjects,
+  isSelected,
+  onToggleSelection,
+  onAddToProject,
+  onCopy,
+  onRegenerate,
+}: {
+  msg: any;
+  basePath: string;
+  hasSelectedProjects: boolean;
+  isSelected: boolean;
+  onToggleSelection: (id: string) => void;
+  onAddToProject: (content: string) => void;
+  onCopy: (content: string) => void;
+  onRegenerate: () => void;
+}) {
+  return (
+    <div className={cn("group flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}>
+      {hasSelectedProjects && msg.role !== "user" && (
+        <input
+          type="checkbox"
+          className="mb-4 h-4 w-4 rounded border-border accent-primary"
+          checked={isSelected}
+          onChange={() => onToggleSelection(msg.id)}
+        />
+      )}
+      <div
+        className={cn(
+          "max-w-[88%] rounded-2xl px-5 py-3.5 text-sm shadow-sm",
+          msg.role === "user"
+            ? "bg-foreground text-background"
+            : "border border-border bg-card text-card-foreground",
+          isSelected && "ring-2 ring-primary/50",
+        )}
+      >
+        {msg.role !== "user" && (
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5" />
+              <span className="text-xs font-medium text-muted-foreground">Aria</span>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              {hasSelectedProjects && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-primary hover:bg-primary/10"
+                  onClick={() => onAddToProject(msg.content)}
+                >
+                  Add to Project
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onCopy(msg.content)}>
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRegenerate}>
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+        <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {msg.content}
+          </ReactMarkdown>
+        </div>
+      </div>
+      {hasSelectedProjects && msg.role === "user" && (
+        <input
+          type="checkbox"
+          className="mb-4 h-4 w-4 rounded border-border accent-primary"
+          checked={isSelected}
+          onChange={() => onToggleSelection(msg.id)}
+        />
+      )}
+    </div>
+  );
+});
 
 export function ChatArea() {
   const { id } = useParams();
@@ -243,33 +325,43 @@ export function ChatArea() {
     recognition.start();
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
     toast({ title: "Copied", description: "Message copied to clipboard." });
-  };
+  }, [toast]);
 
-  const regenerate = () => {
+  const regenerate = useCallback(() => {
     if (!conversationId || !messages?.length) return;
     const lastUser = [...messages].reverse().find((message) => message.role === "user");
     if (lastUser) sendMessage(conversationId, lastUser.content, [], selectedProjectIds, selectedSources.has("normal"));
-  };
+  }, [conversationId, messages, sendMessage, selectedProjectIds, selectedSources]);
 
-  const toggleMessageSelection = (messageId: string) => {
+  const toggleMessageSelection = useCallback((messageId: string) => {
     setSelectedMessages((prev) => {
       const next = new Set(prev);
       if (next.has(messageId)) next.delete(messageId);
       else next.add(messageId);
       return next;
     });
-  };
+  }, []);
 
-  const addContentsToProject = async (contents: string[], projectId: string) => {
+  const addContentsToProject = useCallback(async (contents: string[], projectId: string) => {
     const res = await authFetch(apiUrl(`/api/projects/${projectId}/knowledge/from-chat`), {
       method: "POST",
       body: JSON.stringify({ contents }),
     });
     if (!res.ok) throw new Error("Failed to add to project knowledge");
-  };
+  }, [authFetch]);
+
+  const handleAddToProjectSingle = useCallback(async (content: string) => {
+    const projectId = targetProjectId || selectedProjectIds[0];
+    try {
+      await addContentsToProject([content], projectId);
+      toast({ title: "Added to knowledge" });
+    } catch {
+      toast({ title: "Error", variant: "destructive" });
+    }
+  }, [targetProjectId, selectedProjectIds, addContentsToProject, toast]);
 
   const handleAddToProject = async () => {
     if (!targetProjectId || selectedMessages.size === 0) return;
@@ -458,73 +550,17 @@ export function ChatArea() {
         ) : (
           <div className="mx-auto mt-auto w-full max-w-3xl space-y-6">
             {messages?.map((msg) => (
-              <div key={msg.id} className={cn("group flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}>
-                {selectedProjectIds.length > 0 && msg.role !== "user" && (
-                  <input
-                    type="checkbox"
-                    className="mb-4 h-4 w-4 rounded border-border accent-primary"
-                    checked={selectedMessages.has(msg.id)}
-                    onChange={() => toggleMessageSelection(msg.id)}
-                  />
-                )}
-                <div
-                  className={cn(
-                    "max-w-[88%] rounded-2xl px-5 py-3.5 text-sm shadow-sm",
-                    msg.role === "user"
-                      ? "bg-foreground text-background"
-                      : "border border-border bg-card text-card-foreground",
-                    selectedMessages.has(msg.id) && "ring-2 ring-primary/50",
-                  )}
-                >
-                  {msg.role !== "user" && (
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5" />
-                        <span className="text-xs font-medium text-muted-foreground">Aria</span>
-                      </div>
-                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        {selectedProjectIds.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-primary hover:bg-primary/10"
-                            onClick={async () => {
-                              const projectId = targetProjectId || selectedProjectIds[0];
-                              try {
-                                await addContentsToProject([msg.content], projectId);
-                                toast({ title: "Added to knowledge" });
-                              } catch {
-                                toast({ title: "Error", variant: "destructive" });
-                              }
-                            }}
-                          >
-                            Add to Project
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyToClipboard(msg.content)}>
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={regenerate}>
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-                {selectedProjectIds.length > 0 && msg.role === "user" && (
-                  <input
-                    type="checkbox"
-                    className="mb-4 h-4 w-4 rounded border-border accent-primary"
-                    checked={selectedMessages.has(msg.id)}
-                    onChange={() => toggleMessageSelection(msg.id)}
-                  />
-                )}
-              </div>
+              <MemoizedMessage
+                key={msg.id}
+                msg={msg}
+                basePath={basePath}
+                hasSelectedProjects={selectedProjectIds.length > 0}
+                isSelected={selectedMessages.has(msg.id)}
+                onToggleSelection={toggleMessageSelection}
+                onAddToProject={handleAddToProjectSingle}
+                onCopy={copyToClipboard}
+                onRegenerate={regenerate}
+              />
             ))}
 
             {isStreaming && (

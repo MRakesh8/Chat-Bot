@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
 import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose } from "lucide-react";
@@ -11,6 +11,127 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
+
+const MemoizedConversationItem = memo(function MemoizedConversationItem({
+  conv,
+  isActive,
+  isEditing,
+  editTitle,
+  pendingFavorite,
+  projectList,
+  onLocationChange,
+  onSaveEdit,
+  onCancelEdit,
+  onEditTitleChange,
+  onStartEdit,
+  onToggleFavorite,
+  onMoveToProject,
+  onDelete,
+}: {
+  conv: any;
+  isActive: boolean;
+  isEditing: boolean;
+  editTitle: string;
+  pendingFavorite: boolean;
+  projectList: any[];
+  onLocationChange: (id: string) => void;
+  onSaveEdit: (id: string, e?: React.MouseEvent) => void;
+  onCancelEdit: () => void;
+  onEditTitleChange: (title: string) => void;
+  onStartEdit: (id: string, title: string, e: React.MouseEvent) => void;
+  onToggleFavorite: (id: string, currentStatus: boolean, e: React.MouseEvent) => void;
+  onMoveToProject: (id: string, projectId: string | null, e: React.MouseEvent) => void;
+  onDelete: (id: string, e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer",
+        isActive
+          ? "bg-sidebar-accent text-sidebar-foreground" 
+          : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+      )}
+      onClick={() => onLocationChange(conv.id)}
+    >
+      <MessageSquare className="w-4 h-4 flex-shrink-0" />
+      {isEditing ? (
+        <div className="flex-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+          <Input
+            autoFocus
+            value={editTitle}
+            onChange={e => onEditTitleChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') onSaveEdit(conv.id);
+              if (e.key === 'Escape') onCancelEdit();
+            }}
+            className="h-6 px-1.5 py-0 bg-sidebar-accent border-border text-sidebar-foreground"
+          />
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-green-500" onClick={() => onSaveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={onCancelEdit}><X className="w-3 h-3" /></Button>
+        </div>
+      ) : (
+        <span className="flex-1 truncate select-none">{conv.title}</span>
+      )}
+      
+      <div className={cn(
+        "flex items-center transition-opacity",
+        isActive || conv.isFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+      )}>
+        <Button
+          variant="ghost" size="icon"
+          className="h-6 w-6 mr-1"
+          onClick={(e) => onToggleFavorite(conv.id, !!conv.isFavorite, e)}
+        >
+          <Heart className={cn(
+            "w-3.5 h-3.5 transition-colors",
+            conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500",
+            pendingFavorite && "opacity-70",
+          )} />
+        </Button>
+        
+        {!isEditing && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-6 w-6 text-muted-foreground hover:text-sidebar-foreground"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
+              <DropdownMenuItem onClick={(e) => onStartEdit(conv.id, conv.title, e)} className="hover:bg-accent cursor-pointer">
+                <Edit2 className="w-4 h-4 mr-2" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="hover:bg-accent cursor-pointer">
+                  <FolderPlus className="w-4 h-4 mr-2" /> Move to Project
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
+                    <DropdownMenuItem onClick={(e) => onMoveToProject(conv.id, null, e)} className="hover:bg-accent cursor-pointer italic text-muted-foreground">
+                      None
+                    </DropdownMenuItem>
+                    {projectList?.filter(p => p.isActive).map(p => (
+                      <DropdownMenuItem key={p.id} onClick={(e) => onMoveToProject(conv.id, p.id, e)} className="hover:bg-accent cursor-pointer">
+                        {p.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+              <DropdownMenuItem onClick={(e) => onDelete(conv.id, e)} className="text-destructive hover:bg-destructive/10 cursor-pointer">
+                <Trash2 className="w-4 h-4 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export function Sidebar({ className, onClose, onDesktopClose }: { className?: string, onClose?: () => void, onDesktopClose?: () => void }) {
   const [location, setLocation] = useLocation();
@@ -53,7 +174,12 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     if (onClose) onClose();
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleLocationChange = useCallback((id: string) => {
+    setLocation(`/chat/${id}`);
+    if (onClose) onClose();
+  }, [setLocation, onClose]);
+
+  const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     deleteConversation.mutate({ id }, {
@@ -64,16 +190,16 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         }
       }
     });
-  };
+  }, [deleteConversation, queryClient, location, setLocation]);
 
-  const startEdit = (id: string, title: string, e: React.MouseEvent) => {
+  const startEdit = useCallback((id: string, title: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setEditingId(id);
     setEditTitle(title);
-  };
+  }, []);
 
-  const saveEdit = (id: string, e?: React.MouseEvent) => {
+  const saveEdit = useCallback((id: string, e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -88,9 +214,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     } else {
       setEditingId(null);
     }
-  };
+  }, [editTitle, updateConversation, queryClient]);
 
-  const handleToggleFavorite = (id: string, currentStatus: boolean, e: React.MouseEvent) => {
+  const handleToggleFavorite = useCallback((id: string, currentStatus: boolean, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const nextStatus = !currentStatus;
@@ -123,9 +249,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         return next;
       });
     });
-  };
+  }, [queryClient, authFetch]);
 
-  const handleMoveToProject = (id: string, projectId: string | null, e: React.MouseEvent) => {
+  const handleMoveToProject = useCallback((id: string, projectId: string | null, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     updateConversation.mutate({ id, data: { title: undefined, projectId } as any }, {
@@ -133,7 +259,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
       }
     });
-  };
+  }, [updateConversation, queryClient]);
+
+  const cancelEdit = useCallback(() => setEditingId(null), []);
 
   const reloadSidebar = async () => {
     await Promise.all([
@@ -218,93 +346,23 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             <div className="text-sm text-muted-foreground p-2">No conversations</div>
           ) : (
             filteredConversations?.map((conv) => (
-              <div
+              <MemoizedConversationItem
                 key={conv.id}
-                className={cn(
-                  "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer",
-                  location === `/chat/${conv.id}` 
-                    ? "bg-sidebar-accent text-sidebar-foreground" 
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                )}
-                onClick={() => { setLocation(`/chat/${conv.id}`); if (onClose) onClose(); }}
-              >
-                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                {editingId === conv.id ? (
-                  <div className="flex-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                    <Input
-                      autoFocus
-                      value={editTitle}
-                      onChange={e => setEditTitle(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') saveEdit(conv.id);
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
-                      className="h-6 px-1.5 py-0 bg-sidebar-accent border-border text-sidebar-foreground"
-                    />
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-green-500" onClick={() => saveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => setEditingId(null)}><X className="w-3 h-3" /></Button>
-                  </div>
-                ) : (
-                  <span className="flex-1 truncate select-none">{conv.title}</span>
-                )}
-                
-                <div className={cn(
-                  "flex items-center transition-opacity",
-                  location === `/chat/${conv.id}` || conv.isFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                )}>
-                  <Button
-                    variant="ghost" size="icon"
-                    className="h-6 w-6 mr-1"
-                    onClick={(e) => handleToggleFavorite(conv.id, !!conv.isFavorite, e)}
-                  >
-                    <Heart className={cn(
-                      "w-3.5 h-3.5 transition-colors",
-                      conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500",
-                      pendingFavoriteIds.has(conv.id) && "opacity-70",
-                    )} />
-                  </Button>
-                  
-                  {editingId !== conv.id && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6 text-muted-foreground hover:text-sidebar-foreground"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
-                        <DropdownMenuItem onClick={(e) => startEdit(conv.id, conv.title, e)} className="hover:bg-accent cursor-pointer">
-                          <Edit2 className="w-4 h-4 mr-2" /> Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuSub>
-                          <DropdownMenuSubTrigger className="hover:bg-accent cursor-pointer">
-                            <FolderPlus className="w-4 h-4 mr-2" /> Move to Project
-                          </DropdownMenuSubTrigger>
-                          <DropdownMenuPortal>
-                            <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
-                              <DropdownMenuItem onClick={(e) => handleMoveToProject(conv.id, null, e)} className="hover:bg-accent cursor-pointer italic text-muted-foreground">
-                                None
-                              </DropdownMenuItem>
-                              {projectList?.filter(p => p.isActive).map(p => (
-                                <DropdownMenuItem key={p.id} onClick={(e) => handleMoveToProject(conv.id, p.id, e)} className="hover:bg-accent cursor-pointer">
-                                  {p.name}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuSubContent>
-                          </DropdownMenuPortal>
-                        </DropdownMenuSub>
-                        <DropdownMenuItem onClick={(e) => handleDelete(conv.id, e)} className="text-destructive hover:bg-destructive/10 cursor-pointer">
-                          <Trash2 className="w-4 h-4 mr-2" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-              </div>
+                conv={conv}
+                isActive={location === `/chat/${conv.id}`}
+                isEditing={editingId === conv.id}
+                editTitle={editTitle}
+                pendingFavorite={pendingFavoriteIds.has(conv.id)}
+                projectList={projectList || []}
+                onLocationChange={handleLocationChange}
+                onSaveEdit={saveEdit}
+                onCancelEdit={cancelEdit}
+                onEditTitleChange={setEditTitle}
+                onStartEdit={startEdit}
+                onToggleFavorite={handleToggleFavorite}
+                onMoveToProject={handleMoveToProject}
+                onDelete={handleDelete}
+              />
             ))
           )}
         </div>

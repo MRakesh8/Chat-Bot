@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,52 @@ async function loadConversation(token: string, convId: string): Promise<{ messag
   if (!res.ok) throw new Error("Conversation not found");
   return res.json();
 }
+
+const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
+  msg,
+  onCopy,
+}: {
+  msg: Message;
+  onCopy: (content: string) => void;
+}) {
+  return (
+    <div className={cn("flex gap-3 group", msg.role === "user" ? "justify-end" : "justify-start")}>
+      {msg.role === "assistant" && (
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0 mt-1">
+          <Bot className="w-3.5 h-3.5 text-primary-foreground" />
+        </div>
+      )}
+      <div
+        className={cn(
+          "max-w-[80%] rounded-2xl px-4 py-3 text-sm relative",
+          msg.role === "user"
+            ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-primary-foreground rounded-br-sm"
+            : "bg-card border border-border text-foreground rounded-bl-sm"
+        )}
+      >
+        {msg.role === "assistant" ? (
+          <>
+            <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {msg.content}
+              </ReactMarkdown>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+              onClick={() => onCopy(msg.content)}
+            >
+              <Copy className="w-3 h-3" />
+            </Button>
+          </>
+        ) : (
+          <p className="whitespace-pre-wrap">{msg.content}</p>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export default function SharedChatPage() {
   const { token } = useParams<{ token: string }>();
@@ -332,10 +378,10 @@ export default function SharedChatPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
     toast({ title: "Copied!" });
-  };
+  }, [toast]);
 
   const startNewChat = async () => {
     if (!token) return;
@@ -450,47 +496,7 @@ export default function SharedChatPage() {
           )}
 
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                "flex gap-3 group",
-                msg.role === "user" ? "justify-end" : "justify-start"
-              )}
-            >
-              {msg.role === "assistant" && (
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0 mt-1">
-                  <Bot className="w-3.5 h-3.5 text-primary-foreground" />
-                </div>
-              )}
-              <div
-                className={cn(
-                  "max-w-[80%] rounded-2xl px-4 py-3 text-sm relative",
-                  msg.role === "user"
-                    ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-primary-foreground rounded-br-sm"
-                    : "bg-card border border-border text-foreground rounded-bl-sm"
-                )}
-              >
-                {msg.role === "assistant" ? (
-                  <>
-                    <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                      onClick={() => copyToClipboard(msg.content)}
-                    >
-                      <Copy className="w-3 h-3" />
-                    </Button>
-                  </>
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                )}
-              </div>
-            </div>
+            <SharedMemoizedMessage key={msg.id} msg={msg} onCopy={copyToClipboard} />
           ))}
 
           {/* Streaming */}
