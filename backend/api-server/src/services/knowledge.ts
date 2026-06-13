@@ -7,7 +7,7 @@ import { logger } from "../lib/logger";
 import { extractYouTubeId, fetchYouTubeTranscriptText } from "../lib/youtube";
 import { isIP } from "node:net";
 
-const RETRY_DELAYS_MS = [5 * 60_000, 15 * 60_000, 30 * 60_000];
+const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000, 720 * 60_000];
 const MAX_RETRY_COUNT = RETRY_DELAYS_MS.length;
 const SUPPORTED_FILE_EXTENSIONS = new Set([
   "pdf",
@@ -501,6 +501,7 @@ export async function searchProjectKnowledge(params: {
         tag: knowledgeSources.tag,
         notes: knowledgeSources.notes,
         summary: knowledgeSources.summary,
+        rawContent: knowledgeSources.rawContent,
         sourceType: knowledgeSources.sourceType,
         sourceUrl: knowledgeSources.sourceUrl,
         websiteLinks: knowledgeSources.websiteLinks,
@@ -795,122 +796,152 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
     }).where(eq(knowledgeSources.id, sourceId));
     await db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledgeSourceId, sourceId));
 
-    let extractedText = "";
+    let extractedText = source.rawContent || "";
 
     try {
+      // PHASE 1: EXTRACTION AND STORAGE
       let fileBuffer;
-      if (source.fileId) {
-        const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-          .from("project-files")
-          .download(source.fileId);
-
-        if (downloadError || !fileData) {
-          throw new Error(`Failed to download file from storage: ${downloadError?.message}`);
-        }
-        fileBuffer = Buffer.from(await fileData.arrayBuffer());
-      }
       
-      if (source.sourceType === "note") {
-        extractedText = source.notes || "";
-      } else {
-        extractedText = await extractSourceContent({
-          sourceType: source.sourceType,
-          sourceUrl: source.sourceUrl,
-          fileBuffer,
-          filename: source.filename || undefined,
-          userId
-        });
+      if (!extractedText) {
+        if (source.fileId) {
+          const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+            .from("project-files")
+            .download(source.fileId);
+
+          if (downloadError || !fileData) {
+            throw new Error(`Failed to download file from storage: ${downloadError?.message}`);
+          }
+          fileBuffer = Buffer.from(await fileData.arrayBuffer());
+        }
+        
+        if (source.sourceType === "note") {
+          extractedText = source.notes || "";
+        } else {
+          extractedText = await extractSourceContent({
+            sourceType: source.sourceType,
+            sourceUrl: source.sourceUrl,
+            fileBuffer,
+            filename: source.filename || undefined,
+            userId
+          });
+        }
       }
 
       const links = extractLinks(`${source.sourceUrl ?? ""}\n${source.notes ?? ""}\n${extractedText}`);
-      const summary = await generateSummary(userId, extractedText);
-      const keywordIndex = uniqueStrings([
+      
+      let baseKeywordIndex = uniqueStrings([
         source.title,
         source.tag,
         source.notes,
-        summary,
         extractedText.slice(0, 10000),
         ...links.websiteLinks,
         ...links.videoLinks,
         ...links.githubLinks,
       ]).join(" ").slice(0, 12000);
 
-      const chunks = chunkText(extractedText);
-      logger.info(`Extracted ${chunks.length} chunks from ${sourceId}`);
-
-      let savedChunks = 0;
-      for (const text of chunks) {
-        let embedded = false;
-        for (let attempt = 0; attempt < 3 && !embedded; attempt++) {
-          try {
-            const response = await ai.models.embedContent(userId, {
-              model: "gemini-embedding-2",
-              contents: text,
-              config: { outputDimensionality: 768 },
-            });
-
-            const embedding = response.embeddings?.[0]?.values;
-            if (embedding) {
-              await db.insert(knowledgeChunks).values({
-                knowledgeSourceId: source.id,
-                projectId: source.projectId,
-                chunkText: text,
-                embedding: embedding,
-              });
-              savedChunks++;
-              embedded = true;
-            }
-          } catch (embedError) {
-            if (attempt === 2) {
-              logger.error({ err: embedError }, "Failed to embed chunk after retries");
-            } else {
-              await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
-            }
-          }
-        }
-      }
-
-      if (savedChunks === 0) {
-        throw new Error("No knowledge chunks could be embedded");
-      }
-
-      // Successful retrieval test point - we assume success if chunks > 0 saved
-      const [updated] = await db.update(knowledgeSources).set({
-        status: "processed",
+      // SAVE RAW CONTENT IMMEDIATELY
+      await db.update(knowledgeSources).set({
+        status: "STORED",
         rawContent: extractedText,
-        summary,
-        keywordIndex,
+        keywordIndex: baseKeywordIndex,
         websiteLinks: uniqueStrings([...(source.websiteLinks ?? []), ...links.websiteLinks]),
         videoLinks: uniqueStrings([...(source.videoLinks ?? []), ...links.videoLinks]),
         githubLinks: uniqueStrings([...(source.githubLinks ?? []), ...links.githubLinks]),
-        retryCount: 0,
-        nextRetryAt: null,
-        lastError: null,
         updatedAt: new Date(),
-      }).where(eq(knowledgeSources.id, sourceId)).returning();
-      logger.info(`Successfully processed source ${sourceId}`);
-      return updated;
+      }).where(eq(knowledgeSources.id, sourceId));
+      
+      // PHASE 2: AI ENRICHMENT
+      try {
+        const summary = await generateSummary(userId, extractedText);
+        const fullKeywordIndex = uniqueStrings([baseKeywordIndex, summary]).join(" ").slice(0, 12000);
 
+        const chunks = chunkText(extractedText);
+        logger.info(`Extracted ${chunks.length} chunks from ${sourceId}`);
+
+        let savedChunks = 0;
+        for (const text of chunks) {
+          let embedded = false;
+          for (let attempt = 0; attempt < 3 && !embedded; attempt++) {
+            try {
+              const response = await ai.models.embedContent(userId, {
+                model: "gemini-embedding-2",
+                contents: text,
+                config: { outputDimensionality: 768 },
+              });
+
+              const embedding = response.embeddings?.[0]?.values;
+              if (embedding) {
+                await db.insert(knowledgeChunks).values({
+                  knowledgeSourceId: source.id,
+                  projectId: source.projectId,
+                  chunkText: text,
+                  embedding: embedding,
+                });
+                savedChunks++;
+                embedded = true;
+              }
+            } catch (embedError) {
+              if (attempt === 2) {
+                logger.error({ err: embedError }, "Failed to embed chunk after retries");
+              } else {
+                await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+              }
+            }
+          }
+        }
+
+        if (savedChunks === 0) {
+          throw new Error("No knowledge chunks could be embedded");
+        }
+
+        const [updated] = await db.update(knowledgeSources).set({
+          status: "processed",
+          summary,
+          keywordIndex: fullKeywordIndex,
+          retryCount: 0,
+          nextRetryAt: null,
+          lastError: null,
+          updatedAt: new Date(),
+        }).where(eq(knowledgeSources.id, sourceId)).returning();
+        
+        logger.info(`Successfully processed source ${sourceId}`);
+        return updated;
+        
+      } catch (aiError: any) {
+        logger.error({ err: aiError }, `AI enrichment failed for source ${sourceId}`);
+        
+        const [current] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, sourceId));
+        const nextRetryCount = Math.min((current?.retryCount ?? 0) + 1, MAX_RETRY_COUNT);
+        const shouldRetry = nextRetryCount <= MAX_RETRY_COUNT;
+        const nextRetryAt = shouldRetry && nextRetryCount < MAX_RETRY_COUNT
+          ? new Date(Date.now() + retryDelayForAttempt(nextRetryCount - 1))
+          : null;
+          
+        await db.update(knowledgeSources).set({
+          status: "PARTIAL_SUCCESS",
+          retryCount: nextRetryCount,
+          nextRetryAt,
+          lastError: "AI Enrichment Failed: " + (aiError?.message || String(aiError)),
+          updatedAt: new Date(),
+        }).where(eq(knowledgeSources.id, sourceId));
+        
+        if (nextRetryAt) scheduleKnowledgeRepair(sourceId, nextRetryCount);
+        return current;
+      }
     } catch (err: any) {
-      logger.error({ err }, `Processing pipeline failed for source ${sourceId}`);
-      throw err; // Caught by outer block
+      logger.error({ err }, `Raw extraction failed for source ${sourceId}`);
+      throw err;
     }
   } catch (error) {
     logger.error({ err: error }, `Error processing source ${sourceId}`);
     const [current] = await db.select().from(knowledgeSources).where(eq(knowledgeSources.id, sourceId));
-    const nextRetryCount = Math.min((current?.retryCount ?? 0) + 1, MAX_RETRY_COUNT);
-    const shouldRetry = nextRetryCount <= MAX_RETRY_COUNT;
-    const nextRetryAt = shouldRetry && nextRetryCount < MAX_RETRY_COUNT
-      ? new Date(Date.now() + retryDelayForAttempt(nextRetryCount - 1))
-      : null;
     await db.update(knowledgeSources).set({
-      status: "error",
-      retryCount: nextRetryCount,
-      nextRetryAt,
+      status: "FAILED",
+      retryCount: 0,
+      nextRetryAt: null,
       lastError: (error as any)?.message || (typeof error === 'string' ? error : JSON.stringify(error, Object.getOwnPropertyNames(error as any))),
       updatedAt: new Date(),
     }).where(eq(knowledgeSources.id, sourceId));
-    if (nextRetryAt) scheduleKnowledgeRepair(sourceId, nextRetryCount);
     return current;
   }
 }

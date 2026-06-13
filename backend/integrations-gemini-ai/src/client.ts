@@ -147,7 +147,7 @@ class GeminiFailoverModels {
         const attemptOptions = { ...options, model: modelToUse };
         
         try {
-          console.log(`[Gemini Routing] Trying Key ${key.id} (System: ${key.isSystem}) with Model ${modelToUse}`);
+          console.log(`[Gemini Routing] Provider: Gemini | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: Trying`);
           
           let result;
           if (method === 'generateContent') result = await client.models.generateContent(attemptOptions);
@@ -160,25 +160,29 @@ class GeminiFailoverModels {
           const status = err?.status || err?.response?.status;
           const isTimeout = err?.message?.toLowerCase().includes("timeout");
           
+          const logData = `Provider: Gemini | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: ${status || 'unknown'} | Reason: ${err.message}`;
+          
           if (status === 429) {
-            console.warn(`[Gemini Routing] Rate Limit on Key ${key.id}`);
+            console.warn(`[Gemini Routing] Rate Limit - ${logData}`);
             await this._updateKeyFailure(key, '429', err.message);
             break; // Move to next key
           } else if (isTimeout) {
-            console.warn(`[Gemini Routing] Timeout on Key ${key.id}`);
+            console.warn(`[Gemini Routing] Timeout - ${logData}`);
             await this._updateKeyFailure(key, 'timeout', err.message);
             break; // Move to next key
           } else if (isRetryableError(err)) {
-            console.warn(`[Gemini Routing] Retryable error on Key ${key.id}: ${err.message}`);
+            console.warn(`[Gemini Routing] Retryable Error - ${logData}`);
             await this._updateKeyFailure(key, 'other', err.message);
             break; // Move to next key
           } else {
+            console.error(`[Gemini Routing] Non-Retryable Error - ${logData}`);
             throw err;
           }
         }
       }
     }
 
+    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning 503.`);
     throw { status: 503, message: "AI service is currently unavailable. Please try again later or add your own API key." };
   }
 }

@@ -800,20 +800,22 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden relative">
                               {source.status === "processed" && <div className="absolute inset-y-0 left-0 bg-emerald-500 w-full"></div>}
-                              {source.status === "error" && <div className="absolute inset-y-0 left-0 bg-destructive w-full"></div>}
-                              {(source.status === "pending" || source.status === "processing") && (
+                              {(source.status === "error" || source.status === "FAILED") && <div className="absolute inset-y-0 left-0 bg-destructive w-full"></div>}
+                              {source.status === "PARTIAL_SUCCESS" && <div className="absolute inset-y-0 left-0 bg-amber-500 w-full"></div>}
+                              {(source.status === "pending" || source.status === "processing" || source.status === "STORED") && (
                                 <div className="absolute inset-y-0 left-0 bg-blue-500 w-1/2 animate-pulse rounded-full"></div>
                               )}
                             </div>
                             <span className={`text-[10px] font-semibold uppercase tracking-wider ${
                               source.status === "processed" ? "text-emerald-500" :
-                              source.status === "error" ? "text-destructive" : "text-blue-500"
+                              (source.status === "error" || source.status === "FAILED") ? "text-destructive" :
+                              source.status === "PARTIAL_SUCCESS" ? "text-amber-500" : "text-blue-500"
                             }`}>
-                              {source.status}
+                              {source.status.replace('_', ' ')}
                             </span>
                           </div>
-                          {source.status === "error" && source.lastError && (
-                            <p className="text-xs text-destructive mt-1.5 line-clamp-1" title={source.lastError}>
+                          {(source.status === "error" || source.status === "FAILED" || source.status === "PARTIAL_SUCCESS") && source.lastError && (
+                            <p className={`text-xs mt-1.5 line-clamp-1 ${source.status === "PARTIAL_SUCCESS" ? "text-amber-500/80" : "text-destructive"}`} title={source.lastError}>
                               {source.lastError}
                             </p>
                           )}
