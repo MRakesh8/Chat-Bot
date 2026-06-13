@@ -8,6 +8,8 @@ import reportsRouter from "./reports";
 import categoriesRouter from "./categories";
 import apiKeysRouter from "./api-keys";
 
+import systemRouter from "./system";
+
 const router: IRouter = Router();
 
 
@@ -17,5 +19,6 @@ router.use("/projects", projectsRouter);
 router.use("/reports", reportsRouter);
 router.use("/categories", categoriesRouter);
 router.use("/api-keys", apiKeysRouter);
+router.use("/system", systemRouter);
 
 export default router;

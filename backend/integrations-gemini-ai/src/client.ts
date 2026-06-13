@@ -183,8 +183,12 @@ class GeminiFailoverModels {
       }
     }
 
-    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning 503.`);
-    throw { status: 503, message: "AI service is currently unavailable. Please try again later or add your own API key." };
+    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning structured quota error.`);
+    throw {
+      success: false,
+      type: "quota_exceeded",
+      message: "All AI providers are currently unavailable. Add a user API key or wait for quota reset."
+    };
   }
 }
 

@@ -7,6 +7,7 @@ import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, pr
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
+import { searchProjectKnowledge } from "../../services/knowledge";
 import { z } from "zod";
 
 const createProjectSchema = z.object({
@@ -318,36 +319,16 @@ async function buildProjectKnowledgeContext(projectId: string, userId: string, q
   if (!query.trim()) return "";
 
   try {
-    const embedRes = await ai.models.embedContent(userId, {
-      model: "gemini-embedding-2",
-      contents: query,
-      config: { outputDimensionality: 768 },
+    const { contextString } = await searchProjectKnowledge({
+      projectIds: [projectId],
+      userId,
+      query,
+      limit: 6
     });
-    const userVector = embedRes.embeddings?.[0]?.values;
-    if (!userVector) return "";
+    
+    if (!contextString) return "";
 
-    let chunks = await db
-      .select()
-      .from(knowledgeChunks)
-      .where(and(eq(knowledgeChunks.projectId, projectId), isNotNull(knowledgeChunks.embedding)))
-      .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
-      .limit(6);
-
-    if (chunks.length === 0) {
-      chunks = await db
-        .select()
-        .from(knowledgeChunks)
-        .where(eq(knowledgeChunks.projectId, projectId))
-        .orderBy(desc(knowledgeChunks.createdAt))
-        .limit(6);
-    }
-
-    if (chunks.length === 0) return "";
-
-    return [
-      "Relevant project knowledge:",
-      ...chunks.map((chunk, index) => `--- Knowledge ${index + 1} ---\n${chunk.chunkText}`),
-    ].join("\n\n");
+    return "Relevant project knowledge:\n" + contextString;
   } catch (err) {
     logger.error({ err }, "Error retrieving project knowledge");
     return "";
@@ -431,23 +412,49 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
     res.setHeader("X-Accel-Buffering", "no");
 
     let fullResponse = "";
+    let streamStarted = false;
 
-    const stream = await ai.models.generateContentStream(project.userId, {
-      model: "gemini-2.5-flash",
-      contents: chatMessages,
-      config: { maxOutputTokens: 8192 },
-    });
+    try {
+      const stream = await ai.models.generateContentStream(project.userId, {
+        model: "gemini-2.5-flash",
+        contents: chatMessages,
+        config: { maxOutputTokens: 8192 },
+      });
 
-    for await (const chunk of stream) {
-      const text = chunk.text;
-      if (text) {
-        fullResponse += text;
-        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+      for await (const chunk of stream) {
+        streamStarted = true;
+        const text = chunk.text;
+        if (text) {
+          fullResponse += text;
+          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        }
+      }
+    } catch (err: any) {
+      logger.error({ err }, "Error generating stream in project chat");
+      
+      const isQuotaError = err?.type === "quota_exceeded";
+      const status = err?.status || err?.response?.status;
+      const isBusy = isQuotaError || status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
+      const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
+
+      if (!res.headersSent) {
+        if (isBusy || isQuotaError) {
+          res.status(200).json({ error: errorMessage });
+          return;
+        } else {
+          res.status(500).json({ error: errorMessage });
+          return;
+        }
+      } else {
+        res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
       }
     }
 
-    // Save assistant message
-    await db.insert(messages).values({ sessionId: convId as any, sender: "assistant", content: fullResponse });
+    // Save assistant message if there was a response
+    if (fullResponse) {
+      await db.insert(messages).values({ sessionId: convId as any, sender: "assistant", content: fullResponse });
+    }
+
 
     // Auto-title after first exchange
     const allMsgs = await db.select().from(messages).where(eq(messages.sessionId, convId as any));

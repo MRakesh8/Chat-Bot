@@ -705,26 +705,30 @@ RULES FOR ALL RESPONSES:
   } catch (err: any) {
     req.log.error({ err, currentStep }, `Error in streaming message at step: ${currentStep}`);
     
+    const isQuotaError = err?.type === "quota_exceeded";
     const status = err?.status || err?.response?.status;
-    const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
+    const isBusy = isQuotaError || status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
+    
+    const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
 
     if (!res.headersSent) {
-      if (isBusy) {
-        res.status(503).json({ error: "AI service is temporarily busy. Please try again in a few moments." });
+      if (isBusy || isQuotaError) {
+        res.status(200).json({ error: errorMessage }); // Important: don't throw 503, return graceful json if requested directly
       } else {
         res.status(500).json({ 
           step: currentStep, 
-          error: err?.message || "Internal server error", 
+          error: errorMessage, 
           stack: err?.stack || ""
         });
       }
     } else {
-      if (isBusy) {
-        res.write(`data: ${JSON.stringify({ error: "AI service is temporarily busy. Please try again in a few moments." })}\n\n`);
+      if (isBusy || isQuotaError) {
+        // Stream graceful error message to the UI as assistant content if possible, or error chunk
+        res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ 
           step: currentStep, 
-          error: err?.message || "Stream error" 
+          error: errorMessage 
         })}\n\n`);
       }
       res.end();
