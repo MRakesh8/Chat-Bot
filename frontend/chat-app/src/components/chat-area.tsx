@@ -24,8 +24,10 @@ import {
   Sparkle,
   StopCircle,
   X,
+  CheckCircle2,
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
+import { RotatingStatus } from "@/components/rotating-status";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -85,7 +87,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
         className={cn(
           "max-w-[88%] rounded-2xl px-5 py-3.5 text-sm shadow-sm",
           msg.role === "user"
-            ? "bg-foreground text-background"
+            ? "bg-[#2B2B2B] text-[#FFFFFF]"
             : "border border-border bg-card text-card-foreground",
           isSelected && "ring-2 ring-primary/50",
         )}
@@ -129,6 +131,11 @@ const MemoizedMessage = memo(function MemoizedMessage({
           checked={isSelected}
           onChange={() => onToggleSelection(msg.id)}
         />
+      )}
+      {msg.role === "user" && (
+        <div className="mb-4 text-muted-foreground flex shrink-0">
+          <CheckCircle2 className="h-4 w-4" />
+        </div>
       )}
     </div>
   );
@@ -283,9 +290,32 @@ export function ChatArea() {
       targetId = newConv.id;
       queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
       setLocation(`/chat/${targetId}`);
+      
+      const newMessage = {
+        id: "optimistic-" + Date.now(),
+        role: "user",
+        content: messageText,
+        createdAt: new Date().toISOString(),
+      };
+      queryClient.setQueryData(getListGeminiMessagesQueryKey(targetId), (old: any) => {
+        if (!old) return [newMessage];
+        return [...old, newMessage];
+      });
+
       setTimeout(() => sendMessage(targetId!, messageText, fileIds, selectedProjectIds, useNormalAi), 50);
       return;
     }
+
+    const newMessage = {
+      id: "optimistic-" + Date.now(),
+      role: "user",
+      content: messageText,
+      createdAt: new Date().toISOString(),
+    };
+    queryClient.setQueryData(getListGeminiMessagesQueryKey(targetId), (old: any) => {
+      if (!old) return [newMessage];
+      return [...old, newMessage];
+    });
 
     sendMessage(targetId, messageText, fileIds, selectedProjectIds, useNormalAi);
     setTimeout(() => scrollToBottom(), 50);
@@ -566,21 +596,22 @@ export function ChatArea() {
             {isStreaming && (
               <div className="flex justify-start">
                 <div className="max-w-[88%] rounded-2xl border border-border bg-card px-5 py-3.5 text-sm text-card-foreground shadow-sm">
-                  <div className="mb-2 flex items-center gap-2">
-                    <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
-                    <span className="text-xs font-medium text-primary">Aria is typing...</span>
-                  </div>
                   {streamingContent ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                        {streamingContent}
-                      </ReactMarkdown>
-                    </div>
+                    <>
+                      <div className="mb-2 flex items-center gap-2">
+                        <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
+                        <span className="text-xs font-medium text-primary">Aria is typing...</span>
+                      </div>
+                      <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                          {streamingContent}
+                        </ReactMarkdown>
+                      </div>
+                    </>
                   ) : (
-                    <div className="flex gap-1 py-1">
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                    <div className="flex items-center gap-3">
+                      <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
+                      <RotatingStatus className="text-primary text-xs font-medium" />
                     </div>
                   )}
                 </div>

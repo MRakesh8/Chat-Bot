@@ -14,6 +14,7 @@ import {
   X,
   Copy,
   ArrowLeft,
+  CheckCircle2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -21,6 +22,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
+import { RotatingStatus } from "@/components/rotating-status";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -85,7 +87,7 @@ const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
         className={cn(
           "max-w-[80%] rounded-2xl px-4 py-3 text-sm relative",
           msg.role === "user"
-            ? "bg-gradient-to-br from-violet-600 to-indigo-600 text-primary-foreground rounded-br-sm"
+            ? "bg-[#2B2B2B] text-[#FFFFFF]"
             : "bg-card border border-border text-foreground rounded-bl-sm"
         )}
       >
@@ -109,6 +111,11 @@ const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
           <p className="whitespace-pre-wrap">{msg.content}</p>
         )}
       </div>
+      {msg.role === "user" && (
+        <div className="mb-4 text-muted-foreground flex shrink-0">
+          <CheckCircle2 className="h-4 w-4" />
+        </div>
+      )}
     </div>
   );
 });
@@ -513,10 +520,8 @@ export default function SharedChatPage() {
                     </ReactMarkdown>
                   </div>
                 ) : (
-                  <div className="flex gap-1 items-center h-5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+                  <div className="flex items-center gap-3 h-5">
+                    <RotatingStatus className="text-primary text-xs font-medium" />
                   </div>
                 )}
               </div>

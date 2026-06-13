@@ -411,9 +411,11 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
       ...(messageContent ? [{ text: messageContent }] : []),
     ];
 
+    const PROJECT_BRAIN_DIRECTIVE = `\n\nCRITICAL DIRECTIVE: You are acting as a specific Project Brain.\n\nPROJECT AI BEHAVIOR HIERARCHY\n1. Project Instructions (Highest Priority)\n   - Tone, Personality, Rules, Workflow, Response style\n2. Relevant Project Knowledge\n   - Facts, Documents, Knowledge Base entries\n3. User Message\n4. Model General Knowledge\n\nRules:\n- Always follow Project Instructions.\n- Use Project Knowledge when relevant.\n- If Project Knowledge contains the answer, use it.\n- If Project Instructions define behavior, always obey them.\n- General model knowledge is only a fallback.\n\nTreat the Knowledge & Instructions text as authoritative project knowledge, not just behavior guidance. If the user's question cannot be answered using the provided project knowledge or retrieved chunks, explicitly state that the answer is not in the project knowledge. Then, and only then, you may offer general knowledge, clearly labeled as outside the project's knowledge.`;
+
     // Build Gemini chat — project's systemPrompt replaces the default Aria prompt
     const chatMessages: { role: "user" | "model"; parts: GeminiPart[] }[] = [
-      { role: "user", parts: [{ text: project.systemPrompt }] },
+      { role: "user", parts: [{ text: project.systemPrompt + PROJECT_BRAIN_DIRECTIVE }] },
       { role: "model", parts: [{ text: "Understood! I'm ready to help based on the provided information. What would you like to know?" }] },
       ...historyWithoutCurrent.map((m) => ({
         role: (m.sender === "assistant" ? "model" : "user") as "user" | "model",
