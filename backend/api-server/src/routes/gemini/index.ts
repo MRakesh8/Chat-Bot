@@ -576,6 +576,7 @@ RULES FOR ALL RESPONSES:
 4. If Response Mode is DIRECT_ANSWER, NEVER summarize the project, consolidate knowledge, organize knowledge, rewrite the entire project, or dump all knowledge. This overrides any project instructions asking you to organize.
 5. For FACTUAL_QUESTION responses, NEVER use conversational filler wrappers like "Understood!", "I will", "Here's". Be completely direct and factual. For CONVERSATIONAL responses, you may be natural.
 6. VALIDATION CHECK: Before generating your final response, internally ask yourself "Does this directly address the user's input?". If NO, re-evaluate.
+7. CRITICAL OUTPUT RULE: NEVER include internal references, knowledge IDs, generic source IDs, debug information, or retrieval metadata in your response. Do NOT start responses with phrases like "Based on the Project Knowledge" or "According to the provided context". Integrate the knowledge naturally and directly.
 =========================================
 `;
 

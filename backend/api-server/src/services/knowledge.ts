@@ -473,7 +473,8 @@ export async function searchProjectKnowledge(params: {
 }): Promise<{ contextString: string, retrievedIds: string[] }> {
   if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
 
-  const limit = params.limit ?? 3;
+  // 1. Candidate Generation
+  const fetchLimit = 10;
   const words = uniqueStrings(
     params.query
       .toLowerCase()
@@ -512,7 +513,7 @@ export async function searchProjectKnowledge(params: {
       .from(knowledgeSources)
       .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
       .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions)))
-      .limit(limit);
+      .limit(fetchLimit);
   }
 
   let similarChunks: Array<any> = [];
@@ -536,13 +537,16 @@ export async function searchProjectKnowledge(params: {
           videoLinks: knowledgeSources.videoLinks,
           githubLinks: knowledgeSources.githubLinks,
           categoryName: knowledgeCategories.name,
+          rawContent: knowledgeSources.rawContent,
+          summary: knowledgeSources.summary,
+          notes: knowledgeSources.notes,
         })
         .from(knowledgeChunks)
         .leftJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
         .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
         .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding)))
         .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
-        .limit(limit);
+        .limit(fetchLimit);
     }
   } catch (err) {
     logger.error({ err }, "Vector knowledge search failed");
@@ -550,65 +554,94 @@ export async function searchProjectKnowledge(params: {
 
   if (metadataMatches.length === 0 && similarChunks.length === 0) return { contextString: "", retrievedIds: [] };
 
-  const MAX_CHUNKS = 3;
-  const MAX_CHARS = 3000;
+  // 2. Combine and Score Candidates
+  const candidatesMap = new Map<string, any>();
+
+  for (const match of metadataMatches) {
+    const id = match.id;
+    if (!candidatesMap.has(id)) {
+      candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: match.summary || match.rawContent || match.notes || "" });
+    }
+  }
+
+  for (const chunk of similarChunks) {
+    const id = chunk.sourceId;
+    if (id && !candidatesMap.has(id)) {
+      candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: chunk.chunkText || chunk.summary || chunk.rawContent || "" });
+    } else if (id && candidatesMap.has(id)) {
+      const existing = candidatesMap.get(id);
+      existing.isVectorMatch = true;
+      existing.contentText = existing.contentText.length > 0 ? existing.contentText : (chunk.chunkText || chunk.summary || chunk.rawContent || "");
+    }
+  }
+
+  const queryStr = params.query.toLowerCase().trim();
+  const queryTerms = words.map(w => w.toLowerCase());
+  const scoredCandidates: Array<any> = [];
+
+  for (const candidate of candidatesMap.values()) {
+    const lowerTag = (candidate.tag || "").toLowerCase();
+    const lowerCategory = (candidate.categoryName || "").toLowerCase();
+    const lowerContent = (candidate.contentText || "").toLowerCase();
+
+    let tagScore = 0;
+    let categoryScore = 0;
+    let keywordScore = 0;
+    let entityScore = 0;
+    let vectorScore = candidate.isVectorMatch ? 20 : 0;
+
+    if (lowerTag === queryStr) {
+      tagScore = 200;
+    } else if (lowerTag && (lowerTag.includes(queryStr) || queryTerms.some(t => lowerTag.includes(t)))) {
+      tagScore = 150;
+    }
+
+    if (lowerCategory && (lowerCategory.includes(queryStr) || queryTerms.some(t => lowerCategory.includes(t)))) {
+      categoryScore = 100;
+    }
+
+    if (queryStr && lowerContent.includes(queryStr)) {
+      entityScore = 60;
+    }
+
+    if (queryTerms.some(t => lowerContent.includes(t))) {
+      keywordScore = 80;
+    }
+
+    let score = tagScore + categoryScore + keywordScore + entityScore + vectorScore;
+    scoredCandidates.push({ ...candidate, retrievalScore: score });
+  }
+
+  // 3. Sorting and Slicing
+  scoredCandidates.sort((a, b) => b.retrievalScore - a.retrievalScore);
+  const topCandidates = scoredCandidates.slice(0, params.limit ?? 5);
+
+  // 4. Logging
+  let debugLog = `Query: ${params.query}\n\n`;
+  topCandidates.forEach((c, index) => {
+    debugLog += `Candidate ${index + 1}:\nCategory: ${c.categoryName || "Uncategorized"}\nTag: ${c.tag || "None"}\nScore: ${c.retrievalScore}\n\n`;
+  });
+  logger.info(`[Retrieval Ranking]\n${debugLog.trim()}`);
+
+  // 5. Context Formatting
+  const MAX_CHARS = 10000;
   let currentChars = 0;
-  let chunkCount = 0;
 
   const finalItems: string[] = [];
   const retrievedIdsSet = new Set<string>();
 
-  const tryAddItem = (itemStr: string, id: string) => {
-    if (chunkCount >= MAX_CHUNKS) return false;
-    if (currentChars + itemStr.length > MAX_CHARS && chunkCount > 0) return false;
+  for (const candidate of topCandidates) {
+    const itemStr = `Category: ${candidate.categoryName || "Uncategorized"}\nTag: ${candidate.tag || "None"}\n\nContent:\n${candidate.contentText}`;
     
+    if (currentChars + itemStr.length > MAX_CHARS && finalItems.length > 0) break;
+
     finalItems.push(itemStr);
-    retrievedIdsSet.add(id);
+    retrievedIdsSet.add(candidate.id);
     currentChars += itemStr.length;
-    chunkCount++;
-    return true;
-  };
-
-  const lines = ["Here is the most relevant saved project knowledge:"];
-  
-  // Prefer metadata matches first
-  for (const match of metadataMatches) {
-    if (chunkCount >= MAX_CHUNKS) break;
-    const itemStr = [
-      `Knowledge ID: ${match.kbId || match.id}`,
-      `Category: ${match.categoryName || "Uncategorized"}`,
-      `Title: ${match.title || "Untitled"}`,
-      `Tags: ${match.tag || "None"}`,
-      `Type: ${match.sourceType}`,
-      `Website Links: ${(match.websiteLinks ?? []).join(", ") || "None"}`,
-      `Video Links: ${(match.videoLinks ?? []).join(", ") || "None"}`,
-      `GitHub Links: ${(match.githubLinks ?? []).join(", ") || "None"}`,
-      `Summary/Notes: ${match.summary || match.notes || "None"}`,
-    ].join("\n");
-    tryAddItem(itemStr, match.kbId || match.id);
   }
-
-  for (const chunk of similarChunks) {
-    if (chunkCount >= MAX_CHUNKS) break;
-    const itemStr = [
-      `Knowledge ID: ${chunk.kbId || chunk.sourceId}`,
-      `Category: ${chunk.categoryName || "Uncategorized"}`,
-      `Title: ${chunk.title || "Untitled"}`,
-      `Tags: ${chunk.tag || "None"}`,
-      `Type: ${chunk.sourceType || "unknown"}`,
-      `Links: ${[...(chunk.websiteLinks ?? []), ...(chunk.videoLinks ?? []), ...(chunk.githubLinks ?? [])].join(", ") || chunk.sourceUrl || "None"}`,
-      `Content Snippet: ${chunk.chunkText}`,
-    ].join("\n");
-    // Prevent adding same chunk source multiple times if already added in metadata
-    if (!retrievedIdsSet.has(chunk.kbId || chunk.sourceId)) {
-      tryAddItem(itemStr, chunk.kbId || chunk.sourceId);
-    }
-  }
-
-  lines.push(...finalItems);
 
   return {
-    contextString: lines.join("\n\n"),
+    contextString: finalItems.join("\n\n---\n\n"),
     retrievedIds: Array.from(retrievedIdsSet)
   };
 }
