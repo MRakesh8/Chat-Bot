@@ -565,13 +565,17 @@ First, internally analyze the user's question to determine its type and Response
   Type: ORGANIZATION_TASK
   Response Mode: PROJECT_ORGANIZATION -> You may organize and summarize the project as requested.
 
+- If the user's message is purely conversational, a greeting (e.g., "hi", "hello"), or lacks a clear question:
+  Type: CONVERSATIONAL
+  Response Mode: CONVERSATIONAL_REPLY -> Respond warmly and ask how you can help, following your core persona.
+
 RULES FOR ALL RESPONSES:
-1. Answer ONLY what the user asks based on the detected Question Type. Do not expand into unrelated topics.
-2. If relevant knowledge was provided in the context: Answer using THAT knowledge ONLY.
+1. Answer ONLY what the user asks based on the detected Question Type.
+2. If relevant knowledge was provided in the context for a FACTUAL_QUESTION: Answer using THAT knowledge ONLY.
 3. If NO relevant knowledge is found in the context: Use your general AI knowledge as a fallback.
 4. If Response Mode is DIRECT_ANSWER, NEVER summarize the project, consolidate knowledge, organize knowledge, rewrite the entire project, or dump all knowledge. This overrides any project instructions asking you to organize.
-5. NEVER use conversational filler wrappers like "Understood!", "I will", "Here's", "Let's", or "Project Structure". Be completely direct and factual.
-6. VALIDATION CHECK: Before generating your final response, internally ask yourself "Does this directly answer the user's question?". If NO, re-evaluate and ensure you answer the question directly.
+5. For FACTUAL_QUESTION responses, NEVER use conversational filler wrappers like "Understood!", "I will", "Here's". Be completely direct and factual. For CONVERSATIONAL responses, you may be natural.
+6. VALIDATION CHECK: Before generating your final response, internally ask yourself "Does this directly address the user's input?". If NO, re-evaluate.
 =========================================
 `;
 

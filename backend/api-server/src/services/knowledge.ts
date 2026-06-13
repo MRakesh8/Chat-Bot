@@ -907,7 +907,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
       status: "error",
       retryCount: nextRetryCount,
       nextRetryAt,
-      lastError: error instanceof Error ? error.message : String(error),
+      lastError: error?.message || (typeof error === 'string' ? error : JSON.stringify(error, Object.getOwnPropertyNames(error))),
       updatedAt: new Date(),
     }).where(eq(knowledgeSources.id, sourceId));
     if (nextRetryAt) scheduleKnowledgeRepair(sourceId, nextRetryCount);
