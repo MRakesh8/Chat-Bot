@@ -6,11 +6,14 @@ import {
   saveAutoKnowledgeItem,
   searchProjectKnowledge,
   stripSaveCommand,
+  extractSourceContent,
 } from "../../services/knowledge";
 import { db } from "@workspace/db";
 import { chatSessions, messages, projects, knowledgeRetrievalCache } from "@workspace/db";
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { supabaseAdmin } from "../../lib/supabase";
+import { logger } from "../../lib/logger";
 import {
   CreateGeminiConversationBody,
   UpdateGeminiConversationBody,
@@ -306,7 +309,52 @@ function serializeMessage(message: typeof messages.$inferSelect) {
 }
 
 async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
-  return [];
+  const parts: GeminiPart[] = [];
+  for (const fileId of fileIds) {
+    if (!fileId) continue;
+    try {
+      const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+        .from("project-files")
+        .download(fileId);
+
+      if (downloadError || !fileData) {
+        logger.error(`Failed to download file ${fileId}: ${downloadError?.message}`);
+        continue;
+      }
+      
+      const fileBuffer = Buffer.from(await fileData.arrayBuffer());
+      const mimetype = fileData.type;
+      
+      if (mimetype.startsWith("image/")) {
+        parts.push({
+          inlineData: {
+            mimeType: mimetype,
+            data: fileBuffer.toString("base64")
+          }
+        });
+      } else {
+        let sourceType = "file";
+        const filename = fileId.split("/").pop();
+        if (mimetype.startsWith("video/")) sourceType = "video";
+        
+        try {
+          const extractedText = await extractSourceContent({
+            sourceType,
+            sourceUrl: null,
+            fileBuffer,
+            filename,
+            userId: null
+          });
+          parts.push({ text: `[Contents of attached file: ${filename}]:\n${extractedText}` });
+        } catch (extractErr: any) {
+          logger.error(`Failed to extract text from ${filename}: ${extractErr.message}`);
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, `Error processing file ${fileId}`);
+    }
+  }
+  return parts;
 }
 
 // POST /gemini/conversations/:id/messages (SSE streaming)

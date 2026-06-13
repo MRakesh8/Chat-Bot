@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import { RotatingStatus } from "@/components/rotating-status";
+import { ArtifactViewer } from "@/components/ArtifactViewer";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +47,7 @@ import { apiUrl } from "@/lib/api-url";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 
-type Project = { id: string; name: string; isActive: boolean };
+type Project = { id: string; name: string; isActive: boolean; systemPrompt?: string };
 
 function greeting() {
   const hour = new Date().getHours();
@@ -64,6 +65,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
   onAddToProject,
   onCopy,
   onRegenerate,
+  onOpenArtifact,
 }: {
   msg: any;
   basePath: string;
@@ -73,6 +75,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
   onAddToProject: (content: string) => void;
   onCopy: (content: string) => void;
   onRegenerate: () => void;
+  onOpenArtifact?: (code: string, language: string) => void;
 }) {
   return (
     <div className={cn("group flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}>
@@ -119,8 +122,41 @@ const MemoizedMessage = memo(function MemoizedMessage({
             </div>
           </div>
         )}
-        <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight, rehypeSanitize]}>
+        <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted relative">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight, rehypeSanitize]}
+            components={{
+              code({ node, inline, className, children, ...props }) {
+                const match = /language-(\w+)/.exec(className || "");
+                const lang = match ? match[1] : "";
+                const isArtifact = ["html", "css", "jsx", "tsx", "react"].includes(lang);
+
+                if (!inline && isArtifact && onOpenArtifact) {
+                  const extractText = (n: any): string => {
+                    if (n.type === "text") return n.value || "";
+                    if (n.children) return n.children.map(extractText).join("");
+                    return "";
+                  };
+                  const rawCode = node ? extractText(node) : String(children).replace(/\n$/, "");
+                  
+                  return (
+                    <div className="relative group">
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <Button size="sm" variant="secondary" className="h-7 text-xs shadow-md border border-border/50" onClick={() => onOpenArtifact(rawCode, lang)}>
+                          <Sparkle className="w-3.5 h-3.5 mr-1.5" /> View Artifact
+                        </Button>
+                      </div>
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    </div>
+                  );
+                }
+                return <code className={className} {...props}>{children}</code>;
+              }
+            }}
+          >
             {msg.content}
           </ReactMarkdown>
         </div>
@@ -159,7 +195,9 @@ export function ChatArea() {
   const [targetProjectId, setTargetProjectId] = useState("");
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [activeArtifact, setActiveArtifact] = useState<{ code: string; language: string } | null>(null);
 
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -200,6 +238,18 @@ export function ChatArea() {
   const selectedProjectIds = useMemo(
     () => Array.from(selectedSources).filter((source) => source !== "normal"),
     [selectedSources],
+  );
+
+  const filteredMessages = useMemo(() => {
+    if (!messages) return [];
+    if (!chatSearchQuery.trim()) return messages;
+    const query = chatSearchQuery.toLowerCase();
+    return messages.filter(m => m.content.toLowerCase().includes(query));
+  }, [messages, chatSearchQuery]);
+
+  const activeProject = useMemo(
+    () => projectList?.find((p) => selectedProjectIds.includes(p.id)),
+    [projectList, selectedProjectIds],
   );
 
   const displayName = useMemo(() => {
@@ -583,18 +633,41 @@ export function ChatArea() {
           </div>
         ) : (
           <div className="mx-auto mt-auto w-full max-w-3xl space-y-6">
-            {messages?.map((msg) => (
+            {activeProject?.systemPrompt && selectedProjectIds.length === 1 && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground shadow-sm mb-4">
+                <div className="flex items-center gap-2 font-semibold text-primary mb-2">
+                  <Sparkle className="w-4 h-4" /> Project Rules Active
+                </div>
+                <div className="text-muted-foreground whitespace-pre-wrap font-mono text-xs">
+                  {activeProject.systemPrompt}
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2 mb-6">
+              <div className="relative flex-1 max-w-sm ml-auto">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search in conversation..."
+                  value={chatSearchQuery}
+                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  className="pl-9 h-9 bg-background/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/50"
+                />
+              </div>
+            </div>
+            
+            {filteredMessages?.map((msg) => (
               <MemoizedMessage
                 key={msg.id}
-                msg={msg}
-                basePath={basePath}
-                hasSelectedProjects={selectedProjectIds.length > 0}
-                isSelected={selectedMessages.has(msg.id)}
-                onToggleSelection={toggleMessageSelection}
-                onAddToProject={handleAddToProjectSingle}
-                onCopy={copyToClipboard}
-                onRegenerate={regenerate}
-              />
+                  msg={msg}
+                  basePath={basePath}
+                  hasSelectedProjects={selectedProjectIds.length > 0}
+                  isSelected={selectedMessages.has(msg.id)}
+                  onToggleSelection={toggleMessageSelection}
+                  onAddToProject={handleAddToProjectSingle}
+                  onCopy={copyToClipboard}
+                  onRegenerate={() => {}}
+                  onOpenArtifact={(code, language) => setActiveArtifact({ code, language })}
+                />
             ))}
 
             {isStreaming && (
@@ -606,8 +679,41 @@ export function ChatArea() {
                         <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
                         <span className="text-xs font-medium text-primary">Aria is typing...</span>
                       </div>
-                      <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight, rehypeSanitize]}>
+                      <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted relative">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeHighlight, rehypeSanitize]}
+                          components={{
+                            code({ node, inline, className, children, ...props }) {
+                              const match = /language-(\w+)/.exec(className || "");
+                              const lang = match ? match[1] : "";
+                              const isArtifact = ["html", "css", "jsx", "tsx", "react"].includes(lang);
+
+                              if (!inline && isArtifact) {
+                                const extractText = (n: any): string => {
+                                  if (n.type === "text") return n.value || "";
+                                  if (n.children) return n.children.map(extractText).join("");
+                                  return "";
+                                };
+                                const rawCode = node ? extractText(node) : String(children).replace(/\n$/, "");
+                                
+                                return (
+                                  <div className="relative group">
+                                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                      <Button size="sm" variant="secondary" className="h-7 text-xs shadow-md border border-border/50" onClick={() => setActiveArtifact({ code: rawCode, language: lang })}>
+                                        <Sparkle className="w-3.5 h-3.5 mr-1.5" /> View Artifact
+                                      </Button>
+                                    </div>
+                                    <code className={className} {...props}>
+                                      {children}
+                                    </code>
+                                  </div>
+                                );
+                              }
+                              return <code className={className} {...props}>{children}</code>;
+                            }
+                          }}
+                        >
                           {streamingContent}
                         </ReactMarkdown>
                       </div>
@@ -667,6 +773,16 @@ export function ChatArea() {
       {conversationId && (
         <div className="shrink-0 border-t border-border bg-background px-3 py-3 md:px-4 md:py-4">
           {renderInput()}
+        </div>
+      )}
+      
+      {activeArtifact && (
+        <div className="absolute top-0 right-0 h-full z-40 bg-background/80 backdrop-blur-sm shadow-2xl transition-all duration-300">
+          <ArtifactViewer
+            code={activeArtifact.code}
+            language={activeArtifact.language}
+            onClose={() => setActiveArtifact(null)}
+          />
         </div>
       )}
     </div>

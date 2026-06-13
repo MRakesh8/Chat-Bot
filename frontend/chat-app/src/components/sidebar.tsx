@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2 } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3 } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -359,8 +359,13 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               placeholder="Search..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 bg-sidebar-accent/50 border-border text-sidebar-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+              className="pl-9 pr-12 h-9 bg-sidebar-accent/50 border-border text-sidebar-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             />
+            <div className="absolute right-2 top-2 pointer-events-none hidden md:block">
+              <kbd className="inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                <span className="text-xs">⌘</span>K
+              </kbd>
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -416,9 +421,19 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         </div>
         
         <div className="space-y-1">
+          {user?.email === "rakesh837m@gmail.com" && (
+            <Link href="/admin/clarity" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
+              <BarChart3 className="w-4 h-4" />
+              Admin Analytics
+            </Link>
+          )}
           <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
             <FolderKanban className="w-4 h-4" />
             Projects
+          </Link>
+          <Link href="/services" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
+            <Heart className="w-4 h-4" />
+            Connected Services
           </Link>
           <Link href="/settings" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
             <Settings className="w-4 h-4" />

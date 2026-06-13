@@ -720,9 +720,10 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     }
     logger.info(`Extracting Instagram video content via Gemini for ${sourceUrl}`);
     try {
-      const res = await ai.models.generateContent(params.userId || null, {
+      const res = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `Extract any available public metadata, caption, visible text, and likely topic for this Instagram reel/post/video. If media content is unavailable, still create a useful searchable note from the URL: ${sourceUrl}`
+        contents: `Search the web for this Instagram URL and extract any available public metadata, caption, visible text, and likely topic for this Instagram reel/post/video. URL: ${sourceUrl}`,
+        tools: [{ googleSearch: {} }],
       });
       extractedText = res.text || `Instagram source: ${sourceUrl}`;
     } catch (err) {

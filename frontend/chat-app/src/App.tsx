@@ -11,7 +11,10 @@ import NotFound from "./pages/not-found";
 import AdminProjectsPage from "./pages/admin-projects";
 import AdminProjectEditPage from "./pages/admin-project-edit";
 import SharedChatPage from "./pages/shared-chat";
+import AdminClarityPage from "./pages/admin-clarity";
+import ConnectedServicesPage from "./pages/connected-services";
 import { DashboardLayout } from "./components/layout/dashboard-layout";
+import { GlobalCommandMenu } from "./components/GlobalCommandMenu";
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -66,8 +69,15 @@ export default function App() {
               <Route path="/profile">
                 <ProtectedRoute><DashboardLayout><ProfilePage /></DashboardLayout></ProtectedRoute>
               </Route>
+              <Route path="/services">
+                <ProtectedRoute><DashboardLayout><ConnectedServicesPage /></DashboardLayout></ProtectedRoute>
+              </Route>
+              <Route path="/admin/clarity">
+                <ProtectedRoute><DashboardLayout><AdminClarityPage /></DashboardLayout></ProtectedRoute>
+              </Route>
               <Route component={NotFound} />
             </Switch>
+            <GlobalCommandMenu />
             <Toaster />
           </TooltipProvider>
           </QueryClientProvider>

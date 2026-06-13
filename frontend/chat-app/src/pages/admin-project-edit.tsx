@@ -391,10 +391,9 @@ export default function AdminProjectEditPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Knowledge &amp; Instructions *</label>
+                  <label className="text-sm font-medium text-foreground">Project Rules (Custom AI Instructions) *</label>
                   <p className="text-xs text-muted-foreground">
-                    Write everything the AI should know — your product info, FAQs, rules, tone of voice,
-                    or any specific information. The AI will use only this to answer questions.
+                    Define the rules, context, and tone for the AI in this project. The AI will strictly follow these instructions before giving any response.
                   </p>
                   <Textarea
                     value={systemPrompt}

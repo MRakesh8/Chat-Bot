@@ -7,6 +7,7 @@ import projectsRouter from "./projects";
 import reportsRouter from "./reports";
 import categoriesRouter from "./categories";
 import apiKeysRouter from "./api-keys";
+import servicesRouter from "./services";
 
 import systemRouter from "./system";
 
@@ -19,6 +20,7 @@ router.use("/projects", projectsRouter);
 router.use("/reports", reportsRouter);
 router.use("/categories", categoriesRouter);
 router.use("/api-keys", apiKeysRouter);
+router.use("/services", servicesRouter);
 router.use("/system", systemRouter);
 
 export default router;

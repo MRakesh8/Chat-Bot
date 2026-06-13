@@ -183,6 +183,17 @@ export const userApiSettings = pgTable("user_api_settings", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const connectedServices = pgTable("connected_services", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(), // github, linkedin, supabase, render, etc.
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 50 }).default("Connected").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const knowledgeRetrievalCache = pgTable("knowledge_retrieval_cache", {
   key: varchar("key", { length: 255 }).primaryKey(),
   projectId: uuid("project_id")
@@ -198,6 +209,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
   auditLogs: many(auditLogs),
   userApiKeys: many(userApiKeys),
+  connectedServices: many(connectedServices),
   apiSettings: one(userApiSettings, { fields: [users.id], references: [userApiSettings.userId] }),
 }));
 

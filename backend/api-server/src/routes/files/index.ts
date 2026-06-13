@@ -74,7 +74,7 @@ router.post("/upload", (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { projectId, categoryId, tag, notes } = req.body;
+    const { projectId, categoryId, tag, notes, conversationId } = req.body;
     const userId = (req as any).auth?.userId;
     let localPath: string | undefined;
     let originalname: string | undefined;
@@ -93,29 +93,34 @@ router.post("/upload", (req, res, next) => {
       return;
     }
 
-    if (!projectId || !categoryId) {
-      if (localPath) fs.unlinkSync(localPath);
-      res.status(400).json({ error: "Missing projectId or categoryId" });
-      return;
-    }
-
     if (!userId) {
       if (localPath) fs.unlinkSync(localPath);
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
-    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
-    if (!project) {
+    // Determine upload intent: Chat attachment vs Knowledge Base upload
+    const isChatUpload = !projectId && !categoryId;
+
+    if (!isChatUpload && (!projectId || !categoryId)) {
       if (localPath) fs.unlinkSync(localPath);
-      res.status(403).json({ error: "Forbidden: You do not own this project" });
+      res.status(400).json({ error: "Missing projectId or categoryId for knowledge upload" });
       return;
     }
 
-    if (!(await categoryBelongsToProject(categoryId, projectId))) {
-      if (localPath) fs.unlinkSync(localPath);
-      res.status(400).json({ error: "Category does not belong to this project" });
-      return;
+    if (!isChatUpload) {
+      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      if (!project) {
+        if (localPath) fs.unlinkSync(localPath);
+        res.status(403).json({ error: "Forbidden: You do not own this project" });
+        return;
+      }
+
+      if (!(await categoryBelongsToProject(categoryId, projectId))) {
+        if (localPath) fs.unlinkSync(localPath);
+        res.status(400).json({ error: "Category does not belong to this project" });
+        return;
+      }
     }
 
     let fileId: string | undefined;
@@ -123,7 +128,8 @@ router.post("/upload", (req, res, next) => {
     
     if (localPath && originalname && mimetype && filename) {
       const fileBuffer = fs.readFileSync(localPath);
-      const storagePath = `${projectId}/${filename}`;
+      const storagePath = isChatUpload ? `chats/${conversationId || "temp-" + Date.now()}/${filename}` : `${projectId}/${filename}`;
+      
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
         .from("project-files")
         .upload(storagePath, fileBuffer, {
@@ -143,6 +149,12 @@ router.post("/upload", (req, res, next) => {
       
       if (mimetype.startsWith("video/")) sourceType = "video";
       else if (mimetype.startsWith("image/")) sourceType = "image";
+    }
+
+    // If it's a chat upload, we just return the fileId immediately
+    if (isChatUpload) {
+      res.json({ id: fileId, fileId, sourceType, filename: originalname, url: "" });
+      return;
     }
 
     const [record] = await db
