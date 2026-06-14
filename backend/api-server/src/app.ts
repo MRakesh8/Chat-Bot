@@ -80,6 +80,22 @@ const allowedOrigins = [
   ...envOrigins,
 ];
 
+// ============================================================
+// WIDGET PUBLIC ROUTES (registered FIRST, before global CORS)
+// These routes must be accessible from ANY website embedding the widget.
+// If registered after the global CORS, the global CORS handles the
+// preflight OPTIONS request and rejects unknown origins before the
+// widget-specific CORS middleware ever runs.
+// ============================================================
+app.use("/api/widget", cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+}), widgetPublicRouter);
+
+// Global CORS for all other routes (strict origin whitelist)
 app.use(
   cors({
     origin: allowedOrigins,
@@ -92,13 +108,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", healthRouter);
-
-// Widget public routes use open CORS (embeddable on any website)
-app.use("/api/widget", cors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
-}), widgetPublicRouter);
 
 app.use(supabaseAuthMiddleware);
 
