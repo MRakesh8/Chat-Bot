@@ -96,6 +96,10 @@ export class UniversalProviderAdapter {
 
   private async handleGemini(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
     const baseUrl = this.config.baseUrl || "https://generativelanguage.googleapis.com/v1beta";
+    let actualModel = this.config.model;
+    if (actualModel === "gemini-1.5-flash") {
+      actualModel = "gemini-2.5-flash"; // Upgrade deprecated model
+    }
     
     // Convert to Gemini format
     const contents = request.messages.map(m => ({
@@ -118,7 +122,7 @@ export class UniversalProviderAdapter {
         };
     }
 
-    const response = await fetch(`${baseUrl}/models/${this.config.model}:generateContent?key=${this.config.apiKey}`, {
+    const response = await fetch(`${baseUrl}/models/${actualModel}:generateContent?key=${this.config.apiKey}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

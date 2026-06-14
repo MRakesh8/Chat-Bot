@@ -100,7 +100,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
 
     let activeKey = null;
     let providerName = "gemini";
-    let modelName = "gemini-1.5-flash"; // default fallback
+    let modelName = "gemini-2.5-flash"; // default fallback
 
     if (projectKey) {
       activeKey = crypto.decrypt(projectKey.encryptedKey); // Decrypted here
@@ -117,7 +117,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
       } else if (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
         activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
         providerName = "gemini";
-        modelName = "gemini-1.5-flash";
+        modelName = "gemini-2.5-flash";
       } else {
         return res.status(503).json({ error: "No API keys configured" });
       }

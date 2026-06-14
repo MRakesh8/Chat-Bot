@@ -8,11 +8,6 @@ import fs from "fs";
 
 const rawPort = process.env["PORT"];
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
 
 const port = Number(rawPort);
 
@@ -22,7 +17,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 async function start() {
   try {
-    await runMigrations();
+    // await runMigrations();
   } catch (err) {
     logger.error("Failed to run migrations on startup", err);
   }
