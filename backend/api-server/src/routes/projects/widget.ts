@@ -121,7 +121,12 @@ router.get("/api-keys", async (req: Request, res: Response) => {
       }
     });
     res.json(keys);
-  } catch (error) {
+  } catch (error: any) {
+    console.error({
+      projectId,
+      error: error.message,
+      stack: error.stack
+    });
     res.status(500).json({ error: "Failed to fetch project keys" });
   }
 });

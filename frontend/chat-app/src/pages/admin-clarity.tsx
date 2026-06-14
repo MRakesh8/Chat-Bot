@@ -40,13 +40,23 @@ export default function AdminClarityPage() {
         </Button>
       </div>
       
-      <div className="flex-1 w-full bg-background">
-        <iframe 
-          src="https://clarity.microsoft.com/projects/view/x6eohi99h7/dashboard?date=Last%203%20days" 
-          className="w-full h-full border-0"
-          title="Microsoft Clarity Analytics Dashboard"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-        />
+      <div className="flex-1 w-full bg-background flex flex-col items-center justify-center p-8">
+        <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center shadow-sm">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <BarChart3 className="w-8 h-8 text-primary" />
+          </div>
+          <h2 className="text-2xl font-semibold mb-3 text-foreground">Microsoft Clarity</h2>
+          <p className="text-muted-foreground mb-8">
+            For security reasons, Microsoft Clarity dashboards cannot be embedded directly within other applications. Please open the dashboard in a secure external window to view your analytics.
+          </p>
+          <Button 
+            size="lg" 
+            className="w-full font-medium"
+            onClick={() => window.open('https://clarity.microsoft.com/projects/view/x6eohi99h7/dashboard?date=Last%203%20days', '_blank')}
+          >
+            Open Clarity Dashboard ↗
+          </Button>
+        </div>
       </div>
     </div>
   );
