@@ -11,14 +11,23 @@ export async function runMigrations() {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     
-    // from src/lib to database/db/drizzle
-    let migrationsFolder = path.resolve(__dirname, "../../../../database/db/drizzle");
-    if (!fs.existsSync(migrationsFolder)) {
-      // fallback for built app structure (dist/lib)
-      migrationsFolder = path.resolve(__dirname, "../../../database/db/drizzle");
+    const possiblePaths = [
+      path.resolve(__dirname, "../../../../database/db/drizzle"), // src/lib -> root
+      path.resolve(__dirname, "../../../database/db/drizzle"),    // dist/index.mjs -> root
+      path.resolve(process.cwd(), "../../database/db/drizzle"),     // from api-server
+      path.resolve(process.cwd(), "database/db/drizzle"),           // from root
+      "/opt/render/project/src/database/db/drizzle"                 // Render absolute fallback
+    ];
+
+    let migrationsFolder = "";
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        migrationsFolder = p;
+        break;
+      }
     }
     
-    if (fs.existsSync(migrationsFolder)) {
+    if (migrationsFolder && fs.existsSync(migrationsFolder)) {
       logger.info({ migrationsFolder }, "Running database migrations");
       await migrate(db, { migrationsFolder });
       logger.info("Migrations completed successfully");
