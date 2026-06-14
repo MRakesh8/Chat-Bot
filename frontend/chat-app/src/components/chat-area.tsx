@@ -214,13 +214,55 @@ export function ChatArea() {
   const atBottomRef = useRef(true);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const { data: conversation } = useGetGeminiConversation(conversationId!, {
+  const { data: conversation, isLoading: isConvLoading, error: convError } = useGetGeminiConversation(conversationId!, {
     query: { enabled: !!conversationId, queryKey: getGetGeminiConversationQueryKey(conversationId!) },
   });
 
-  const { data: messages } = useListGeminiMessages(conversationId!, {
+  const { data: messages, isLoading: isMessagesLoading, error: messagesError } = useListGeminiMessages(conversationId!, {
     query: { enabled: !!conversationId, queryKey: getListGeminiMessagesQueryKey(conversationId!) },
   });
+
+  useEffect(() => {
+    console.log("Component mounted");
+  }, []);
+
+  const isLoading = !!conversationId && (isConvLoading || isMessagesLoading);
+
+  useEffect(() => {
+    console.log("Loading state:", isLoading);
+    console.log("API response:", { conversation, messages });
+  }, [isLoading, conversation, messages]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-muted-foreground">Loading chat...</span>
+      </div>
+    );
+  }
+
+  if (convError || messagesError) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
+        <h2 className="mb-4 text-2xl font-bold text-red-500">Failed to load chat</h2>
+        <div className="rounded-md bg-red-50 p-4 text-left text-sm text-red-900 dark:bg-red-900/10 dark:text-red-200">
+          <pre className="whitespace-pre-wrap">{convError?.message || messagesError?.message}</pre>
+        </div>
+        <Button className="mt-4" onClick={() => window.location.reload()}>Retry</Button>
+      </div>
+    );
+  }
+
+  if (conversationId && !conversation) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
+        <h2 className="mb-4 text-2xl font-bold text-destructive">Chat not found</h2>
+        <p className="text-muted-foreground mb-6">The requested conversation could not be found.</p>
+        <Button onClick={() => setLocation("/chat")}>Start a new chat</Button>
+      </div>
+    );
+  }
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
