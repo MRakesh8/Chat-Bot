@@ -24,7 +24,13 @@ app.use(compression({
 }));
 
 // Security Headers
-app.use(helmet());
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/widget")) {
+    next();
+  } else {
+    helmet()(req, res, next);
+  }
+});
 
 // Rate Limiting
 const limiter = rateLimit({

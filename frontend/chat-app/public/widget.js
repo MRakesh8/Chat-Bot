@@ -273,16 +273,16 @@
 
     const positionClass = config.position === "bottom-left" ? "position-bottom-left" : "position-bottom-right";
 
-    shadow.innerHTML = \`
-      <style>\${getBaseStyles()}</style>
-      <div class="widget-wrapper \${positionClass}">
-        \${config.displayMode !== 'custom' ? \`
-        <div class="chat-panel \${isOpen ? 'open' : ''}">
+    shadow.innerHTML = `
+      <style>${getBaseStyles()}</style>
+      <div class="widget-wrapper ${positionClass}">
+        ${config.displayMode !== 'custom' ? `
+        <div class="chat-panel ${isOpen ? 'open' : ''}">
           <div class="header">
             <div class="header-info">
-              <div class="avatar">\${config.botName.charAt(0)}</div>
+              <div class="avatar">${config.botName.charAt(0)}</div>
               <div>
-                <div class="title">\${config.botName}</div>
+                <div class="title">${config.botName}</div>
                 <div class="subtitle">Online</div>
               </div>
             </div>
@@ -291,7 +291,7 @@
             </button>
           </div>
           <div class="messages" id="messages-container">
-            <div class="message bot">\${config.welcomeMessage}</div>
+            <div class="message bot">${config.welcomeMessage}</div>
             <div class="typing-indicator" id="typing-indicator">
               <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
             </div>
@@ -305,21 +305,21 @@
             </form>
           </div>
         </div>
-        <button class="floating-button" aria-label="Open chat" style="\${isOpen ? 'display:none;' : ''}">
+        <button class="floating-button" aria-label="Open chat" style="${isOpen ? 'display:none;' : ''}">
           <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         </button>
-        \` : \`
+        ` : `
           <!-- Custom Container Mode is just the panel always open -->
           <div class="chat-panel open" style="position:relative; bottom:0; right:0; width:100%; height:100%; transform:none;">
             <!-- Same interior... -->
             <div class="header">
               <div class="header-info">
-                <div class="avatar">\${config.botName.charAt(0)}</div>
-                <div><div class="title">\${config.botName}</div></div>
+                <div class="avatar">${config.botName.charAt(0)}</div>
+                <div><div class="title">${config.botName}</div></div>
               </div>
             </div>
             <div class="messages" id="messages-container">
-              <div class="message bot">\${config.welcomeMessage}</div>
+              <div class="message bot">${config.welcomeMessage}</div>
               <div class="typing-indicator" id="typing-indicator">
                 <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
               </div>
@@ -333,9 +333,9 @@
               </form>
             </div>
           </div>
-        \`}
+        `}
       </div>
-    \`;
+    `;
 
     bindEvents();
   }
@@ -381,7 +381,7 @@
         scrollToBottom();
 
         try {
-          const res = await fetch(\`\${apiBaseUrl}/api/widget/\${widgetToken}/chat\`, {
+          const res = await fetch(`${apiBaseUrl}/api/widget/${widgetToken}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: chatHistory })
@@ -407,7 +407,7 @@
     const typingIndicator = shadow.querySelector('#typing-indicator');
     
     const msgDiv = document.createElement('div');
-    msgDiv.className = \`message \${role}\`;
+    msgDiv.className = `message ${role}`;
     msgDiv.textContent = text;
     
     messagesContainer.insertBefore(msgDiv, typingIndicator);
