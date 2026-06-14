@@ -30,9 +30,13 @@ export function ApiKeys({ projectId }: { projectId: string }) {
   const { data: apiKeys, isLoading } = useQuery({
     queryKey: ["project-api-keys", projectId],
     queryFn: async () => {
+      console.debug("API key fetch started", { projectId });
       const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/api-keys`));
       if (!res.ok) throw new Error("Failed to load api keys");
-      return res.json() as Promise<any[]>;
+      const data = await res.json() as any[];
+      console.debug("API key fetch completed", { projectId });
+      console.debug("API key count returned", { count: data?.length || 0 });
+      return data;
     },
     enabled: !!projectId,
   });
@@ -43,6 +47,7 @@ export function ApiKeys({ projectId }: { projectId: string }) {
 
   const addKeyMutation = useMutation({
     mutationFn: async (data: { provider: string; apiKey: string; model?: string }) => {
+      console.debug("API key save started", { provider: data.provider });
       const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/api-keys`), {
         method: "POST",
         body: JSON.stringify(data),
@@ -50,13 +55,41 @@ export function ApiKeys({ projectId }: { projectId: string }) {
       if (!res.ok) throw new Error("Failed to add key");
       return res.json();
     },
+    onMutate: async (newKey) => {
+      // Cancel any outgoing refetches to prevent optimistic update overwrite
+      await queryClient.cancelQueries({ queryKey: ["project-api-keys", projectId] });
+      const previousKeys = queryClient.getQueryData<any[]>(["project-api-keys", projectId]);
+
+      // Update local state immediately (Optimistic UI update)
+      queryClient.setQueryData(["project-api-keys", projectId], (old: any[] | undefined) => {
+        const optimisticKey = {
+          id: `temp-${Date.now()}`,
+          provider: newKey.provider,
+          maskedKey: newKey.apiKey.substring(0, 5) + "..." + newKey.apiKey.substring(newKey.apiKey.length - 4),
+          model: newKey.model,
+          createdAt: new Date().toISOString()
+        };
+        return old ? [...old, optimisticKey] : [optimisticKey];
+      });
+
+      return { previousKeys };
+    },
+    onError: (err, newKey, context) => {
+      if (context?.previousKeys) {
+        queryClient.setQueryData(["project-api-keys", projectId], context.previousKeys);
+      }
+      toast({ title: "Failed to add API key", variant: "destructive" });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project-api-keys", projectId] });
+      console.debug("API key save completed");
       toast({ title: "API Key added successfully!" });
       setApiKey("");
       setModel("");
     },
-    onError: () => toast({ title: "Failed to add API key", variant: "destructive" }),
+    onSettled: () => {
+      // Invalidate cache and refetch API keys
+      queryClient.invalidateQueries({ queryKey: ["project-api-keys", projectId] });
+    }
   });
 
   const deleteKeyMutation = useMutation({
@@ -67,11 +100,26 @@ export function ApiKeys({ projectId }: { projectId: string }) {
       if (!res.ok) throw new Error("Failed to delete key");
       return res.json();
     },
+    onMutate: async (keyId) => {
+      await queryClient.cancelQueries({ queryKey: ["project-api-keys", projectId] });
+      const previousKeys = queryClient.getQueryData<any[]>(["project-api-keys", projectId]);
+      queryClient.setQueryData(["project-api-keys", projectId], (old: any[] | undefined) => 
+        old?.filter(key => key.id !== keyId) || []
+      );
+      return { previousKeys };
+    },
+    onError: (err, keyId, context) => {
+      if (context?.previousKeys) {
+        queryClient.setQueryData(["project-api-keys", projectId], context.previousKeys);
+      }
+      toast({ title: "Failed to delete API key", variant: "destructive" });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project-api-keys", projectId] });
       toast({ title: "API Key deleted!" });
     },
-    onError: () => toast({ title: "Failed to delete API key", variant: "destructive" }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-api-keys", projectId] });
+    }
   });
 
   const handleAddKey = (e: React.FormEvent) => {

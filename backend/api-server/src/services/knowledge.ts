@@ -475,12 +475,23 @@ export async function searchProjectKnowledge(params: {
 
   // 1. Candidate Generation
   const fetchLimit = 10;
+  const STOP_WORDS = new Set([
+    "about", "above", "after", "again", "against", "all", "and", "any", "are", "because", "been", "before", "being", 
+    "below", "between", "both", "but", "could", "did", "does", "doing", "down", "during", "each", "few", "for", 
+    "from", "further", "had", "has", "have", "having", "her", "here", "hers", "herself", "him", "himself", "his", 
+    "how", "into", "its", "itself", "more", "most", "myself", "nor", "not", "off", "once", "only", "other", "our", 
+    "ours", "ourselves", "out", "over", "own", "same", "she", "should", "some", "such", "than", "that", "the", 
+    "their", "theirs", "them", "themselves", "then", "there", "these", "they", "this", "those", "through", "too", 
+    "under", "until", "very", "was", "were", "what", "when", "where", "which", "while", "who", "whom", "why", 
+    "with", "you", "your", "yours", "yourself", "yourselves", "tell", "show", "give", "please", "can", "will"
+  ]);
+
   const words = uniqueStrings(
     params.query
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, " ")
       .split(/\s+/)
-      .filter((word) => word.length > 2),
+      .filter((word) => word.length > 2 && !STOP_WORDS.has(word)),
     8,
   );
 

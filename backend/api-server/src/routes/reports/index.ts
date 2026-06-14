@@ -76,7 +76,7 @@ router.post("/generate", async (req, res) => {
       }
     } catch (err: any) {
       req.log.error({ err }, "md-to-pdf or puppeteer failed");
-      return res.json({ success: false, error: "PDF generation service unavailable" });
+      return res.json({ success: false, reason: "Chrome not installed" });
     }
 
     // Upload to Supabase Storage

@@ -27,10 +27,13 @@ import {
   X,
   CheckCircle2,
   Search,
+  Volume2,
+  MessageCircleQuestion,
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import { RotatingStatus } from "@/components/rotating-status";
 import { ArtifactViewer } from "@/components/ArtifactViewer";
+import { followUpService } from "@/lib/follow-up-service";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +81,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
   onCopy: (content: string) => void;
   onRegenerate: () => void;
   onOpenArtifact?: (code: string, language: string) => void;
+  onReadAloud?: (text: string) => void;
 }) {
   return (
     <div className={cn("group flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}>
@@ -118,6 +122,11 @@ const MemoizedMessage = memo(function MemoizedMessage({
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onCopy(msg.content)}>
                 <Copy className="h-3.5 w-3.5" />
               </Button>
+              {onReadAloud && (
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onReadAloud(msg.content)}>
+                  <Volume2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRegenerate}>
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
@@ -198,6 +207,7 @@ export function ChatArea() {
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ code: string; language: string } | null>(null);
+  const [followUps, setFollowUps] = useState<string[]>([]);
 
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -284,6 +294,38 @@ export function ChatArea() {
     scrollToBottom();
   }, [conversationId, scrollToBottom]);
 
+  useEffect(() => {
+    if (!isStreaming && messages && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role !== "user") {
+        followUpService.generateSuggestions({
+          lastAiMessage: lastMessage.content,
+          conversationHistory: messages
+        }).then(setFollowUps);
+      } else {
+        setFollowUps([]);
+      }
+    } else {
+      setFollowUps([]);
+    }
+  }, [isStreaming, messages]);
+
+  const handleReadAloud = useCallback((text: string) => {
+    if (!window.speechSynthesis) {
+      toast({ title: "Not supported", description: "Text-to-speech is not supported in this browser." });
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    window.speechSynthesis.speak(utterance);
+  }, [toast]);
+
+  const handleFollowUpClick = (suggestion: string) => {
+    setFollowUps([]);
+    handleSend(suggestion);
+  };
+
   const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -324,10 +366,11 @@ export function ChatArea() {
     e.target.value = "";
   };
 
-  const handleSend = async () => {
-    if (!input.trim() && files.length === 0) return;
+  const handleSend = async (overrideInput?: string | React.MouseEvent | React.FormEvent) => {
+    const textToSend = typeof overrideInput === "string" ? overrideInput : input;
+    if (!textToSend.trim() && files.length === 0) return;
 
-    const messageText = input;
+    const messageText = textToSend;
     const fileIds = files.filter((f) => f.id).map((f) => f.id!);
     const useNormalAi = selectedSources.has("normal");
     let targetId = conversationId;
@@ -667,10 +710,27 @@ export function ChatArea() {
                   onToggleSelection={toggleMessageSelection}
                   onAddToProject={handleAddToProjectSingle}
                   onCopy={copyToClipboard}
-                  onRegenerate={() => {}}
-                  onOpenArtifact={(code, language) => setActiveArtifact({ code, language })}
+                  onRegenerate={regenerate}
+                  onOpenArtifact={(code, lang) => setActiveArtifact({ code, language: lang })}
+                  onReadAloud={handleReadAloud}
                 />
             ))}
+
+            {followUps.length > 0 && !isStreaming && (
+              <div className="flex flex-col gap-2 mt-2 px-4 pb-4">
+                {followUps.map((suggestion, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    className="justify-start h-auto py-2.5 px-4 text-sm font-normal text-muted-foreground hover:text-foreground bg-background border-primary/20 hover:border-primary/50 hover:bg-primary/5 rounded-2xl w-fit max-w-[85%] text-left whitespace-normal break-words"
+                    onClick={() => handleFollowUpClick(suggestion)}
+                  >
+                    <MessageCircleQuestion className="w-4 h-4 mr-2 shrink-0 text-primary/70" />
+                    <span className="text-left w-full block">{suggestion}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
 
             {isStreaming && (
               <div className="flex justify-start">
@@ -723,7 +783,11 @@ export function ChatArea() {
                   ) : (
                     <div className="flex items-center gap-3">
                       <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
-                      <RotatingStatus className="text-primary text-xs font-medium" />
+                      <div className="flex items-center gap-1 text-primary">
+                        <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                        <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                        <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></span>
+                      </div>
                     </div>
                   )}
                 </div>

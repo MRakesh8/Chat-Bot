@@ -3,6 +3,8 @@ import { logger } from "./lib/logger";
 import { startCleanupTask } from "./lib/cleanup";
 import { runMigrations } from "./lib/migrate";
 import { validateDatabaseSchema } from "./middlewares/databaseHealth";
+import puppeteer from "puppeteer";
+import fs from "fs";
 
 const rawPort = process.env["PORT"];
 
@@ -23,6 +25,17 @@ async function start() {
     await runMigrations();
   } catch (err) {
     logger.error("Failed to run migrations on startup", err);
+  }
+
+  try {
+    const executablePath = puppeteer.executablePath();
+    if (!fs.existsSync(executablePath)) {
+      logger.error(`[PUPPETEER] Chrome executable not found at ${executablePath}. PDF generation will fail.`);
+    } else {
+      logger.info(`[PUPPETEER] Chrome verified at ${executablePath}`);
+    }
+  } catch (e: any) {
+    logger.error({ err: e }, "[PUPPETEER] Failed to resolve Chrome path");
   }
 
   logger.info("[STARTUP] SERVER_START");
