@@ -48,6 +48,9 @@ router.get("/settings", async (req: Request, res: Response) => {
     res.json(settings || defaultSettings);
   } catch (error: any) {
     // If table doesn't exist or DB is down
+    const queryError = error.message;
+    const tableExists = !queryError.includes("does not exist");
+    console.error({ tableExists, projectId, queryError });
     console.error(`Failed to fetch widget settings for project ${projectId}:`, error.message);
     console.error(error.stack);
     // Never return 500 for first-time projects. Use safe defaults.
