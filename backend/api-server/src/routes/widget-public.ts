@@ -110,6 +110,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
       if (systemKeys.length > 0) {
         activeKey = systemKeys[0].encryptedKey;
         providerName = systemKeys[0].provider;
+      } else if (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+        activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        providerName = "gemini";
+        modelName = "gemini-1.5-flash";
       } else {
         return res.status(503).json({ error: "No API keys configured" });
       }
