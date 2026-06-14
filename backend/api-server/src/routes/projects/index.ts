@@ -54,7 +54,14 @@ router.get("/", async (req, res) => {
     
     res.json(flattened);
   } catch (err: any) {
-    req.log.error({ err }, "Error listing projects");
+    const isMissingColumn = err.message?.includes("column") && err.message?.includes("does not exist");
+    req.log.error({ 
+      endpoint: "GET /api/projects",
+      failureType: isMissingColumn ? "Missing Column / Migration Missing" : "Database Error",
+      errorMessage: err.message,
+      stack: err.stack,
+      rootCause: isMissingColumn ? "The database schema does not match the Drizzle schema. A migration is required." : "Unknown database or execution failure"
+    }, "Error listing projects");
     res.status(500).json({ success: false, error: err.message || "Internal server error" });
   }
 });

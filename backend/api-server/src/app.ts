@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import compression from "compression";
 import router from "./routes";
 import healthRouter from "./routes/health";
 import widgetPublicRouter from "./routes/widget-public";
@@ -12,6 +13,9 @@ import rateLimit from "express-rate-limit";
 // Initialize express
 const app: Express = express();
 
+// Speed optimization: Compress responses
+app.use(compression());
+
 // Security Headers
 app.use(helmet());
 
@@ -21,6 +25,14 @@ const limiter = rateLimit({
   max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req) => {
+    const p = req.originalUrl.split('?')[0]; // Ignore query params
+    return p === '/api/healthz' || 
+           p.startsWith('/api/webhooks/') || 
+           p.startsWith('/api/widget/') || 
+           p.startsWith('/api/public/') || 
+           p.startsWith('/api/auth/callback/');
+  }
 });
 app.use("/api", limiter);
 app.use("/gemini", limiter);

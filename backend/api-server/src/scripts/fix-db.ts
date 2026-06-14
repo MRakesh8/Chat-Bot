@@ -19,10 +19,6 @@ async function run() {
       "created_at" timestamp DEFAULT now() NOT NULL
     );`);
     console.log('Created connected_services table');
-    
-    await pool.query(`ALTER TABLE "connected_services" DROP CONSTRAINT IF EXISTS "connected_services_user_id_users_id_fk";`);
-    await pool.query(`ALTER TABLE "connected_services" ADD CONSTRAINT "connected_services_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;`);
-    console.log('Added foreign key constraint');
   } catch (e) {
     console.error(e);
   } finally {

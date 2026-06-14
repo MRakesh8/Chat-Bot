@@ -12,7 +12,7 @@ export default function SettingsPage() {
         <div className="max-w-3xl space-y-10">
           <section className="space-y-6">
             <h2 className="text-2xl font-semibold border-b border-white/10 pb-3 text-foreground/90">Appearance</h2>
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="p-5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-medium text-lg">Theme</h3>
                 <p className="text-sm text-muted-foreground mt-1">Customize the look and feel of Aria.</p>
@@ -20,23 +20,24 @@ export default function SettingsPage() {
               <select 
                 value={theme}
                 onChange={(e) => setTheme(e.target.value as any)}
-                className="w-full sm:w-auto bg-background/50 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 hover:bg-background transition-colors cursor-pointer"
+                className="w-full sm:w-auto bg-background border border-input rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
               >
                 <option value="system">System</option>
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
+                <option value="evergreen">Evergreen</option>
               </select>
             </div>
           </section>
 
           <section className="space-y-6">
-            <h2 className="text-2xl font-semibold border-b border-white/10 pb-3 text-foreground/90">Language & Voice</h2>
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <h2 className="text-2xl font-semibold border-b border-border pb-3 text-foreground/90">Language & Voice</h2>
+            <div className="p-5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 opacity-50">
               <div>
                 <h3 className="font-medium text-lg">Language</h3>
                 <p className="text-sm text-muted-foreground mt-1">Select the primary language for interactions.</p>
               </div>
-              <select className="w-full sm:w-auto bg-background/50 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 hover:bg-background transition-colors cursor-pointer">
+              <select className="w-full sm:w-auto bg-background border border-input rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer">
                 <option>English</option>
                 <option>Tamil</option>
               </select>

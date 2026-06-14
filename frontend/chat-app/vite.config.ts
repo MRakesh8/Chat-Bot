@@ -52,6 +52,17 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    target: "esnext",
+    minify: "esbuild",
+    cssMinify: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom"],
+          ui: ["lucide-react", "framer-motion", "clsx", "tailwind-merge"]
+        }
+      }
+    }
   },
   server: {
     port,

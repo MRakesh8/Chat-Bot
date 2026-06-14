@@ -12,6 +12,18 @@ function generateWidgetToken() {
 
 router.get("/settings", async (req: Request, res: Response) => {
   const { projectId } = req.params;
+  const defaultSettings = {
+    projectId,
+    botName: "Aria AI",
+    welcomeMessage: "Hello 👋",
+    themeColor: "#7C3AED",
+    position: "bottom-right",
+    displayMode: "floating",
+    allowedDomains: [],
+    leadsEnabled: false,
+    isEnabled: true,
+    widgetToken: generateWidgetToken(),
+  };
 
   try {
     let settings = await db.query.projectWidgetSettings.findFirst({
@@ -19,29 +31,27 @@ router.get("/settings", async (req: Request, res: Response) => {
     });
 
     if (!settings) {
-      // Create default settings if not exist
-      const defaultSettings = {
-        projectId,
-        botName: "AI Assistant",
-        welcomeMessage: "Hello 👋 How can I help today?",
-        themeColor: "#8B5CF6",
-        position: "bottom-right",
-        displayMode: "floating",
-        allowedDomains: [],
-        leadsEnabled: false,
-        isEnabled: true,
-        widgetToken: generateWidgetToken(),
-      };
-      await db.insert(projectWidgetSettings).values(defaultSettings as any);
-      settings = await db.query.projectWidgetSettings.findFirst({
-        where: eq(projectWidgetSettings.projectId, projectId)
-      });
+      // Try to create default settings
+      try {
+        await db.insert(projectWidgetSettings).values(defaultSettings as any);
+        settings = await db.query.projectWidgetSettings.findFirst({
+          where: eq(projectWidgetSettings.projectId, projectId)
+        });
+      } catch (insertError: any) {
+        // Migration might be missing or DB error
+        console.error(`Failed to insert default widget settings for project ${projectId}:`, insertError.message);
+        console.error(insertError.stack);
+        return res.json(defaultSettings);
+      }
     }
 
-    res.json(settings);
-  } catch (error) {
-    console.error("Failed to fetch widget settings:", error);
-    res.status(500).json({ error: "Failed to fetch widget settings" });
+    res.json(settings || defaultSettings);
+  } catch (error: any) {
+    // If table doesn't exist or DB is down
+    console.error(`Failed to fetch widget settings for project ${projectId}:`, error.message);
+    console.error(error.stack);
+    // Never return 500 for first-time projects. Use safe defaults.
+    res.json(defaultSettings);
   }
 });
 

@@ -67,13 +67,17 @@ router.post("/generate", async (req, res) => {
     }
 
     // Convert MD to PDF
-    const { mdToPdf } = await import("md-to-pdf");
-    const pdf = await mdToPdf({ content: markdownContent }).catch(err => {
-      req.log.error({ err }, "md-to-pdf failed");
-      throw new Error("Failed to generate PDF");
-    });
-
-    if (!pdf) throw new Error("Failed to generate PDF");
+    let pdf: any;
+    try {
+      const { mdToPdf } = await import("md-to-pdf");
+      pdf = await mdToPdf({ content: markdownContent });
+      if (!pdf || !pdf.content) {
+         throw new Error("Empty PDF generated");
+      }
+    } catch (err: any) {
+      req.log.error({ err }, "md-to-pdf or puppeteer failed");
+      return res.json({ success: false, error: "PDF generation service unavailable" });
+    }
 
     // Upload to Supabase Storage
     const fileName = `reports/${projectId}/${randomUUID()}.pdf`;

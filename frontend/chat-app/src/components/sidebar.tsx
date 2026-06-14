@@ -352,7 +352,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   }), [typedConversations, search, showFavorites]);
 
   return (
-    <div className={cn("w-full md:w-64 bg-[#0a0a0c]/95 backdrop-blur-2xl border-r border-white/[0.08] flex flex-col h-full shadow-[8px_0_32px_rgba(0,0,0,0.5)] z-20", className)}>
+    <div className={cn("w-full md:w-64 bg-sidebar backdrop-blur-2xl border-r border-sidebar-border flex flex-col h-full shadow-[8px_0_32px_rgba(0,0,0,0.5)] z-20", className)}>
       <div className="p-4 space-y-4 border-b border-white/[0.05]">
         {/* Logo and window controls */}
         <div className="flex items-center justify-between mb-2">
@@ -360,7 +360,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             <div className="bg-gradient-to-br from-primary/40 to-primary/10 p-1.5 rounded-lg border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.2)]">
                <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Aria AI" className="w-5 h-5" />
             </div>
-            <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">Aria AI</span>
+            <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-sidebar-foreground to-sidebar-foreground/70">Aria AI</span>
           </div>
           <div className="flex items-center gap-1">
             {onClose && (
@@ -497,7 +497,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[240px] bg-[#121214]/95 backdrop-blur-xl border-white/10 text-foreground mb-2 rounded-xl shadow-2xl p-1">
+          <DropdownMenuContent align="end" className="w-[240px] bg-popover backdrop-blur-xl border-border text-popover-foreground mb-2 rounded-xl shadow-2xl p-1">
             {user?.email === "rakesh837m@gmail.com" && (
               <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
                 <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
