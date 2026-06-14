@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { db } from "@workspace/db";
+import { db, crypto } from "@workspace/db";
 import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
@@ -103,7 +103,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
     let modelName = "gemini-1.5-flash"; // default fallback
 
     if (projectKey) {
-      activeKey = projectKey.encryptedKey; // Decryption would happen here in a real impl
+      activeKey = crypto.decrypt(projectKey.encryptedKey); // Decrypted here
       providerName = projectKey.provider;
       modelName = projectKey.model || modelName;
     } else {
@@ -112,7 +112,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
         where: and(eq(userApiKeys.isSystem, true), eq(userApiKeys.isEnabled, true))
       });
       if (systemKeys.length > 0) {
-        activeKey = systemKeys[0].encryptedKey;
+        activeKey = crypto.decrypt(systemKeys[0].encryptedKey);
         providerName = systemKeys[0].provider;
       } else if (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
         activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
@@ -125,7 +125,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
 
     const adapter = new UniversalProviderAdapter({
       provider: providerName,
-      apiKey: activeKey, // Should decrypt here!
+      apiKey: activeKey as string, 
       model: modelName
     });
 
