@@ -67,27 +67,49 @@ router.put("/settings", async (req: Request, res: Response) => {
       where: eq(projectWidgetSettings.projectId, projectId)
     });
 
+    const safeUpdates = {
+      botName: updates.botName,
+      botAvatar: updates.botAvatar,
+      welcomeMessage: updates.welcomeMessage,
+      themeColor: updates.themeColor,
+      position: updates.position,
+      displayMode: updates.displayMode,
+      customContainerId: updates.customContainerId,
+      allowedDomains: updates.allowedDomains,
+      customCss: updates.customCss,
+      leadsEnabled: updates.leadsEnabled,
+      humanHandoffLinks: updates.humanHandoffLinks,
+      isEnabled: updates.isEnabled,
+    };
+
+    // Remove undefined values
+    Object.keys(safeUpdates).forEach(key => {
+      if ((safeUpdates as any)[key] === undefined) {
+        delete (safeUpdates as any)[key];
+      }
+    });
+
     if (!existing) {
       const defaultSettings = {
         projectId,
-        botName: updates.botName || "AI Assistant",
-        welcomeMessage: updates.welcomeMessage || "Hello 👋",
-        themeColor: updates.themeColor || "#8B5CF6",
-        position: updates.position || "bottom-right",
-        displayMode: updates.displayMode || "floating",
-        allowedDomains: updates.allowedDomains || [],
-        customCss: updates.customCss,
-        customContainerId: updates.customContainerId,
-        humanHandoffLinks: updates.humanHandoffLinks || {},
-        leadsEnabled: updates.leadsEnabled || false,
-        isEnabled: updates.isEnabled ?? true,
+        botName: safeUpdates.botName || "AI Assistant",
+        welcomeMessage: safeUpdates.welcomeMessage || "Hello 👋",
+        themeColor: safeUpdates.themeColor || "#8B5CF6",
+        position: safeUpdates.position || "bottom-right",
+        displayMode: safeUpdates.displayMode || "floating",
+        allowedDomains: safeUpdates.allowedDomains || [],
+        customCss: safeUpdates.customCss,
+        customContainerId: safeUpdates.customContainerId,
+        humanHandoffLinks: safeUpdates.humanHandoffLinks || {},
+        leadsEnabled: safeUpdates.leadsEnabled || false,
+        isEnabled: safeUpdates.isEnabled ?? true,
         widgetToken: generateWidgetToken(),
       };
       await db.insert(projectWidgetSettings).values(defaultSettings as any);
     } else {
       await db.update(projectWidgetSettings)
         .set({
-          ...updates,
+          ...safeUpdates,
           updatedAt: new Date()
         })
         .where(eq(projectWidgetSettings.projectId, projectId));

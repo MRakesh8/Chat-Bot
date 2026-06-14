@@ -30,20 +30,23 @@ const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB for video/zips
   fileFilter: (_req, file, cb) => {
+    const allowedPrefixes = ["image/", "video/", "audio/", "text/"];
     const allowedMimeTypes = [
       "application/pdf",
-      "text/plain",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.ms-powerpoint",
       "application/zip",
       "application/x-zip-compressed",
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "video/mp4",
-      "video/webm",
-      "text/csv",
+      "application/json",
+      "application/xml",
+      "application/javascript",
+      "application/typescript",
     ];
-    if (allowedMimeTypes.includes(file.mimetype)) {
+    if (allowedPrefixes.some(p => file.mimetype.startsWith(p)) || allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error("Invalid file type"));
@@ -149,6 +152,7 @@ router.post("/upload", (req, res, next) => {
       
       if (mimetype.startsWith("video/")) sourceType = "video";
       else if (mimetype.startsWith("image/")) sourceType = "image";
+      else if (mimetype.startsWith("audio/")) sourceType = "audio";
     }
 
     // If it's a chat upload, we just return the fileId immediately

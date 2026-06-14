@@ -10,17 +10,18 @@ import { isIP } from "node:net";
 const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000, 720 * 60_000];
 const MAX_RETRY_COUNT = RETRY_DELAYS_MS.length;
 const SUPPORTED_FILE_EXTENSIONS = new Set([
-  "pdf",
-  "docx",
-  "txt",
-  "md",
-  "csv",
-  "pptx",
+  // Documents
+  "pdf", "docx", "doc", "txt", "md", "csv", "pptx", "ppt", "xls", "xlsx",
+  // Archives
   "zip",
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
+  // Images
+  "png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "heic",
+  // Audio
+  "mp3", "wav", "ogg", "m4a", "aac",
+  // Video
+  "mp4", "webm", "mov", "avi", "mkv",
+  // Code & Structured
+  "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql",
 ]);
 
 type LinkBuckets = {
@@ -765,7 +766,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     } else if (lowerFilename.endsWith(".docx")) {
       const parsed = await mammoth.extractRawText({ buffer: fileBuffer });
       extractedText = parsed.value;
-    } else if (lowerFilename.endsWith(".txt") || lowerFilename.endsWith(".md")) {
+    } else if (lowerFilename.match(/\.(txt|md|js|ts|jsx|tsx|py|html|css|json|xml|sh|c|cpp|java|go|rs|php|sql)$/)) {
       extractedText = fileBuffer.toString("utf-8");
     } else if (lowerFilename.endsWith(".csv")) {
       extractedText = fileBuffer
@@ -774,15 +775,12 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
         .filter(Boolean)
         .map((row, index) => `Row ${index + 1}: ${row}`)
         .join("\n");
-    } else if (lowerFilename.endsWith(".pptx")) {
+    } else if (lowerFilename.match(/\.(pptx|ppt|xlsx|xls|doc)$/)) {
       const { parseOffice } = await import("officeparser");
       extractedText = String(await parseOffice(fileBuffer));
-    } else if (lowerFilename.match(/\.(png|jpe?g|webp)$/)) {
-      const imageMime = lowerFilename.endsWith(".png")
-        ? "image/png"
-        : lowerFilename.endsWith(".webp")
-          ? "image/webp"
-          : "image/jpeg";
+    } else if (lowerFilename.match(/\.(png|jpe?g|webp|gif|bmp|heic)$/)) {
+      const ext = lowerFilename.split('.').pop()?.replace('jpg', 'jpeg') || 'jpeg';
+      const imageMime = `image/${ext}`;
       const res = await ai.models.generateContent(params.userId || null, {
         model: "gemini-2.5-flash",
         contents: [
@@ -791,6 +789,36 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
         ]
       });
       extractedText = res.text || "";
+    } else if (lowerFilename.match(/\.(mp3|wav|ogg|m4a|aac)$/)) {
+      const audioMime = `audio/${lowerFilename.split('.').pop()}`;
+      try {
+        const res = await ai.models.generateContent(params.userId || null, {
+          model: "gemini-2.5-flash",
+          contents: [
+            "Transcribe and summarize this audio file for searchable project knowledge.",
+            { inlineData: { mimeType: audioMime, data: fileBuffer.toString("base64") } }
+          ]
+        });
+        extractedText = res.text || "";
+      } catch (err: any) {
+        logger.warn({ err }, `Audio transcription failed for ${filename}. File may be too large for inlineData.`);
+        extractedText = `[Audio File: ${filename} - Transcription failed or file too large]`;
+      }
+    } else if (lowerFilename.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
+      const videoMime = `video/${lowerFilename.split('.').pop()}`;
+      try {
+        const res = await ai.models.generateContent(params.userId || null, {
+          model: "gemini-2.5-flash",
+          contents: [
+            "Transcribe and describe the contents of this video for searchable project knowledge.",
+            { inlineData: { mimeType: videoMime, data: fileBuffer.toString("base64") } }
+          ]
+        });
+        extractedText = res.text || "";
+      } catch (err: any) {
+        logger.warn({ err }, `Video transcription failed for ${filename}. File may be too large for inlineData.`);
+        extractedText = `[Video File: ${filename} - Transcription failed or file too large]`;
+      }
     } else if (lowerFilename.endsWith(".zip")) {
       const AdmZipModule = await import("adm-zip");
       const AdmZip = AdmZipModule.default || AdmZipModule;
