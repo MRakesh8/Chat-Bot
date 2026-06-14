@@ -93,7 +93,12 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", healthRouter);
 
-app.use("/api/widget", widgetPublicRouter);
+// Widget public routes use open CORS (embeddable on any website)
+app.use("/api/widget", cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+}), widgetPublicRouter);
 
 app.use(supabaseAuthMiddleware);
 
