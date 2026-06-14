@@ -23,6 +23,9 @@ app.use(compression({
   }
 }));
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Security Headers
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/widget")) {
@@ -110,8 +113,7 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
   }),
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
 
 app.use("/api", healthRouter);
 
