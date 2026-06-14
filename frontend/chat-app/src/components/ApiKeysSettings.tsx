@@ -131,24 +131,24 @@ export function ApiKeysSettings() {
           <div className="space-y-2">
             {keys.map((key) => (
               <div key={key.id} className="flex flex-col gap-2 p-3 border border-white/5 rounded-lg bg-background/50 backdrop-blur-sm">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-muted rounded-md"><Key size={16} /></div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{key.name}</p>
-                        {key.isPrimary && <span title="Primary Key"><Star size={14} className="text-yellow-500 fill-yellow-500" /></span>}
+                        <p className="text-sm font-medium truncate">{key.name}</p>
+                        {key.isPrimary && <span title="Primary Key"><Star size={14} className="text-yellow-500 fill-yellow-500 shrink-0" /></span>}
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono">{key.maskedKey}</p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{key.maskedKey}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-full text-xs font-medium">
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-full text-xs font-medium whitespace-nowrap">
                       {getStatusIcon(key.status, key.isEnabled)}
                       {key.isEnabled ? key.status : "DISABLED"}
                     </div>
                     {key.cooldownRemaining > 0 && (
-                      <span className="text-xs text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded-full">
+                      <span className="text-xs text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded-full whitespace-nowrap">
                         {key.cooldownRemaining}m cooldown
                       </span>
                     )}
@@ -156,12 +156,12 @@ export function ApiKeysSettings() {
                 </div>
                 
                 {/* Actions row */}
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-                  <div className="text-xs text-muted-foreground">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 pt-2 border-t border-border/50 gap-2">
+                  <div className="text-xs text-muted-foreground break-all">
                     Provider: <span className="uppercase font-medium">{key.provider}</span>
                     {key.failureReason && <span className="text-red-500 ml-2" title={key.failureReason}>| Error: {key.failureReason.substring(0, 30)}...</span>}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => handleAction(key.id, "primary")} className="p-1.5 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10 rounded-md transition-colors" title="Set as Primary">
                       <Star size={14} />
                     </button>
@@ -187,11 +187,11 @@ export function ApiKeysSettings() {
         {keys.length < 5 && (
           <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
             {error && <p className="text-xs text-red-500">{error}</p>}
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-col md:flex-row gap-2 md:items-center">
               <select
                 value={newProvider}
                 onChange={(e) => setNewProvider(e.target.value)}
-                className="bg-background border border-border rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
+                className="w-full md:w-auto bg-background border border-border rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
               >
                 <option value="gemini">Gemini</option>
                 <option value="openai">OpenAI</option>
@@ -203,19 +203,19 @@ export function ApiKeysSettings() {
                 placeholder="Key Name (Optional)"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
+                className="w-full md:flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
               />
               <input
                 type="text"
                 placeholder="API Key (AIza... or sk-...)"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
-                className="flex-[2] bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
+                className="w-full md:flex-[2] bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
               />
               <button 
                 onClick={handleAddKey}
                 disabled={adding || !newKey.trim()}
-                className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2 h-[38px]"
+                className="w-full md:w-auto justify-center bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2 h-[38px]"
               >
                 <Plus size={16} />
                 {adding ? "Testing..." : "Add"}
