@@ -257,12 +257,17 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   const handleMoveToProject = useCallback((id: string, projectId: string | null, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    updateConversation.mutate({ id, data: { title: undefined, projectId } as any }, {
+    updateConversation.mutate({ id, data: { projectId } as any }, {
       onSuccess: () => {
+        toast({ title: "Conversation moved successfully." });
         queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
+      },
+      onError: () => {
+        toast({ title: "Unable to move conversation.", variant: "destructive" });
       }
     });
-  }, [updateConversation, queryClient]);
+  }, [updateConversation, queryClient, toast]);
 
   const cancelEdit = useCallback(() => setEditingId(null), []);
 
@@ -410,43 +415,57 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       </ScrollArea>
 
       <div className="p-4 border-t border-white/5 bg-sidebar/50 mt-auto flex-shrink-0">
-        <div className="flex items-center gap-3 mb-4 px-2">
-          <Avatar className="h-8 w-8 ring-2 ring-white/10 shadow-sm">
-            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
-            <AvatarFallback className="bg-sidebar-accent">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <div className="flex-1 truncate">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.email}</p>
-          </div>
-        </div>
-        
-        <div className="space-y-1">
-          {user?.email === "rakesh837m@gmail.com" && (
-            <Link href="/admin/clarity" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
-              <BarChart3 className="w-4 h-4" />
-              Admin Analytics
-            </Link>
-          )}
-          <Link href="/admin/projects" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
-            <FolderKanban className="w-4 h-4" />
-            Projects
-          </Link>
-          <Link href="/services" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
-            <Heart className="w-4 h-4" />
-            Connected Services
-          </Link>
-          <Link href="/settings" className="flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all">
-            <Settings className="w-4 h-4" />
-            Settings
-          </Link>
-          <button 
-            onClick={() => signOut()}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground rounded-lg transition-all"
-          >
-            <LogOut className="w-4 h-4" />
-            Log out
-          </button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start px-2 py-6 h-auto hover:bg-white/5 group">
+              <div className="flex items-center gap-3 w-full">
+                <Avatar className="h-8 w-8 ring-2 ring-white/10 shadow-sm transition-transform group-hover:scale-105">
+                  <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
+                  <AvatarFallback className="bg-sidebar-accent">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 text-left truncate">
+                  <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.email}</p>
+                </div>
+                <MoreVertical className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100" />
+              </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[240px] bg-popover border-border text-popover-foreground mb-2">
+            {user?.email === "rakesh837m@gmail.com" && (
+              <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
+                <Link href="/admin/clarity" className="flex items-center gap-3 w-full">
+                  <BarChart3 className="w-4 h-4" />
+                  Admin Analytics
+                </Link>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
+              <Link href="/admin/projects" className="flex items-center gap-3 w-full">
+                <FolderKanban className="w-4 h-4" />
+                Projects
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
+              <Link href="/services" className="flex items-center gap-3 w-full">
+                <Heart className="w-4 h-4" />
+                Connected Services
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
+              <Link href="/settings" className="flex items-center gap-3 w-full">
+                <Settings className="w-4 h-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => signOut()}
+              className="cursor-pointer text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 border-t border-border"
+            >
+              <LogOut className="w-4 h-4 mr-3" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

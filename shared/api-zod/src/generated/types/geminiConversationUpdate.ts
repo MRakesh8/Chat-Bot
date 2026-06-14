@@ -7,5 +7,7 @@
  */
 
 export interface GeminiConversationUpdate {
-  title: string;
+  title?: string;
+  /** @nullable */
+  projectId?: string | null;
 }

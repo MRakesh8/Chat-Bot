@@ -37,13 +37,23 @@ export interface GeminiConversationInput {
   projectId?: string | null;
 }
 
+export interface UpdateGeminiConversationBody {
+  title?: string;
+  /** @nullable */
+  projectId?: string | null;
+}
+
 export interface GeminiConversationUpdate {
-  title: string;
+  title?: string;
+  /** @nullable */
+  projectId?: string | null;
 }
 
 export interface GeminiMessageInput {
   content: string;
   fileIds?: string[];
+  projectIds?: string[];
+  useNormalAi?: boolean;
 }
 
 export interface GeminiConversationWithMessages {

@@ -4,6 +4,13 @@ import { userApiKeys } from "@workspace/db";
 
 const router = Router();
 
+import { getDatabaseStatus } from "../../middlewares/databaseHealth";
+
+// GET /api/system/database
+router.get("/database", (req, res) => {
+  res.json(getDatabaseStatus());
+});
+
 // GET /api/system/ai-status
 router.get("/ai-status", async (req, res) => {
   try {

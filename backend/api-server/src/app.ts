@@ -24,6 +24,9 @@ const limiter = rateLimit({
 app.use("/api", limiter);
 app.use("/gemini", limiter);
 
+import { databaseHealthMiddleware } from "./middlewares/databaseHealth";
+app.use(databaseHealthMiddleware);
+
 // Basic middleware
 app.use(
   pinoHttp({

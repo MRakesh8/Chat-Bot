@@ -326,15 +326,13 @@ components:
           type: string
         projectId:
           type: ["string", "null"]
-      required:
-        - title
     GeminiConversationUpdate:
       type: object
       properties:
         title:
           type: string
-      required:
-        - title
+        projectId:
+          type: ["string", "null"]
     GeminiMessageInput:
       type: object
       properties:

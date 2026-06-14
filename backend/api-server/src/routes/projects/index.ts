@@ -36,11 +36,23 @@ router.get("/", async (req, res) => {
   }
   try {
     const result = await db
-      .select()
+      .select({
+        project: projects,
+        knowledgeCount: sql<number>`count(${knowledgeSources.id})`.mapWith(Number)
+      })
       .from(projects)
+      .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
       .where(eq(projects.userId, userId))
+      .groupBy(projects.id)
       .orderBy(desc(projects.createdAt));
-    res.json(result);
+      
+    // Flatten the result so it matches the expected Project[] type but with knowledgeCount
+    const flattened = result.map(r => ({
+      ...r.project,
+      knowledgeCount: r.knowledgeCount
+    }));
+    
+    res.json(flattened);
   } catch (err: any) {
     req.log.error({ err }, "Error listing projects");
     res.status(500).json({ success: false, error: err.message || "Internal server error" });

@@ -420,6 +420,76 @@ export const useUpdateGeminiConversation = <TError = ErrorType<GeminiError>,
       return useMutation(getUpdateGeminiConversationMutationOptions(options));
     }
 
+export const getDeleteGeminiConversationUrl = (id: string,) => {
+
+
+
+
+  return `/api/gemini/conversations/${id}`
+}
+
+/**
+ * @summary Delete a conversation
+ */
+export const deleteGeminiConversation = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteGeminiConversationUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteGeminiConversationMutationOptions = <TError = ErrorType<GeminiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGeminiConversation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteGeminiConversation>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteGeminiConversation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteGeminiConversation>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteGeminiConversation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteGeminiConversationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteGeminiConversation>>>
+
+    export type DeleteGeminiConversationMutationError = ErrorType<GeminiError>
+
+    /**
+ * @summary Delete a conversation
+ */
+export const useDeleteGeminiConversation = <TError = ErrorType<GeminiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGeminiConversation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteGeminiConversation>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteGeminiConversationMutationOptions(options));
+    }
+
 export const getToggleGeminiConversationFavoriteUrl = (id: string,) => {
 
 
@@ -490,76 +560,6 @@ export const useToggleGeminiConversationFavorite = <TError = ErrorType<GeminiErr
         TContext
       > => {
       return useMutation(getToggleGeminiConversationFavoriteMutationOptions(options));
-    }
-
-export const getDeleteGeminiConversationUrl = (id: string,) => {
-
-
-
-
-  return `/api/gemini/conversations/${id}`
-}
-
-/**
- * @summary Delete a conversation
- */
-export const deleteGeminiConversation = async (id: string, options?: RequestInit): Promise<void> => {
-
-  return customFetch<void>(getDeleteGeminiConversationUrl(id),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-
-export const getDeleteGeminiConversationMutationOptions = <TError = ErrorType<GeminiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGeminiConversation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteGeminiConversation>>, TError,{id: string}, TContext> => {
-
-const mutationKey = ['deleteGeminiConversation'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteGeminiConversation>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
-
-          return  deleteGeminiConversation(id,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteGeminiConversationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteGeminiConversation>>>
-
-    export type DeleteGeminiConversationMutationError = ErrorType<GeminiError>
-
-    /**
- * @summary Delete a conversation
- */
-export const useDeleteGeminiConversation = <TError = ErrorType<GeminiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGeminiConversation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof deleteGeminiConversation>>,
-        TError,
-        {id: string},
-        TContext
-      > => {
-      return useMutation(getDeleteGeminiConversationMutationOptions(options));
     }
 
 export const getListGeminiMessagesUrl = (id: string,) => {

@@ -796,7 +796,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       </div>
 
                       {/* Right: Status & Actions */}
-                      <div className="flex items-center justify-end w-full sm:w-[15%] sm:min-w-[150px] mt-2 sm:mt-0 gap-3">
+                      <div className="flex items-center justify-end w-full sm:w-auto sm:flex-none mt-2 sm:mt-0 gap-3 pl-2">
                         <div 
                           className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-full border border-border/50"
                           title={source.lastError || "Status details"}
@@ -809,11 +809,11 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground opacity-50 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 relative z-10">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="z-[1050]">
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEditDialog(source); }}>
                               <FileIcon className="w-4 h-4 mr-2" /> View Details
                             </DropdownMenuItem>

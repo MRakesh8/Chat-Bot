@@ -9,4 +9,6 @@
 export interface GeminiMessageInput {
   content: string;
   fileIds?: string[];
+  projectIds?: string[];
+  useNormalAi?: boolean;
 }

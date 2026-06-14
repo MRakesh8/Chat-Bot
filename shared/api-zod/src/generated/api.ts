@@ -76,7 +76,7 @@ export const UpdateGeminiConversationParams = zod.object({
 
 export const UpdateGeminiConversationBody = zod.object({
   "title": zod.string().optional(),
-  "projectId": zod.string().nullable().optional()
+  "projectId": zod.string().nullish()
 })
 
 export const UpdateGeminiConversationResponse = zod.object({
@@ -87,6 +87,14 @@ export const UpdateGeminiConversationResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "isFavorite": zod.boolean(),
   "expiresAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Delete a conversation
+ */
+export const DeleteGeminiConversationParams = zod.object({
+  "id": zod.coerce.string()
 })
 
 
@@ -109,14 +117,6 @@ export const ToggleGeminiConversationFavoriteResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "isFavorite": zod.boolean(),
   "expiresAt": zod.coerce.date().nullish()
-})
-
-
-/**
- * @summary Delete a conversation
- */
-export const DeleteGeminiConversationParams = zod.object({
-  "id": zod.coerce.string()
 })
 
 

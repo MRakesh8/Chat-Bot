@@ -159,12 +159,24 @@ router.patch("/conversations/:id", async (req, res) => {
     }
     const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, paramsParsed.data.id));
     if (!existing || existing.userId !== userId) {
+      req.log.error("MOVE_PROJECT_FAILED - Reason: Conversation not found");
       res.status(404).json({ error: "Conversation not found" }); return;
     }
+    
+    if (bodyParsed.data.projectId !== undefined) {
+      req.log.info({ Conversation: existing.id, Project: bodyParsed.data.projectId }, "MOVE_PROJECT_START");
+    }
+
     if (bodyParsed.data.projectId && !(await userOwnsProject(bodyParsed.data.projectId, userId))) {
+      req.log.error("MOVE_PROJECT_FAILED - Reason: Forbidden: You do not own this project");
       res.status(403).json({ error: "Forbidden: You do not own this project" });
       return;
     }
+    
+    if (bodyParsed.data.projectId !== undefined) {
+      req.log.info({ OldProject: existing.projectId, NewProject: bodyParsed.data.projectId }, "MOVE_PROJECT_DB_UPDATE");
+    }
+
     const [updated] = await db
       .update(chatSessions)
       .set({ 
@@ -173,9 +185,14 @@ router.patch("/conversations/:id", async (req, res) => {
       })
       .where(eq(chatSessions.id, paramsParsed.data.id))
       .returning();
+      
+    if (bodyParsed.data.projectId !== undefined) {
+      req.log.info({ Conversation: updated.id, Project: updated.projectId }, "MOVE_PROJECT_SUCCESS");
+    }
+    
     res.json(serializeConversation(updated));
-  } catch (err) {
-    req.log.error({ err }, "Error updating conversation");
+  } catch (err: any) {
+    req.log.error({ err, reason: err.message }, "MOVE_PROJECT_FAILED - Reason: Internal server error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

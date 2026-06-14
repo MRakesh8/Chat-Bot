@@ -8,6 +8,20 @@
       "when": 1781384199166,
       "tag": "0000_purple_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781404366237,
+      "tag": "0001_true_vampiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781405946397,
+      "tag": "0002_bizarre_black_crow",
+      "breakpoints": true
     }
   ]
 }

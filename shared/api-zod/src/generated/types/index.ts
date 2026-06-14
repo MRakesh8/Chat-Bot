@@ -18,4 +18,5 @@ export * from './geminiMessageInput';
 export * from './healthStatus';
 export * from './searchGeminiConversationsParams';
 export * from './toggleGeminiConversationFavoriteBody';
+export * from './updateGeminiConversationBody';
 export * from './uploadedFile';

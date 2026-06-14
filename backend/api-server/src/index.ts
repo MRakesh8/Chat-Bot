@@ -1,6 +1,8 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startCleanupTask } from "./lib/cleanup";
+import { runMigrations } from "./lib/migrate";
+import { validateDatabaseSchema } from "./middlewares/databaseHealth";
 
 const rawPort = process.env["PORT"];
 
@@ -16,12 +18,24 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const server = app.listen(port, "0.0.0.0", () => {
-  logger.info({ port }, "Server listening on 0.0.0.0");
-  startCleanupTask();
-});
+async function start() {
+  try {
+    await runMigrations();
+  } catch (err) {
+    logger.error("Failed to run migrations on startup", err);
+  }
 
-server.on("error", (err) => {
-  logger.error({ err }, "Error listening on port");
-  process.exit(1);
-});
+  await validateDatabaseSchema();
+
+  const server = app.listen(port, "0.0.0.0", () => {
+    logger.info({ port }, "Server listening on 0.0.0.0");
+    startCleanupTask();
+  });
+
+  server.on("error", (err) => {
+    logger.error({ err }, "Error listening on port");
+    process.exit(1);
+  });
+}
+
+start();
