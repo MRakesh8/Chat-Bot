@@ -690,6 +690,7 @@ RULES FOR ALL RESPONSES:
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
 
     let fullResponse = "";
 
@@ -723,6 +724,9 @@ RULES FOR ALL RESPONSES:
           if (text && !isFirstChunkWhitespace) {
             fullResponse += text;
             res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+            if (typeof (res as any).flush === 'function') {
+              (res as any).flush();
+            }
           }
         }
         

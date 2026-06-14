@@ -70,7 +70,14 @@ router.post("/generate", async (req, res) => {
     let pdf: any;
     try {
       const { mdToPdf } = await import("md-to-pdf");
-      pdf = await mdToPdf({ content: markdownContent });
+      pdf = await mdToPdf(
+        { content: markdownContent },
+        {
+          launch_options: {
+            args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+          },
+        }
+      );
       if (!pdf || !pdf.content) {
          throw new Error("Empty PDF generated");
       }
