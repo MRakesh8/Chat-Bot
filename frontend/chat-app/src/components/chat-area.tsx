@@ -104,7 +104,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
               <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5" />
               <span className="text-xs font-medium text-muted-foreground">Aria</span>
             </div>
-            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex items-center gap-1 transition-opacity opacity-100">
               {hasSelectedProjects && (
                 <Button
                   variant="ghost"
@@ -144,7 +144,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
                   
                   return (
                     <div className="relative group">
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <div className="absolute top-2 right-2 transition-opacity z-10 opacity-100">
                         <Button size="sm" variant="secondary" className="h-7 text-xs shadow-md border border-border/50" onClick={() => onOpenArtifact(rawCode, lang)}>
                           <Sparkle className="w-3.5 h-3.5 mr-1.5" /> View Artifact
                         </Button>
@@ -701,7 +701,7 @@ export function ChatArea() {
                                 
                                 return (
                                   <div className="relative group">
-                                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                    <div className="absolute top-2 right-2 transition-opacity z-10 opacity-100">
                                       <Button size="sm" variant="secondary" className="h-7 text-xs shadow-md border border-border/50" onClick={() => setActiveArtifact({ code: rawCode, language: lang })}>
                                         <Sparkle className="w-3.5 h-3.5 mr-1.5" /> View Artifact
                                       </Button>

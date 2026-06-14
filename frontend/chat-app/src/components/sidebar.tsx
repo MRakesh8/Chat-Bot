@@ -75,8 +75,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
       )}
       
       <div className={cn(
-        "flex items-center transition-opacity",
-        isActive || conv.isFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        "flex items-center transition-opacity opacity-100"
       )}>
         <Button
           variant="ghost" size="icon"
@@ -429,7 +428,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
                 <div className="flex-1 text-left truncate flex flex-col justify-center">
                   <p className="text-sm font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
                 </div>
-                <div className="bg-white/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="bg-white/5 rounded-full p-1 transition-opacity duration-300">
                   <MoreVertical className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>

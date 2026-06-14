@@ -176,7 +176,7 @@ export default function AdminProjectEditPage() {
 
   return (
     <>
-      <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="flex-1 w-full min-w-0 px-6 py-6 md:px-8 lg:px-10">
         <div className="flex items-center gap-6 mb-12">
           <Button
             variant="ghost"

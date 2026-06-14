@@ -225,7 +225,7 @@ export default function ConnectedServicesPage() {
                     </div>
                   </div>
                   
-                  <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-300 bottom-5 right-5 flex gap-2 z-20">
+                  <div className="absolute transition-opacity duration-300 bottom-5 right-5 flex gap-2 z-20 opacity-100">
                      <Button size="sm" variant="secondary" onClick={() => handleCopyUrl(service.url)} className="h-9 rounded-xl bg-white/10 hover:bg-white/20 border-white/5 text-foreground shadow-lg" title="Copy URL">
                         <Copy className="w-4 h-4" />
                      </Button>
