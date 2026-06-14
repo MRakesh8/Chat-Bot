@@ -3,10 +3,12 @@ services:
     name: chat-bot-api
     runtime: node
     plan: free
-    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm --filter @workspace/api-server build
+    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && npx puppeteer browsers install chrome && corepack pnpm --filter @workspace/api-server build
     startCommand: corepack pnpm --filter @workspace/api-server start
     healthCheckPath: /api/healthz
     envVars:
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/.cache/puppeteer
       - key: NODE_ENV
         value: production
       - key: LOCAL_DEMO_MODE
