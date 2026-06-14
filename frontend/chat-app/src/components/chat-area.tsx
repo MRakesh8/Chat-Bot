@@ -71,6 +71,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
   onCopy,
   onRegenerate,
   onOpenArtifact,
+  onReadAloud,
 }: {
   msg: any;
   basePath: string;
