@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 function useAuthFetch() {
   const { session } = useAuth();
@@ -78,6 +79,7 @@ type KnowledgeSource = {
   lastError: string | null;
   retryCount: number;
   createdAt: string;
+  isWidgetExposed: boolean;
 };
 
 export function KnowledgeBase({ projectId }: { projectId: string }) {
@@ -343,6 +345,21 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       toast({ title: "Retry started" });
       queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
     },
+  });
+
+  const toggleWidgetExposureMutation = useMutation({
+    mutationFn: async (data: { id: string; isWidgetExposed: boolean }) => {
+      const res = await authFetch(apiUrl(`/api/files/${data.id}`), {
+        method: "PATCH",
+        body: JSON.stringify({ isWidgetExposed: data.isWidgetExposed }),
+      });
+      if (!res.ok) throw new Error("Failed to update widget exposure");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update exposure", variant: "destructive" }),
   });
 
   const updateSourceMutation = useMutation({
@@ -797,6 +814,15 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
 
                       {/* Right: Status & Actions */}
                       <div className="flex items-center justify-end w-full sm:w-auto sm:flex-none mt-2 sm:mt-0 gap-3 pl-2">
+                        
+                        <div className="flex items-center gap-2 mr-2" onClick={(e) => e.stopPropagation()} title="Expose to Widget">
+                           <Switch 
+                             checked={source.isWidgetExposed ?? true} 
+                             onCheckedChange={(val) => toggleWidgetExposureMutation.mutate({ id: source.id, isWidgetExposed: val })} 
+                           />
+                           <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Widget</span>
+                        </div>
+
                         <div 
                           className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-full border border-border/50"
                           title={source.lastError || "Status details"}

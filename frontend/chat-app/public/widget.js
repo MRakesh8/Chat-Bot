@@ -1,0 +1,430 @@
+/**
+ * Aria AI - Embeddable Widget
+ * Uses Shadow DOM for style isolation
+ */
+(function() {
+  // Prevent multiple initializations
+  if (window.AriaWidgetInitialized) return;
+  window.AriaWidgetInitialized = true;
+
+  const scriptTag = document.currentScript || document.querySelector('script[src*="widget.js"]');
+  const widgetToken = scriptTag ? scriptTag.getAttribute('data-widget-token') : null;
+
+  if (!widgetToken) {
+    console.error("Aria AI Widget: Missing data-widget-token attribute on script tag.");
+    return;
+  }
+
+  // Determine API base URL (assuming script is hosted on the same domain as the API, or hardcoded)
+  // In development, script might be on localhost:5173 and API on localhost:3000
+  let apiBaseUrl = "http://localhost:3000"; // Fallback for dev
+  if (scriptTag && scriptTag.src) {
+    try {
+      const url = new URL(scriptTag.src);
+      // If we are on production, use the origin. If locally testing on 5173, point to 3000.
+      if (url.port === "5173") {
+        apiBaseUrl = `${url.protocol}//${url.hostname}:3000`;
+      } else {
+        apiBaseUrl = url.origin; 
+      }
+    } catch(e) {}
+  }
+
+  let config = null;
+  let isOpen = false;
+  let isMobile = window.innerWidth <= 768;
+
+  const container = document.createElement('div');
+  container.id = 'aria-ai-widget-root';
+  
+  // Shadow DOM initialization
+  const shadow = container.attachShadow({ mode: 'open' });
+
+  async function loadConfig() {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/widget/${widgetToken}/config`);
+      if (!res.ok) throw new Error("Failed to load config");
+      config = await res.json();
+      render();
+    } catch (err) {
+      console.error("Aria AI Widget Initialization failed:", err);
+    }
+  }
+
+  function getBaseStyles() {
+    const themeColor = config.themeColor || "#8B5CF6";
+    return `
+      :host {
+        --primary: ${themeColor};
+        --bg-dark: #09090b;
+        --bg-panel: #18181b;
+        --border: #27272a;
+        --text-main: #f4f4f5;
+        --text-muted: #a1a1aa;
+        all: initial;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      
+      * { box-sizing: border-box; }
+
+      .widget-wrapper {
+        position: fixed;
+        z-index: 2147483647;
+      }
+
+      .widget-wrapper.position-bottom-right { bottom: 24px; right: 24px; }
+      .widget-wrapper.position-bottom-left { bottom: 24px; left: 24px; }
+
+      /* Floating Button */
+      .floating-button {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background-color: var(--primary);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        cursor: pointer;
+        border: none;
+        outline: none;
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        justify-content: center;
+      }
+      .floating-button:hover { transform: scale(1.05); }
+      .floating-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+      /* Chat Panel */
+      .chat-panel {
+        position: absolute;
+        bottom: 80px;
+        right: 0;
+        width: 380px;
+        height: 600px;
+        max-height: calc(100vh - 100px);
+        background-color: var(--bg-panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+        pointer-events: none;
+        transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+        transform-origin: bottom right;
+      }
+
+      .widget-wrapper.position-bottom-left .chat-panel {
+        right: auto; left: 0; transform-origin: bottom left;
+      }
+
+      .chat-panel.open {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+      }
+
+      /* Mobile Full Screen */
+      @media (max-width: 768px) {
+        .chat-panel {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          width: 100%; height: 100%; max-height: 100%;
+          border-radius: 0;
+          bottom: 0 !important; right: 0 !important;
+          transform: translateY(100%);
+        }
+        .chat-panel.open { transform: translateY(0); }
+      }
+
+      .header {
+        background-color: var(--primary);
+        padding: 16px;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .header-info { display: flex; align-items: center; gap: 12px; }
+      .avatar { 
+        width: 32px; height: 32px; border-radius: 50%; 
+        background: rgba(255,255,255,0.2); 
+        display: flex; align-items: center; justify-content: center; font-weight: bold;
+      }
+      .title { font-weight: 600; font-size: 16px; margin: 0; line-height: 1.2; }
+      .subtitle { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+      
+      .close-btn { 
+        background: none; border: none; color: white; cursor: pointer; padding: 4px; opacity: 0.8;
+      }
+      .close-btn:hover { opacity: 1; }
+      
+      .messages {
+        flex: 1;
+        padding: 16px;
+        overflow-y: auto;
+        background-color: var(--bg-dark);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .message {
+        max-width: 85%;
+        font-size: 14px;
+        line-height: 1.5;
+        padding: 12px 16px;
+        border-radius: 16px;
+        word-wrap: break-word;
+      }
+
+      .message.bot {
+        align-self: flex-start;
+        background-color: var(--bg-panel);
+        color: var(--text-main);
+        border: 1px solid var(--border);
+        border-bottom-left-radius: 4px;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        background-color: var(--primary);
+        color: white;
+        border-bottom-right-radius: 4px;
+      }
+
+      .input-area {
+        padding: 16px;
+        background-color: var(--bg-panel);
+        border-top: 1px solid var(--border);
+      }
+
+      .input-wrapper {
+        display: flex;
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 4px;
+        align-items: center;
+      }
+
+      .input-wrapper input {
+        flex: 1;
+        background: none;
+        border: none;
+        color: var(--text-main);
+        padding: 8px 16px;
+        font-size: 14px;
+        outline: none;
+      }
+
+      .send-btn {
+        background: var(--primary);
+        color: white;
+        border: none;
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        margin-right: 2px;
+      }
+      .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .send-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+      .typing-indicator {
+        display: none;
+        align-items: center;
+        gap: 4px;
+        padding: 12px 16px;
+        background-color: var(--bg-panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        border-bottom-left-radius: 4px;
+        align-self: flex-start;
+        width: fit-content;
+      }
+      .typing-indicator.visible { display: flex; }
+      .typing-dot { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: typing 1.4s infinite ease-in-out both; }
+      .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+      .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+      @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+      ${config.customCss || ''}
+    `;
+  }
+
+  let chatHistory = [];
+
+  function render() {
+    // If custom container
+    if (config.displayMode === "custom" && config.customContainerId) {
+      const customDiv = document.getElementById(config.customContainerId);
+      if (customDiv) {
+         customDiv.appendChild(container);
+      } else {
+        document.body.appendChild(container);
+      }
+    } else {
+      document.body.appendChild(container);
+    }
+
+    const positionClass = config.position === "bottom-left" ? "position-bottom-left" : "position-bottom-right";
+
+    shadow.innerHTML = \`
+      <style>\${getBaseStyles()}</style>
+      <div class="widget-wrapper \${positionClass}">
+        \${config.displayMode !== 'custom' ? \`
+        <div class="chat-panel \${isOpen ? 'open' : ''}">
+          <div class="header">
+            <div class="header-info">
+              <div class="avatar">\${config.botName.charAt(0)}</div>
+              <div>
+                <div class="title">\${config.botName}</div>
+                <div class="subtitle">Online</div>
+              </div>
+            </div>
+            <button class="close-btn" aria-label="Close chat">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="messages" id="messages-container">
+            <div class="message bot">\${config.welcomeMessage}</div>
+            <div class="typing-indicator" id="typing-indicator">
+              <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+            </div>
+          </div>
+          <div class="input-area">
+            <form id="chat-form" class="input-wrapper">
+              <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
+              <button type="submit" class="send-btn">
+                 <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </button>
+            </form>
+          </div>
+        </div>
+        <button class="floating-button" aria-label="Open chat" style="\${isOpen ? 'display:none;' : ''}">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        \` : \`
+          <!-- Custom Container Mode is just the panel always open -->
+          <div class="chat-panel open" style="position:relative; bottom:0; right:0; width:100%; height:100%; transform:none;">
+            <!-- Same interior... -->
+            <div class="header">
+              <div class="header-info">
+                <div class="avatar">\${config.botName.charAt(0)}</div>
+                <div><div class="title">\${config.botName}</div></div>
+              </div>
+            </div>
+            <div class="messages" id="messages-container">
+              <div class="message bot">\${config.welcomeMessage}</div>
+              <div class="typing-indicator" id="typing-indicator">
+                <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+              </div>
+            </div>
+            <div class="input-area">
+              <form id="chat-form" class="input-wrapper">
+                <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
+                <button type="submit" class="send-btn">
+                   <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                </button>
+              </form>
+            </div>
+          </div>
+        \`}
+      </div>
+    \`;
+
+    bindEvents();
+  }
+
+  function bindEvents() {
+    const fab = shadow.querySelector('.floating-button');
+    const closeBtn = shadow.querySelector('.close-btn');
+    const panel = shadow.querySelector('.chat-panel');
+    const form = shadow.querySelector('#chat-form');
+    const input = shadow.querySelector('#chat-input');
+    const messagesContainer = shadow.querySelector('#messages-container');
+    const typingIndicator = shadow.querySelector('#typing-indicator');
+
+    if (fab) {
+      fab.addEventListener('click', () => {
+        isOpen = true;
+        panel.classList.add('open');
+        fab.style.display = 'none';
+        setTimeout(() => input.focus(), 300);
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        isOpen = false;
+        panel.classList.remove('open');
+        if (fab) fab.style.display = 'flex';
+      });
+    }
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+
+        input.value = '';
+        addMessage('user', text);
+        
+        chatHistory.push({ role: 'user', content: text });
+        typingIndicator.classList.add('visible');
+        messagesContainer.appendChild(typingIndicator); // Move to bottom
+        scrollToBottom();
+
+        try {
+          const res = await fetch(\`\${apiBaseUrl}/api/widget/\${widgetToken}/chat\`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: chatHistory })
+          });
+          
+          if (!res.ok) throw new Error("API Error");
+          
+          const data = await res.json();
+          typingIndicator.classList.remove('visible');
+          
+          addMessage('bot', data.content);
+          chatHistory.push({ role: 'assistant', content: data.content });
+        } catch (err) {
+          typingIndicator.classList.remove('visible');
+          addMessage('bot', 'Sorry, I am having trouble connecting right now.');
+        }
+      });
+    }
+  }
+
+  function addMessage(role, text) {
+    const messagesContainer = shadow.querySelector('#messages-container');
+    const typingIndicator = shadow.querySelector('#typing-indicator');
+    
+    const msgDiv = document.createElement('div');
+    msgDiv.className = \`message \${role}\`;
+    msgDiv.textContent = text;
+    
+    messagesContainer.insertBefore(msgDiv, typingIndicator);
+    scrollToBottom();
+  }
+
+  function scrollToBottom() {
+    const messagesContainer = shadow.querySelector('#messages-container');
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+
+  // Handle resizing for mobile
+  window.addEventListener('resize', () => {
+    isMobile = window.innerWidth <= 768;
+  });
+
+  // Init
+  loadConfig();
+})();

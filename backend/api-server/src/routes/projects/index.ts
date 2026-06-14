@@ -503,4 +503,7 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
   }
 });
 
+import widgetRouter from "./widget";
+router.use("/:projectId/widget", widgetRouter);
+
 export default router;

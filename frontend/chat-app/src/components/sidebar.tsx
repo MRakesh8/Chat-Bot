@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { useToast } from "@/hooks/use-toast";
@@ -42,7 +43,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
   onStartEdit: (id: string, title: string, e: React.MouseEvent) => void;
   onToggleFavorite: (id: string, currentStatus: boolean, e: React.MouseEvent) => void;
   onMoveToProject: (id: string, projectId: string | null, e: React.MouseEvent) => void;
-  onDelete: (id: string, e: React.MouseEvent) => void;
+  onDelete: (id: string, isFavorite: boolean, e: React.MouseEvent) => void;
 }) {
   return (
     <div
@@ -122,8 +123,8 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
                   </DropdownMenuSubContent>
                 </DropdownMenuPortal>
               </DropdownMenuSub>
-              <DropdownMenuItem onClick={(e) => onDelete(conv.id, e)} className="text-destructive hover:bg-destructive/10 cursor-pointer">
-                <Trash2 className="w-4 h-4 mr-2" /> Delete
+              <DropdownMenuItem onClick={(e) => onDelete(conv.id, !!conv.isFavorite, e)} className="text-destructive focus:bg-destructive focus:text-destructive-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors group">
+                <Trash2 className="w-4 h-4 mr-2 group-hover:text-destructive group-focus:text-destructive-foreground" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -181,18 +182,60 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     if (onClose) onClose();
   }, [setLocation, onClose]);
 
-  const handleDelete = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const [conversationToDelete, setConversationToDelete] = useState<{ id: string, isFavorite?: boolean } | null>(null);
+
+  const confirmDelete = useCallback(() => {
+    if (!conversationToDelete) return;
+    const { id, isFavorite } = conversationToDelete;
+    
+    if (isFavorite) {
+      toast({
+        title: "This conversation is marked as a favorite.",
+        description: "To delete it, please remove it from Favorites first and then try again.",
+        variant: "destructive"
+      });
+      setConversationToDelete(null);
+      return;
+    }
+
+    // Optimistically remove from cache
+    queryClient.setQueryData(getListGeminiConversationsQueryKey(), (old: any) => {
+      if (!Array.isArray(old)) return old;
+      return old.filter((conv: any) => conv.id !== id);
+    });
+
     deleteConversation.mutate({ id }, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
+        toast({ title: "Conversation deleted successfully." });
+        // Handle redirect if currently active conversation was deleted
         if (location === `/chat/${id}`) {
           setLocation("/chat");
         }
+      },
+      onError: () => {
+        toast({ title: "Unable to delete the conversation.", description: "Please try again.", variant: "destructive" });
+        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() }); // Restore if failed
       }
     });
-  }, [deleteConversation, queryClient, location, setLocation]);
+
+    setConversationToDelete(null);
+  }, [conversationToDelete, deleteConversation, queryClient, location, setLocation, toast]);
+
+  const handleDeleteRequest = useCallback((id: string, isFavorite: boolean, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isFavorite) {
+      toast({
+        title: "This conversation is marked as a favorite.",
+        description: "To delete it, please remove it from Favorites first and then try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setConversationToDelete({ id, isFavorite });
+  }, [toast]);
 
   const startEdit = useCallback((id: string, title: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -409,12 +452,32 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
                 onStartEdit={startEdit}
                 onToggleFavorite={handleToggleFavorite}
                 onMoveToProject={handleMoveToProject}
-                onDelete={handleDelete}
+                onDelete={handleDeleteRequest}
               />
             ))
           )}
         </div>
       </ScrollArea>
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!conversationToDelete} onOpenChange={(open) => !open && setConversationToDelete(null)}>
+        <AlertDialogContent className="bg-popover border-border text-popover-foreground sm:max-w-[425px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete this conversation?
+              <br/><br/>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="hover:bg-accent border-border text-foreground">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="p-3 mt-auto flex-shrink-0 bg-gradient-to-t from-background/80 to-transparent">
         <DropdownMenu>

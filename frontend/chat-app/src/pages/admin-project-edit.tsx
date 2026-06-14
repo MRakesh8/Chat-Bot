@@ -6,8 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
+import { WidgetStudio } from "../components/project/widget-studio";
+import { Deployment } from "../components/project/deployment";
+import { ApiKeys } from "../components/project/api-keys";
+import { Analytics } from "../components/project/analytics";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiUrl } from "@/lib/api-url";
@@ -220,6 +224,18 @@ export default function AdminProjectEditPage() {
               <TabsTrigger value="settings" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Settings className="w-4 h-4 mr-2" /> Settings
               </TabsTrigger>
+              <TabsTrigger value="widget-studio" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <Paintbrush className="w-4 h-4 mr-2" /> Widget Studio
+              </TabsTrigger>
+              <TabsTrigger value="deployment" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <Rocket className="w-4 h-4 mr-2" /> Deployment
+              </TabsTrigger>
+              <TabsTrigger value="api-keys" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <Key className="w-4 h-4 mr-2" /> API Keys
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <LayoutDashboard className="w-4 h-4 mr-2" /> Analytics
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -366,7 +382,55 @@ export default function AdminProjectEditPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="settings">
+            <TabsContent value="widget-studio">
+              {isNew ? (
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <Paintbrush className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can customize the widget.</p>
+                </div>
+              ) : (
+                <WidgetStudio projectId={projectId!} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="deployment">
+              {isNew ? (
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <Rocket className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can deploy the widget.</p>
+                </div>
+              ) : (
+                <Deployment projectId={projectId!} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="api-keys">
+              {isNew ? (
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <Key className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can manage API keys.</p>
+                </div>
+              ) : (
+                <ApiKeys projectId={projectId!} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="analytics">
+              {isNew ? (
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <LayoutDashboard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can view widget analytics.</p>
+                </div>
+              ) : (
+                <Analytics projectId={projectId!} />
+              )}
+            </TabsContent>
+
+              <TabsContent value="settings">
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Project Name *</label>

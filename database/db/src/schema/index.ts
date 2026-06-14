@@ -57,6 +57,7 @@ export const knowledgeCategories = pgTable("knowledge_categories", {
     .references(() => projects.id, { onDelete: "cascade" })
     .notNull(),
   name: varchar("name", { length: 255 }).notNull(),
+  isWidgetExposed: boolean("is_widget_exposed").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -78,6 +79,7 @@ export const knowledgeSources = pgTable("knowledge_sources", {
   githubLinks: jsonb("github_links").$type<string[]>().default([]).notNull(),
   fileId: varchar("file_id", { length: 255 }), // Storage ID if uploaded
   sourceType: varchar("source_type", { length: 50 }).notNull(), // file, website, youtube, instagram, github, note
+  isWidgetExposed: boolean("is_widget_exposed").default(true).notNull(),
   notes: text("notes"),
   rawContent: text("raw_content"),
   summary: text("summary"),
@@ -236,3 +238,75 @@ export const sourcesRelations = relations(knowledgeSources, ({ one, many }) => (
   category: one(knowledgeCategories, { fields: [knowledgeSources.categoryId], references: [knowledgeCategories.id] }),
   chunks: many(knowledgeChunks),
 }));
+
+export const projectWidgetSettings = pgTable("project_widget_settings", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  botName: varchar("bot_name", { length: 255 }).notNull(),
+  botAvatar: text("bot_avatar"),
+  welcomeMessage: text("welcome_message").notNull(),
+  themeColor: varchar("theme_color", { length: 50 }).default("#8B5CF6").notNull(), // Default purple
+  position: varchar("position", { length: 50 }).default("bottom-right").notNull(), // bottom-right, bottom-left
+  displayMode: varchar("display_mode", { length: 50 }).default("floating").notNull(), // floating, panel, full-screen, custom
+  customContainerId: varchar("custom_container_id", { length: 255 }),
+  allowedDomains: jsonb("allowed_domains").$type<string[]>().default([]).notNull(),
+  customCss: text("custom_css"),
+  leadsEnabled: boolean("leads_enabled").default(false).notNull(),
+  humanHandoffLinks: jsonb("human_handoff_links").$type<Record<string, string>>().default({}).notNull(),
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  widgetToken: varchar("widget_token", { length: 255 }).notNull().unique(), // Unique token to embed in public HTML
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const projectApiKeys = pgTable("project_api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(), // gemini, openai, claude, groq, etc.
+  encryptedKey: text("encrypted_key").notNull(),
+  maskedKey: varchar("masked_key", { length: 50 }).notNull(),
+  model: varchar("model", { length: 255 }), // Default model to use for this project & provider
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const widgetAnalytics = pgTable("widget_analytics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  date: timestamp("date").notNull(), // Keep granularity at day level or use exact timestamps and group query later
+  conversations: integer("conversations").default(0).notNull(),
+  messages: integer("messages").default(0).notNull(),
+  uniqueVisitors: integer("unique_visitors").default(0).notNull(),
+  tokenUsage: integer("token_usage").default(0).notNull(),
+  aiCosts: varchar("ai_costs", { length: 50 }).default("0").notNull(), // Storing as string to avoid floating point issues, or float
+  responseTimeMs: integer("response_time_ms").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const widgetLeads = pgTable("widget_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const widgetSettingsRelations = relations(projectWidgetSettings, ({ one }) => ({
+  project: one(projects, { fields: [projectWidgetSettings.projectId], references: [projects.id] }),
+}));
+
+export const projectApiKeysRelations = relations(projectApiKeys, ({ one }) => ({
+  project: one(projects, { fields: [projectApiKeys.projectId], references: [projects.id] }),
+}));
+
+export const widgetAnalyticsRelations = relations(widgetAnalytics, ({ one }) => ({
+  project: one(projects, { fields: [widgetAnalytics.projectId], references: [projects.id] }),
+}));
+
+export const widgetLeadsRelations = relations(widgetLeads, ({ one }) => ({
+  project: one(projects, { fields: [widgetLeads.projectId], references: [projects.id] }),
+}));
+

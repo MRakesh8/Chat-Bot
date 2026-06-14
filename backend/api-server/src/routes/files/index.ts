@@ -421,7 +421,7 @@ router.post("/:id/reprocess", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const { tag, notes, sourceUrl, categoryId } = req.body;
+    const { tag, notes, sourceUrl, categoryId, isWidgetExposed } = req.body;
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
@@ -442,6 +442,7 @@ router.patch("/:id", async (req, res) => {
     };
 
     if (tag !== undefined) updates.tag = tag || null;
+    if (isWidgetExposed !== undefined) updates.isWidgetExposed = isWidgetExposed;
     if (categoryId !== undefined) {
       if (!(await categoryBelongsToProject(categoryId, existing.projectId))) {
         res.status(400).json({ error: "Category does not belong to this project" });

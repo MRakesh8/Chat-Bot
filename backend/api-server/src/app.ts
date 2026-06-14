@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import healthRouter from "./routes/health";
+import widgetPublicRouter from "./routes/widget-public";
 import { logger } from "./lib/logger";
 import { supabaseAuthMiddleware } from "./middlewares/supabaseAuth";
 import helmet from "helmet";
@@ -72,6 +73,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", healthRouter);
+
+app.use("/api/widget", widgetPublicRouter);
 
 app.use(supabaseAuthMiddleware);
 
