@@ -25,11 +25,17 @@ async function start() {
     logger.error("Failed to run migrations on startup", err);
   }
 
-  await validateDatabaseSchema();
+  logger.info("[STARTUP] SERVER_START");
 
   const server = app.listen(port, "0.0.0.0", () => {
-    logger.info({ port }, "Server listening on 0.0.0.0");
+    logger.info({ port }, "[STARTUP] Server listening on port " + port);
+    logger.info("[STARTUP] HEALTH_ENDPOINT_READY");
     startCleanupTask();
+    
+    // Background validation
+    validateDatabaseSchema().catch((err) => {
+      logger.error({ err }, "[DB] Background validation failed");
+    });
   });
 
   server.on("error", (err) => {

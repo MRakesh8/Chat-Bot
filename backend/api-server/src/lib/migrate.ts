@@ -8,10 +8,14 @@ import fs from "fs";
 // Find the drizzle folder depending on if we are running in dist or src
 export async function runMigrations() {
   try {
-    let migrationsFolder = path.resolve(process.cwd(), "../../database/db/drizzle");
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    
+    // from src/lib to database/db/drizzle
+    let migrationsFolder = path.resolve(__dirname, "../../../../database/db/drizzle");
     if (!fs.existsSync(migrationsFolder)) {
-      // fallback for built app structure if different
-      migrationsFolder = path.resolve(process.cwd(), "../database/db/drizzle");
+      // fallback for built app structure (dist/lib)
+      migrationsFolder = path.resolve(__dirname, "../../../database/db/drizzle");
     }
     
     if (fs.existsSync(migrationsFolder)) {
