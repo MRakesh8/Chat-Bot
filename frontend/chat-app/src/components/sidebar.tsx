@@ -47,9 +47,9 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all cursor-pointer",
+        "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-300 ease-out cursor-pointer mx-2 mb-1",
         isActive
-          ? "bg-primary/10 text-primary font-medium shadow-sm ring-1 ring-primary/20" 
+          ? "bg-gradient-to-r from-primary/20 to-primary/5 text-primary font-medium shadow-sm ring-1 ring-primary/30" 
           : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground"
       )}
       onClick={() => onLocationChange(conv.id)}
@@ -310,38 +310,35 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   }), [typedConversations, search, showFavorites]);
 
   return (
-    <div className={cn("w-full md:w-64 bg-sidebar/95 backdrop-blur-xl border-r border-white/5 flex flex-col h-full shadow-[4px_0_24px_rgba(0,0,0,0.2)]", className)}>
-      <div className="p-4 border-b border-sidebar-border space-y-4">
+    <div className={cn("w-full md:w-64 bg-[#0a0a0c]/95 backdrop-blur-2xl border-r border-white/[0.08] flex flex-col h-full shadow-[8px_0_32px_rgba(0,0,0,0.5)] z-20", className)}>
+      <div className="p-4 space-y-4 border-b border-white/[0.05]">
+        {/* Logo and window controls */}
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Aria AI" className="w-6 h-6" />
-            <span className="font-bold text-sidebar-foreground">Aria AI</span>
+          <div className="flex items-center gap-3 px-1">
+            <div className="bg-gradient-to-br from-primary/40 to-primary/10 p-1.5 rounded-lg border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.2)]">
+               <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Aria AI" className="w-5 h-5" />
+            </div>
+            <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">Aria AI</span>
           </div>
-          {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:text-sidebar-foreground md:hidden">
-              <X className="w-5 h-5" />
-            </Button>
-          )}
-          {onDesktopClose && (
-            <Button variant="ghost" size="icon" onClick={onDesktopClose} className="hidden text-muted-foreground hover:text-sidebar-foreground md:inline-flex" title="Close sidebar">
-              <PanelLeftClose className="w-5 h-5" />
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {onClose && (
+              <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full text-muted-foreground hover:bg-white/10 hover:text-foreground md:hidden transition-colors">
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+            {onDesktopClose && (
+              <Button variant="ghost" size="icon" onClick={onDesktopClose} className="hidden h-8 w-8 rounded-full text-muted-foreground hover:bg-white/10 hover:text-foreground md:inline-flex transition-colors" title="Close sidebar">
+                <PanelLeftClose className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Primary Actions */}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleBack}
-            className="w-10 h-10 bg-sidebar-accent hover:bg-sidebar-accent/80 border-border text-muted-foreground hover:text-sidebar-foreground shrink-0"
-            title="Back"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
           <Button 
             onClick={handleNewChat}
-            className="flex-1 justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-0 shadow-sm transition-all"
-            variant="outline"
+            className="flex-1 justify-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 h-10 rounded-xl font-medium transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
             New Chat
@@ -351,32 +348,38 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             size="icon"
             disabled={isRefreshing}
             onClick={reloadSidebar}
-            className="w-10 h-10 bg-sidebar-accent hover:bg-sidebar-accent/80 border-border text-muted-foreground hover:text-sidebar-foreground shrink-0"
+            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border-white/5 text-muted-foreground hover:text-foreground shrink-0 transition-all duration-300"
             title="Refresh"
           >
             {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
           </Button>
         </div>
-        <div className="relative flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+
+        {/* Search and Secondary Actions */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleBack}
+            className="w-9 h-9 rounded-lg bg-transparent border-0 hover:bg-white/5 text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+            title="Back"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div className="relative flex-1 group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
             <Input 
               placeholder="Search..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-12 h-9 bg-sidebar-accent/50 border-border text-sidebar-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+              className="pl-9 pr-8 h-9 rounded-lg bg-white/5 border-transparent hover:bg-white/10 focus:bg-white/10 focus:border-primary/30 text-sm text-foreground placeholder:text-muted-foreground/70 transition-all duration-300 focus-visible:ring-0"
             />
-            <div className="absolute right-2 top-2 pointer-events-none hidden md:block">
-              <kbd className="inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                <span className="text-xs">⌘</span>K
-              </kbd>
-            </div>
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setShowFavorites(!showFavorites)}
-            className={cn("h-9 w-9 border border-border", showFavorites ? "bg-sidebar-accent text-red-500" : "bg-sidebar-accent/50 text-muted-foreground hover:text-sidebar-foreground")}
+            className={cn("h-9 w-9 rounded-lg transition-all duration-300 border border-transparent", showFavorites ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-transparent text-muted-foreground hover:bg-white/5 hover:text-foreground")}
             title="Toggle Favorites"
           >
             <Heart className={cn("w-4 h-4", showFavorites && "fill-current")} />
@@ -414,52 +417,55 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-white/5 bg-sidebar/50 mt-auto flex-shrink-0">
+      <div className="p-3 mt-auto flex-shrink-0 bg-gradient-to-t from-background/80 to-transparent">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start px-2 py-6 h-auto hover:bg-white/5 group">
+            <Button variant="ghost" className="w-full justify-start px-3 py-6 h-auto rounded-xl hover:bg-white/10 transition-all duration-300 group border border-transparent hover:border-white/5 shadow-sm hover:shadow-md">
               <div className="flex items-center gap-3 w-full">
-                <Avatar className="h-8 w-8 ring-2 ring-white/10 shadow-sm transition-transform group-hover:scale-105">
+                <Avatar className="h-9 w-9 ring-2 ring-white/10 shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:ring-primary/30">
                   <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
-                  <AvatarFallback className="bg-sidebar-accent">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
+                  <AvatarFallback className="bg-primary/20 text-primary">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 text-left truncate">
-                  <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.email}</p>
+                <div className="flex-1 text-left truncate flex flex-col justify-center">
+                  <p className="text-sm font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
                 </div>
-                <MoreVertical className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100" />
+                <div className="bg-white/5 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                </div>
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[240px] bg-popover border-border text-popover-foreground mb-2">
+          <DropdownMenuContent align="end" className="w-[240px] bg-[#121214]/95 backdrop-blur-xl border-white/10 text-foreground mb-2 rounded-xl shadow-2xl p-1">
             {user?.email === "rakesh837m@gmail.com" && (
-              <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
-                <Link href="/admin/clarity" className="flex items-center gap-3 w-full">
-                  <BarChart3 className="w-4 h-4" />
+              <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+                <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
+                  <BarChart3 className="w-4 h-4 text-primary" />
                   Admin Analytics
                 </Link>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
-              <Link href="/admin/projects" className="flex items-center gap-3 w-full">
-                <FolderKanban className="w-4 h-4" />
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+              <Link href="/admin/projects" className="flex items-center gap-3 w-full py-2">
+                <FolderKanban className="w-4 h-4 text-blue-400" />
                 Projects
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
-              <Link href="/services" className="flex items-center gap-3 w-full">
-                <Heart className="w-4 h-4" />
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+              <Link href="/services" className="flex items-center gap-3 w-full py-2">
+                <Heart className="w-4 h-4 text-pink-400" />
                 Connected Services
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent">
-              <Link href="/settings" className="flex items-center gap-3 w-full">
-                <Settings className="w-4 h-4" />
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+              <Link href="/settings" className="flex items-center gap-3 w-full py-2">
+                <Settings className="w-4 h-4 text-gray-400" />
                 Settings
               </Link>
             </DropdownMenuItem>
+            <div className="h-px bg-white/10 my-1 mx-2" />
             <DropdownMenuItem 
               onClick={() => signOut()}
-              className="cursor-pointer text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive mt-1 border-t border-border"
+              className="cursor-pointer text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5 transition-colors"
             >
               <LogOut className="w-4 h-4 mr-3" />
               Log out

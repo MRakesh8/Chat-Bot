@@ -176,21 +176,21 @@ export default function AdminProjectEditPage() {
 
   return (
     <>
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="flex items-center gap-4 mb-10">
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        <div className="flex items-center gap-6 mb-12">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setLocation("/admin/projects")}
-            className="text-muted-foreground hover:text-foreground border border-border hover:bg-muted"
+            className="text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-full transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">
+            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">
               {isNew ? "New Project" : "Edit Project"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-muted-foreground mt-2 font-medium">
               {isNew
                 ? "Build a custom AI assistant with your own knowledge"
                 : "Update your project settings and knowledge"}
@@ -204,20 +204,20 @@ export default function AdminProjectEditPage() {
           </div>
         ) : (
           <Tabs defaultValue={isNew ? "settings" : "overview"} className="w-full">
-            <TabsList className="mb-6 bg-card border border-border p-1 w-full flex overflow-x-auto justify-start h-12">
-              <TabsTrigger value="overview" className="flex-1 min-w-[120px] data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+            <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl">
+              <TabsTrigger value="overview" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <LayoutDashboard className="w-4 h-4 mr-2" /> Overview
               </TabsTrigger>
-              <TabsTrigger value="chat" className="flex-1 min-w-[120px] data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <TabsTrigger value="chat" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <MessageSquare className="w-4 h-4 mr-2" /> Test Chat
               </TabsTrigger>
-              <TabsTrigger value="knowledge" className="flex-1 min-w-[140px] data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <TabsTrigger value="knowledge" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Database className="w-4 h-4 mr-2" /> Knowledge Base
               </TabsTrigger>
-              <TabsTrigger value="reports" className="flex-1 min-w-[120px] data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <TabsTrigger value="reports" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <FileText className="w-4 h-4 mr-2" /> Reports
               </TabsTrigger>
-              <TabsTrigger value="settings" className="flex-1 min-w-[120px] data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <TabsTrigger value="settings" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Settings className="w-4 h-4 mr-2" /> Settings
               </TabsTrigger>
             </TabsList>

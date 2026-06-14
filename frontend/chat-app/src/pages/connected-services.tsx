@@ -144,16 +144,18 @@ export default function ConnectedServicesPage() {
   };
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-background">
-      <div className="flex-1 overflow-y-auto p-6 md:p-8">
-        <div className="flex items-center justify-between mb-8">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-transparent">
+      <div className="flex-1 overflow-y-auto p-6 pt-16 md:p-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-10 gap-4">
           <div>
-            <h1 className="text-3xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60">Connected Services</h1>
-            <p className="text-muted-foreground mt-1 text-sm">Manage and quickly access your integrated platforms.</p>
+            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">Connected Services</h1>
+            <p className="text-muted-foreground mt-2 text-sm">Manage and quickly access your integrated platforms.</p>
           </div>
           <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="w-4 h-4" /> Add Service</Button>
+              <Button className="gap-2 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 h-10 px-6 font-medium transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]">
+                <Plus className="w-4 h-4" /> Add Service
+              </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
@@ -167,53 +169,54 @@ export default function ConnectedServicesPage() {
         {isLoading ? (
           <div className="text-center py-20 text-muted-foreground">Loading services...</div>
         ) : services.length === 0 ? (
-          <div className="text-center py-20 border border-dashed border-border rounded-xl bg-card/10">
-            <Globe className="w-10 h-10 mx-auto text-muted-foreground mb-3 opacity-50" />
-            <p className="text-muted-foreground">No services connected yet.</p>
-            <Button variant="outline" className="mt-4" onClick={() => setIsAddOpen(true)}>Add your first service</Button>
+          <div className="text-center py-20 border border-dashed border-white/10 rounded-2xl bg-white/[0.02] backdrop-blur-xl">
+            <Globe className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+            <p className="text-muted-foreground font-medium">No services connected yet.</p>
+            <Button variant="outline" className="mt-6 rounded-xl border-white/10 bg-white/5 hover:bg-white/10" onClick={() => setIsAddOpen(true)}>Add your first service</Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {services.map((service) => {
               const ProviderIcon = PROVIDERS.find(p => p.id === service.provider)?.icon || Globe;
               return (
-                <div key={service.id} className="p-5 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-sm hover:border-white/10 transition-all flex flex-col group relative">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-primary/10 rounded-xl">
-                        <ProviderIcon className="w-5 h-5 text-primary" />
+                <div key={service.id} className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 flex flex-col group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                  <div className="flex justify-between items-start mb-5 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-primary/10 rounded-2xl shadow-inner border border-primary/20">
+                        <ProviderIcon className="w-6 h-6 text-primary" />
                       </div>
                       <div>
                         <h3 className="font-semibold text-foreground text-lg leading-tight">{service.name}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5 max-w-[150px] truncate">{service.url}</p>
+                        <p className="text-xs text-muted-foreground mt-1 max-w-[150px] truncate">{service.url}</p>
                       </div>
                     </div>
                     <div className="flex items-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-full hover:bg-white/10">
                             <MoreVertical className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleOpenUrl(service.url)}><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleCopyUrl(service.url)}><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="rounded-xl border-white/10 bg-[#121214]/95 backdrop-blur-xl">
+                          <DropdownMenuItem onClick={() => handleOpenUrl(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCopyUrl(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
                             setEditingService(service);
                             setIsEditOpen(true);
-                          }}><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => deleteMutation.mutate(service.id)} className="text-destructive focus:bg-destructive/10"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
+                          }} className="rounded-lg my-0.5 hover:bg-white/10"><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => deleteMutation.mutate(service.id)} className="text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
                   </div>
                   
                   {service.description && (
-                    <p className="text-sm text-foreground/70 mb-4 flex-1">{service.description}</p>
+                    <p className="text-sm text-foreground/70 mb-5 flex-1 relative z-10">{service.description}</p>
                   )}
                   
-                  <div className="flex items-center gap-2 mt-auto pt-4 border-t border-white/5">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-md">
+                  <div className="flex items-center gap-2 mt-auto pt-4 border-t border-white/5 relative z-10">
+                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2.5 py-1.5 rounded-lg border border-emerald-400/20">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -222,11 +225,11 @@ export default function ConnectedServicesPage() {
                     </div>
                   </div>
                   
-                  <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity bottom-4 right-4 flex gap-2">
-                     <Button size="sm" variant="secondary" onClick={() => handleCopyUrl(service.url)} className="h-8 rounded-lg" title="Copy URL">
+                  <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-300 bottom-5 right-5 flex gap-2 z-20">
+                     <Button size="sm" variant="secondary" onClick={() => handleCopyUrl(service.url)} className="h-9 rounded-xl bg-white/10 hover:bg-white/20 border-white/5 text-foreground shadow-lg" title="Copy URL">
                         <Copy className="w-4 h-4" />
                      </Button>
-                     <Button size="sm" onClick={() => handleOpenUrl(service.url)} className="h-8 rounded-lg gap-2">
+                     <Button size="sm" onClick={() => handleOpenUrl(service.url)} className="h-9 rounded-xl gap-2 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground border-0">
                         Open <ExternalLink className="w-3.5 h-3.5" />
                      </Button>
                   </div>
