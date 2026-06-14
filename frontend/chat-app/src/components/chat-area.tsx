@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   Search,
   Volume2,
+  VolumeX,
   MessageCircleQuestion,
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
@@ -66,12 +67,11 @@ const MemoizedMessage = memo(function MemoizedMessage({
   basePath,
   hasSelectedProjects,
   isSelected,
-  onToggleSelection,
-  onAddToProject,
   onCopy,
   onRegenerate,
   onOpenArtifact,
   onReadAloud,
+  isSpeaking,
 }: {
   msg: any;
   basePath: string;
@@ -82,7 +82,8 @@ const MemoizedMessage = memo(function MemoizedMessage({
   onCopy: (content: string) => void;
   onRegenerate: () => void;
   onOpenArtifact?: (code: string, language: string) => void;
-  onReadAloud?: (text: string) => void;
+  onReadAloud?: (text: string, id: string) => void;
+  isSpeaking?: boolean;
 }) {
   return (
     <div className={cn("group flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}>
@@ -124,8 +125,12 @@ const MemoizedMessage = memo(function MemoizedMessage({
                 <Copy className="h-3.5 w-3.5" />
               </Button>
               {onReadAloud && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onReadAloud(msg.content)}>
-                  <Volume2 className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onReadAloud(msg.content, msg.id)}>
+                  {isSpeaking ? (
+                    <VolumeX className="h-3.5 w-3.5 text-destructive" />
+                  ) : (
+                    <Volume2 className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               )}
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onRegenerate}>
@@ -209,6 +214,7 @@ export function ChatArea() {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ code: string; language: string } | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -322,16 +328,26 @@ export function ChatArea() {
     }
   }, [isStreaming, messages]);
 
-  const handleReadAloud = useCallback((text: string) => {
+  const handleReadAloud = useCallback((text: string, messageId: string) => {
     if (!window.speechSynthesis) {
       toast({ title: "Not supported", description: "Text-to-speech is not supported in this browser." });
       return;
     }
+
+    if (speakingMessageId === messageId && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setSpeakingMessageId(null);
+      return;
+    }
+
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
+    utterance.onend = () => setSpeakingMessageId(null);
+    utterance.onerror = () => setSpeakingMessageId(null);
     window.speechSynthesis.speak(utterance);
-  }, [toast]);
+    setSpeakingMessageId(messageId);
+  }, [toast, speakingMessageId]);
 
   const handleFollowUpClick = (suggestion: string) => {
     setFollowUps([]);
@@ -519,8 +535,8 @@ export function ChatArea() {
   const renderInput = (isCentered = false) => (
     <div className={cn("mx-auto w-full max-w-3xl", !isCentered && "sticky bottom-4 z-20")}>
       <div className={cn(
-        "relative flex flex-col overflow-hidden rounded-2xl transition-shadow",
-        "bg-card/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50",
+        "relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 ease-out",
+        "bg-card/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:border-primary/50 focus-within:shadow-[0_0_25px_rgba(168,85,247,0.25)] focus-within:bg-card/60",
         isCentered ? "shadow-xl" : "shadow-lg"
       )}>
         {files.length > 0 && (
@@ -756,6 +772,7 @@ export function ChatArea() {
                   onRegenerate={regenerate}
                   onOpenArtifact={(code, lang) => setActiveArtifact({ code, language: lang })}
                   onReadAloud={handleReadAloud}
+                  isSpeaking={speakingMessageId === msg.id}
                 />
             ))}
 

@@ -24,6 +24,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
+    "highlight.js": "^11.11.1",
     "http-proxy-middleware": "^4.0.0",
     "instagram-url-direct": "^2.0.7",
     "mammoth": "^1.12.0",
