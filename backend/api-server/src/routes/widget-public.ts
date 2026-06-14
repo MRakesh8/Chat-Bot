@@ -26,7 +26,7 @@ router.use(async (req: Request, res: Response, next) => {
     }
 
     const origin = req.headers.origin;
-    if (origin && settings.allowedDomains.length > 0) {
+    if (origin && origin !== "null" && settings.allowedDomains.length > 0) {
       const allowedUrls = settings.allowedDomains.map((domain: string) => {
         try {
           return new URL(domain.startsWith("http") ? domain : `https://${domain}`).hostname;
@@ -35,9 +35,13 @@ router.use(async (req: Request, res: Response, next) => {
         }
       });
       
-      const requestHostname = new URL(origin).hostname;
-      if (!allowedUrls.includes(requestHostname)) {
-        return res.status(403).json({ error: "Domain not authorized" });
+      try {
+        const requestHostname = new URL(origin).hostname;
+        if (!allowedUrls.includes(requestHostname)) {
+          return res.status(403).json({ error: "Domain not authorized" });
+        }
+      } catch (e) {
+        return res.status(403).json({ error: "Invalid origin" });
       }
     }
 
