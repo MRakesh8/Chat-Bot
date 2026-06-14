@@ -149,9 +149,14 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
       content: response.content,
       usage: response.usage
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Widget chat error:", error);
-    res.status(500).json({ error: "Failed to process chat" });
+    // Return a more descriptive error if it's an API Error, otherwise generic 500
+    const errorMessage = error.message && error.message.includes("API error") 
+      ? error.message 
+      : "Failed to process chat";
+      
+    res.status(500).json({ error: errorMessage });
   }
 });
 
