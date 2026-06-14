@@ -8,7 +8,10 @@ const router = Router();
 
 // Middleware to validate origin for widget routes
 router.use(async (req: Request, res: Response, next) => {
-  const widgetToken = req.params.widgetToken || req.body.widgetToken || req.query.widgetToken;
+  // Extract token from URL path if possible, since req.params isn't populated yet in top-level use()
+  const pathToken = req.path.split('/')[1]; 
+  const widgetToken = req.params?.widgetToken || req.body?.widgetToken || req.query?.widgetToken || pathToken;
+  
   if (!widgetToken) {
     return res.status(401).json({ error: "Missing widget token" });
   }
