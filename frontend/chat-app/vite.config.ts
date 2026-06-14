@@ -64,6 +64,9 @@ export default defineConfig({
       }
     }
   },
+  optimizeDeps: {
+    include: ["@emotion/is-prop-valid"]
+  },
   server: {
     port,
     strictPort: true,
