@@ -9,23 +9,22 @@
 
   const scriptTag = document.currentScript || document.querySelector('script[src*="widget.js"]');
   const widgetToken = scriptTag ? scriptTag.getAttribute('data-widget-token') : null;
+  const passedApiUrl = scriptTag ? scriptTag.getAttribute('data-api-url') : null;
 
   if (!widgetToken) {
     console.error("Aria AI Widget: Missing data-widget-token attribute on script tag.");
     return;
   }
 
-  // Determine API base URL (assuming script is hosted on the same domain as the API, or hardcoded)
-  // In development, script might be on localhost:5173 and API on localhost:3000
-  let apiBaseUrl = "http://localhost:3000"; // Fallback for dev
-  if (scriptTag && scriptTag.src) {
+  // Determine API base URL
+  let apiBaseUrl = passedApiUrl || "https://chat-bot-api-ns81.onrender.com"; 
+  if (!passedApiUrl && scriptTag && scriptTag.src) {
     try {
       const url = new URL(scriptTag.src);
-      // If we are on production, use the origin. If locally testing on 5173, point to 3000.
       if (url.port === "5173") {
         apiBaseUrl = `${url.protocol}//${url.hostname}:3000`;
-      } else {
-        apiBaseUrl = url.origin; 
+      } else if (url.hostname === "localhost") {
+        apiBaseUrl = url.origin;
       }
     } catch(e) {}
   }

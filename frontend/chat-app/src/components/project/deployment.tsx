@@ -50,8 +50,11 @@ export function Deployment({ projectId }: { projectId: string }) {
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin w-6 h-6" /></div>;
 
-  const widgetUrl = `https://aria-ai.com/widget.js`; // In production, this would be the actual domain
-  const embedCode = `<script\n  src="${widgetUrl}"\n  data-widget-token="${settings?.widgetToken}">\n</script>`;
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://aria-ai.com";
+  const widgetUrl = `${currentOrigin}/widget.js`;
+  const backendUrl = apiUrl(""); // Returns the current API base URL
+  
+  const embedCode = `<script\n  src="${widgetUrl}"\n  data-widget-token="${settings?.widgetToken}"\n  data-api-url="${backendUrl}">\n</script>`;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
