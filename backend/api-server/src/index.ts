@@ -17,7 +17,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 async function start() {
   try {
-    // await runMigrations();
+    await runMigrations();
   } catch (err) {
     logger.error("Failed to run migrations on startup", err);
   }
