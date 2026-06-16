@@ -20,6 +20,7 @@ export default function AdminClarityPage() {
             size="icon"
             onClick={() => setLocation("/")}
             className="text-muted-foreground hover:text-foreground"
+            aria-label="Go back"
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
