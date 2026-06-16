@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Github, Linkedin, ExternalLink, Copy, Edit2, Trash2, 
   MoreVertical, Plus, Box, Database, BarChart3, LineChart, 
-  Search, Play, Globe, Check
+  Search, Play, Globe, Check, ChevronDown, ChevronUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -179,61 +179,15 @@ export default function ConnectedServicesPage() {
             {services.map((service) => {
               const ProviderIcon = PROVIDERS.find(p => p.id === service.provider)?.icon || Globe;
               return (
-                <div key={service.id} className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 flex flex-col group relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                  <div className="flex justify-between items-start mb-5 relative z-10">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-primary/10 rounded-2xl shadow-inner border border-primary/20">
-                        <ProviderIcon className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground text-lg leading-tight">{service.name}</h3>
-                        <p className="text-xs text-muted-foreground mt-1 max-w-[150px] truncate">{service.url}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-full hover:bg-white/10">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="rounded-xl border-white/10 bg-[#121214]/95 backdrop-blur-xl">
-                          <DropdownMenuItem onClick={() => handleOpenUrl(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleCopyUrl(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {
-                            setEditingService(service);
-                            setIsEditOpen(true);
-                          }} className="rounded-lg my-0.5 hover:bg-white/10"><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => deleteMutation.mutate(service.id)} className="text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                  
-                  {service.description && (
-                    <p className="text-sm text-foreground/70 mb-5 flex-1 relative z-10">{service.description}</p>
-                  )}
-                  
-                  <div className="flex items-center gap-2 mt-auto pt-4 border-t border-white/5 relative z-10">
-                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2.5 py-1.5 rounded-lg border border-emerald-400/20">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      Connected
-                    </div>
-                  </div>
-                  
-                  <div className="absolute transition-opacity duration-300 bottom-5 right-5 flex gap-2 z-20 opacity-100">
-                     <Button size="sm" variant="secondary" onClick={() => handleCopyUrl(service.url)} className="h-9 rounded-xl bg-white/10 hover:bg-white/20 border-white/5 text-foreground shadow-lg" title="Copy URL">
-                        <Copy className="w-4 h-4" />
-                     </Button>
-                     <Button size="sm" onClick={() => handleOpenUrl(service.url)} className="h-9 rounded-xl gap-2 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground border-0">
-                        Open <ExternalLink className="w-3.5 h-3.5" />
-                     </Button>
-                  </div>
-                </div>
+                <ServiceCard
+                  key={service.id}
+                  service={service}
+                  ProviderIcon={ProviderIcon}
+                  onOpen={handleOpenUrl}
+                  onCopy={handleCopyUrl}
+                  onEdit={() => { setEditingService(service); setIsEditOpen(true); }}
+                  onDelete={() => deleteMutation.mutate(service.id)}
+                />
               );
             })}
           </div>
@@ -303,5 +257,82 @@ function ServiceForm({ onSubmit, isPending, defaultValues }: { onSubmit: (data: 
         {isPending ? "Saving..." : "Save Service"}
       </Button>
     </form>
+  );
+}
+
+function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }: any) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 flex flex-col group relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+      
+      <div className="flex justify-between items-start mb-5 relative z-10">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-primary/10 rounded-2xl shadow-inner border border-primary/20">
+            <ProviderIcon className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground text-lg leading-tight">{service.name}</h3>
+            <p className="text-xs text-muted-foreground mt-1 max-w-[150px] truncate">{service.url}</p>
+          </div>
+        </div>
+        <div className="flex items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-full hover:bg-white/10">
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="rounded-xl border-white/10 bg-[#121214]/95 backdrop-blur-xl">
+              <DropdownMenuItem onClick={() => onOpen(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onCopy(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
+              <DropdownMenuItem onClick={onEdit} className="rounded-lg my-0.5 hover:bg-white/10"><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+              <DropdownMenuItem onClick={onDelete} className="text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      
+      {service.description && (
+        <div className="relative mb-5 flex-1 z-10 bg-black/20 rounded-xl border border-white/5 overflow-hidden flex flex-col">
+          <div className={`p-4 text-sm text-foreground/80 overflow-y-auto custom-scrollbar transition-all duration-300 ${expanded ? 'max-h-[200px]' : 'max-h-[80px] line-clamp-3'} whitespace-pre-wrap`}>
+            {service.description}
+          </div>
+          
+          {service.description.length > 100 && (
+            <button 
+              onClick={() => setExpanded(!expanded)} 
+              className="w-full py-1.5 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/40 to-transparent hover:bg-black/40 text-xs text-muted-foreground hover:text-foreground transition-colors border-t border-white/5"
+            >
+              {expanded ? (
+                <>Read less <ChevronUp className="w-3 h-3" /></>
+              ) : (
+                <>Read more <ChevronDown className="w-3 h-3" /></>
+              )}
+            </button>
+          )}
+        </div>
+      )}
+      
+      <div className="flex items-center gap-2 mt-auto pt-4 border-t border-white/5 relative z-10">
+        <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2.5 py-1.5 rounded-lg border border-emerald-400/20">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          Connected
+        </div>
+      </div>
+      
+      <div className="absolute transition-opacity duration-300 bottom-5 right-5 flex gap-2 z-20 opacity-100">
+         <Button size="sm" variant="secondary" onClick={() => onCopy(service.url)} className="h-9 rounded-xl bg-white/10 hover:bg-white/20 border-white/5 text-foreground shadow-lg" title="Copy URL">
+            <Copy className="w-4 h-4" />
+         </Button>
+         <Button size="sm" onClick={() => onOpen(service.url)} className="h-9 rounded-xl gap-2 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground border-0">
+            Open <ExternalLink className="w-3.5 h-3.5" />
+         </Button>
+      </div>
+    </div>
   );
 }
