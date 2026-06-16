@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Chat App</title>
     <meta name="description" content="AI Chat App — built on Replit. Update this description to reflect the app." />
     <meta name="robots" content="index, follow" />
@@ -30,6 +30,9 @@
             t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
         })(window, document, "clarity", "script", "x6eohi99h7");
+        
+        // Strictly enforce cookieless tracking to resolve Lighthouse third-party cookie warnings
+        window.clarity("consent", false);
     </script>
   </head>
   <body>

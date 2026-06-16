@@ -273,7 +273,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
             <ProviderIcon className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h3 className="font-semibold text-foreground text-lg leading-tight">{service.name}</h3>
+            <h2 className="font-semibold text-foreground text-lg leading-tight">{service.name}</h2>
             <p className="text-xs text-muted-foreground mt-1 max-w-[150px] truncate">{service.url}</p>
           </div>
         </div>

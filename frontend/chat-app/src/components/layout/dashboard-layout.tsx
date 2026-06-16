@@ -80,9 +80,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </Sheet>
       </div>
 
-      <div className="flex-1 relative z-10 overflow-y-auto h-full">
+      <main className="flex-1 relative z-10 overflow-y-auto h-full">
         {children}
-      </div>
+      </main>
     </div>
   );
 }

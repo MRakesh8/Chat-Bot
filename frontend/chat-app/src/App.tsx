@@ -5,17 +5,19 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { DashboardLayout } from "./components/layout/dashboard-layout";
-import { GlobalCommandMenu } from "./components/GlobalCommandMenu";
-
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 // Critical paths loaded synchronously
 import Home from "./pages/home";
-import AuthPage from "./pages/auth";
-import NotFound from "./pages/not-found";
+
+// Lazy-loaded heavy components and layouts
+const GlobalCommandMenu = lazy(() => import("./components/GlobalCommandMenu").then(m => ({ default: m.GlobalCommandMenu })));
+const DashboardLayoutLazy = lazy(() => import("./components/layout/dashboard-layout").then(m => ({ default: m.DashboardLayout })));
 
 // Lazy-loaded routes for performance
+const AuthPage = lazy(() => import("./pages/auth"));
+const NotFound = lazy(() => import("./pages/not-found"));
 const ChatPage = lazy(() => import("./pages/chat"));
 const SettingsPage = lazy(() => import("./pages/settings"));
 const ProfilePage = lazy(() => import("./pages/profile"));
@@ -54,32 +56,32 @@ export default function App() {
                 <Route path="/p/:token" component={SharedChatPage} />
 
                 <Route path="/admin/projects">
-                  <ProtectedRoute><DashboardLayout><AdminProjectsPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><AdminProjectsPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/admin/projects/new">
-                  <ProtectedRoute><DashboardLayout><AdminProjectEditPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/admin/projects/:id/edit">
-                  <ProtectedRoute><DashboardLayout><AdminProjectEditPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
 
                 <Route path="/chat">
-                  <ProtectedRoute><DashboardLayout><ChatPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/chat/:id">
-                  <ProtectedRoute><DashboardLayout><ChatPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/settings">
-                  <ProtectedRoute><DashboardLayout><SettingsPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><SettingsPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/profile">
-                  <ProtectedRoute><DashboardLayout><ProfilePage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><ProfilePage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/services">
-                  <ProtectedRoute><DashboardLayout><ConnectedServicesPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><ConnectedServicesPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/admin/clarity">
-                  <ProtectedRoute><DashboardLayout><AdminClarityPage /></DashboardLayout></ProtectedRoute>
+                  <ProtectedRoute><DashboardLayoutLazy><AdminClarityPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route component={NotFound} />
               </Switch>
