@@ -118,10 +118,10 @@ export function ApiKeysSettings() {
 
   return (
     <section className="space-y-4">
-      <h2 className="text-xl font-medium border-b border-white/5 pb-2 text-foreground/80">Multi-Provider API Keys</h2>
+      <h2 className="text-xl font-medium border-b border-foreground/5 pb-2 text-foreground/80">Multi-Provider API Keys</h2>
       
       {/* Keys List */}
-      <div className="p-4 rounded-xl bg-card/40 border border-white/5 backdrop-blur-md shadow-sm space-y-4">
+      <div className="p-4 rounded-xl bg-card/40 border border-foreground/5 backdrop-blur-md shadow-sm space-y-4">
         <div>
           <h3 className="font-medium">Your API Keys</h3>
           <p className="text-sm text-muted-foreground">Add up to 5 custom API keys. The system auto-rotates between healthy keys.</p>
@@ -130,7 +130,7 @@ export function ApiKeysSettings() {
         {keys.length > 0 ? (
           <div className="space-y-2">
             {keys.map((key) => (
-              <div key={key.id} className="flex flex-col gap-2 p-3 border border-white/5 rounded-lg bg-background/50 backdrop-blur-sm">
+              <div key={key.id} className="flex flex-col gap-2 p-3 border border-foreground/5 rounded-lg bg-background/50 backdrop-blur-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-muted rounded-md"><Key size={16} /></div>

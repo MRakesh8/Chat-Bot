@@ -99,7 +99,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
         className={cn(
           "max-w-[88%] rounded-2xl px-5 py-3.5 text-sm shadow-sm",
           msg.role === "user"
-            ? "bg-white/10 text-white backdrop-blur-md border border-white/5"
+            ? "bg-foreground/10 text-foreground backdrop-blur-md border border-foreground/5"
             : "bg-transparent text-foreground",
           isSelected && "ring-2 ring-primary/50",
         )}
@@ -536,7 +536,7 @@ export function ChatArea() {
     <div className={cn("mx-auto w-full max-w-3xl", !isCentered && "sticky bottom-4 z-20")}>
       <div className={cn(
         "relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 ease-out",
-        "bg-card/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:border-primary/50 focus-within:shadow-[0_0_25px_rgba(168,85,247,0.25)] focus-within:bg-card/60",
+        "bg-card/40 backdrop-blur-xl border border-foreground/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:border-primary/50 focus-within:shadow-[0_0_25px_rgba(168,85,247,0.25)] focus-within:bg-card/60",
         isCentered ? "shadow-xl" : "shadow-lg"
       )}>
         {files.length > 0 && (
@@ -656,7 +656,7 @@ export function ChatArea() {
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
       {conversationId ? (
-        <div className="z-10 flex h-14 shrink-0 items-center justify-between border-b border-white/5 bg-background/60 px-14 backdrop-blur-xl md:px-5 shadow-sm">
+        <div className="z-10 flex h-14 shrink-0 items-center justify-between border-b border-foreground/5 bg-background/60 px-14 backdrop-blur-xl md:px-5 shadow-sm">
           <div className="flex min-w-0 items-center gap-2">
             <Button
               variant="ghost"

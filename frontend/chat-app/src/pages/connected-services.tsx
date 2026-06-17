@@ -148,7 +148,7 @@ export default function ConnectedServicesPage() {
       <div className="flex-1 overflow-y-auto p-6 pt-16 md:p-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-10 gap-4">
           <div>
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">Connected Services</h1>
+            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-foreground/70 tracking-tight">Connected Services</h1>
             <p className="text-muted-foreground mt-2 text-sm">Manage and quickly access your integrated platforms.</p>
           </div>
           <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -169,10 +169,10 @@ export default function ConnectedServicesPage() {
         {isLoading ? (
           <div className="text-center py-20 text-muted-foreground">Loading services...</div>
         ) : services.length === 0 ? (
-          <div className="text-center py-20 border border-dashed border-white/10 rounded-2xl bg-white/[0.02] backdrop-blur-xl">
+          <div className="text-center py-20 border border-dashed border-foreground/10 rounded-2xl bg-foreground/[0.02] backdrop-blur-xl">
             <Globe className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
             <p className="text-muted-foreground font-medium">No services connected yet.</p>
-            <Button variant="outline" className="mt-6 rounded-xl border-white/10 bg-white/5 hover:bg-white/10" onClick={() => setIsAddOpen(true)}>Add your first service</Button>
+            <Button variant="outline" className="mt-6 rounded-xl border-foreground/10 bg-foreground/5 hover:bg-foreground/10" onClick={() => setIsAddOpen(true)}>Add your first service</Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -264,7 +264,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-white/[0.04] hover:border-white/[0.1] transition-all duration-300 flex flex-col group relative overflow-hidden">
+    <div className="p-6 rounded-3xl bg-foreground/[0.02] border border-foreground/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-foreground/[0.04] hover:border-foreground/[0.1] transition-all duration-300 flex flex-col group relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       
       <div className="flex justify-between items-start mb-5 relative z-10">
@@ -280,14 +280,14 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
         <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-full hover:bg-white/10">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-full hover:bg-foreground/10">
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-xl border-white/10 bg-[#121214]/95 backdrop-blur-xl">
-              <DropdownMenuItem onClick={() => onOpen(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onCopy(service.url)} className="rounded-lg my-0.5 hover:bg-white/10"><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
-              <DropdownMenuItem onClick={onEdit} className="rounded-lg my-0.5 hover:bg-white/10"><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+            <DropdownMenuContent align="end" className="rounded-xl border-foreground/10 bg-[#121214]/95 backdrop-blur-xl">
+              <DropdownMenuItem onClick={() => onOpen(service.url)} className="rounded-lg my-0.5 hover:bg-foreground/10"><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onCopy(service.url)} className="rounded-lg my-0.5 hover:bg-foreground/10"><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
+              <DropdownMenuItem onClick={onEdit} className="rounded-lg my-0.5 hover:bg-foreground/10"><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
               <DropdownMenuItem onClick={onDelete} className="text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -295,7 +295,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
       </div>
       
       {service.description && (
-        <div className="relative mb-5 flex-1 z-10 bg-black/20 rounded-xl border border-white/5 overflow-hidden flex flex-col">
+        <div className="relative mb-5 flex-1 z-10 bg-black/20 rounded-xl border border-foreground/5 overflow-hidden flex flex-col">
           <div className={`p-4 text-sm text-foreground/80 overflow-y-auto custom-scrollbar transition-all duration-300 ${expanded ? 'max-h-[200px]' : 'max-h-[80px] line-clamp-3'} whitespace-pre-wrap`}>
             {service.description}
           </div>
@@ -303,7 +303,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
           {service.description.length > 100 && (
             <button 
               onClick={() => setExpanded(!expanded)} 
-              className="w-full py-1.5 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/40 to-transparent hover:bg-black/40 text-xs text-muted-foreground hover:text-foreground transition-colors border-t border-white/5"
+              className="w-full py-1.5 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/40 to-transparent hover:bg-black/40 text-xs text-muted-foreground hover:text-foreground transition-colors border-t border-foreground/5"
             >
               {expanded ? (
                 <>Read less <ChevronUp className="w-3 h-3" /></>
@@ -315,7 +315,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
         </div>
       )}
       
-      <div className="flex items-center gap-2 mt-auto pt-4 border-t border-white/5 relative z-10">
+      <div className="flex items-center gap-2 mt-auto pt-4 border-t border-foreground/5 relative z-10">
         <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2.5 py-1.5 rounded-lg border border-emerald-400/20">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -326,7 +326,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
       </div>
       
       <div className="absolute transition-opacity duration-300 bottom-5 right-5 flex gap-2 z-20 opacity-100">
-         <Button size="sm" variant="secondary" onClick={() => onCopy(service.url)} className="h-9 rounded-xl bg-white/10 hover:bg-white/20 border-white/5 text-foreground shadow-lg" title="Copy URL">
+         <Button size="sm" variant="secondary" onClick={() => onCopy(service.url)} className="h-9 rounded-xl bg-foreground/10 hover:bg-foreground/20 border-foreground/5 text-foreground shadow-lg" title="Copy URL">
             <Copy className="w-4 h-4" />
          </Button>
          <Button size="sm" onClick={() => onOpen(service.url)} className="h-9 rounded-xl gap-2 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground border-0">

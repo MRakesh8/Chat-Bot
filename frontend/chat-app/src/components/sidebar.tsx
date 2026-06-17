@@ -51,7 +51,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
         "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-300 ease-out cursor-pointer mx-2 mb-1",
         isActive
           ? "bg-gradient-to-r from-primary/20 to-primary/5 text-primary font-medium shadow-sm ring-1 ring-primary/30" 
-          : "text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground"
+          : "text-sidebar-foreground/70 hover:bg-foreground/5 hover:text-sidebar-foreground"
       )}
       onClick={() => onLocationChange(conv.id)}
     >
@@ -353,7 +353,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
 
   return (
     <div className={cn("w-full md:w-64 bg-sidebar backdrop-blur-2xl border-r border-sidebar-border flex flex-col h-full shadow-[8px_0_32px_rgba(0,0,0,0.5)] z-20", className)}>
-      <div className="p-4 space-y-4 border-b border-white/[0.05]">
+      <div className="p-4 space-y-4 border-b border-foreground/[0.05]">
         {/* Logo and window controls */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3 px-1">
@@ -364,12 +364,12 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           </div>
           <div className="flex items-center gap-1">
             {onClose && (
-              <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full text-muted-foreground hover:bg-white/10 hover:text-foreground md:hidden transition-colors">
+              <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground md:hidden transition-colors">
                 <X className="w-4 h-4" />
               </Button>
             )}
             {onDesktopClose && (
-              <Button variant="ghost" size="icon" onClick={onDesktopClose} className="hidden h-8 w-8 rounded-full text-muted-foreground hover:bg-white/10 hover:text-foreground md:inline-flex transition-colors" title="Close sidebar">
+              <Button variant="ghost" size="icon" onClick={onDesktopClose} className="hidden h-8 w-8 rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground md:inline-flex transition-colors" title="Close sidebar">
                 <PanelLeftClose className="w-4 h-4" />
               </Button>
             )}
@@ -390,7 +390,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             size="icon"
             disabled={isRefreshing}
             onClick={reloadSidebar}
-            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border-white/5 text-muted-foreground hover:text-foreground shrink-0 transition-all duration-300"
+            className="w-10 h-10 rounded-xl bg-foreground/5 hover:bg-foreground/10 border-foreground/5 text-muted-foreground hover:text-foreground shrink-0 transition-all duration-300"
             title="Refresh"
           >
             {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
@@ -403,7 +403,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             variant="outline"
             size="icon"
             onClick={handleBack}
-            className="w-9 h-9 rounded-lg bg-transparent border-0 hover:bg-white/5 text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+            className="w-9 h-9 rounded-lg bg-transparent border-0 hover:bg-foreground/5 text-muted-foreground hover:text-foreground shrink-0 transition-colors"
             title="Back"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -414,14 +414,14 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               placeholder="Search..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-8 h-9 rounded-lg bg-white/5 border-transparent hover:bg-white/10 focus:bg-white/10 focus:border-primary/30 text-sm text-foreground placeholder:text-muted-foreground/70 transition-all duration-300 focus-visible:ring-0"
+              className="pl-9 pr-8 h-9 rounded-lg bg-foreground/5 border-transparent hover:bg-foreground/10 focus:bg-foreground/10 focus:border-primary/30 text-sm text-foreground placeholder:text-muted-foreground/70 transition-all duration-300 focus-visible:ring-0"
             />
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setShowFavorites(!showFavorites)}
-            className={cn("h-9 w-9 rounded-lg transition-all duration-300 border border-transparent", showFavorites ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-transparent text-muted-foreground hover:bg-white/5 hover:text-foreground")}
+            className={cn("h-9 w-9 rounded-lg transition-all duration-300 border border-transparent", showFavorites ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}
             title="Toggle Favorites"
           >
             <Heart className={cn("w-4 h-4", showFavorites && "fill-current")} />
@@ -482,16 +482,16 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       <div className="p-3 mt-auto flex-shrink-0 bg-gradient-to-t from-background/80 to-transparent">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start px-3 py-6 h-auto rounded-xl hover:bg-white/10 transition-all duration-300 group border border-transparent hover:border-white/5 shadow-sm hover:shadow-md">
+            <Button variant="ghost" className="w-full justify-start px-3 py-6 h-auto rounded-xl hover:bg-foreground/10 transition-all duration-300 group border border-transparent hover:border-foreground/5 shadow-sm hover:shadow-md">
               <div className="flex items-center gap-3 w-full">
-                <Avatar className="h-9 w-9 ring-2 ring-white/10 shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:ring-primary/30">
+                <Avatar className="h-9 w-9 ring-2 ring-foreground/10 shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:ring-primary/30">
                   <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
                   <AvatarFallback className="bg-primary/20 text-primary">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 text-left truncate flex flex-col justify-center">
                   <p className="text-sm font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
                 </div>
-                <div className="bg-white/5 rounded-full p-1 transition-opacity duration-300">
+                <div className="bg-foreground/5 rounded-full p-1 transition-opacity duration-300">
                   <MoreVertical className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
@@ -499,32 +499,32 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[240px] bg-popover backdrop-blur-xl border-border text-popover-foreground mb-2 rounded-xl shadow-2xl p-1">
             {user?.email === "rakesh837m@gmail.com" && (
-              <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+              <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
                 <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
                   <BarChart3 className="w-4 h-4 text-primary" />
                   Admin Analytics
                 </Link>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
               <Link href="/admin/projects" className="flex items-center gap-3 w-full py-2">
                 <FolderKanban className="w-4 h-4 text-blue-400" />
                 Projects
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
               <Link href="/services" className="flex items-center gap-3 w-full py-2">
                 <Heart className="w-4 h-4 text-pink-400" />
                 Connected Services
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-white/10 rounded-lg my-0.5 transition-colors">
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
               <Link href="/settings" className="flex items-center gap-3 w-full py-2">
                 <Settings className="w-4 h-4 text-gray-400" />
                 Settings
               </Link>
             </DropdownMenuItem>
-            <div className="h-px bg-white/10 my-1 mx-2" />
+            <div className="h-px bg-foreground/10 my-1 mx-2" />
             <DropdownMenuItem 
               onClick={() => signOut()}
               className="cursor-pointer text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5 transition-colors"

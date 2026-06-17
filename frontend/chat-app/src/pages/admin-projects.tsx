@@ -212,14 +212,14 @@ export default function AdminProjectsPage() {
               variant="ghost"
               size="icon"
               onClick={() => setLocation("/chat")}
-              className="text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-full mt-1 transition-colors"
+              className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 rounded-full mt-1 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
-              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">Projects</h1>
+              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-foreground/70 tracking-tight">Projects</h1>
               <div className="text-sm text-muted-foreground mt-2 flex gap-3 font-medium">
-                <span className="bg-white/5 px-3 py-1 rounded-full border border-white/10">Total: {projectList?.length || 0}</span>
+                <span className="bg-foreground/5 px-3 py-1 rounded-full border border-foreground/10">Total: {projectList?.length || 0}</span>
                 <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20">
                   Active: {projectList?.filter(p => p.isActive).length || 0}
                   <span className="relative flex h-2 w-2 ml-1">
@@ -245,7 +245,7 @@ export default function AdminProjectsPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <Input 
               placeholder="Search projects by name, description, tags..." 
-              className="pl-11 h-11 rounded-xl bg-white/[0.02] border-white/10 focus:bg-white/[0.05] focus:border-primary/50 text-foreground transition-all duration-300"
+              className="pl-11 h-11 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:bg-foreground/[0.05] focus:border-primary/50 text-foreground transition-all duration-300"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -255,14 +255,14 @@ export default function AdminProjectsPage() {
           </div>
           <div className="w-full sm:w-[220px]">
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="h-11 rounded-xl bg-white/[0.02] border-white/10 focus:ring-primary/50 text-foreground">
+              <SelectTrigger className="h-11 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:ring-primary/50 text-foreground">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
-              <SelectContent className="bg-[#121214]/95 backdrop-blur-xl border-white/10 rounded-xl">
-                <SelectItem value="newest" className="rounded-lg my-0.5 hover:bg-white/10">Newest First</SelectItem>
-                <SelectItem value="oldest" className="rounded-lg my-0.5 hover:bg-white/10">Oldest First</SelectItem>
-                <SelectItem value="alpha" className="rounded-lg my-0.5 hover:bg-white/10">Alphabetical</SelectItem>
-                <SelectItem value="updated" className="rounded-lg my-0.5 hover:bg-white/10">Most Recently Updated</SelectItem>
+              <SelectContent className="bg-[#121214]/95 backdrop-blur-xl border-foreground/10 rounded-xl">
+                <SelectItem value="newest" className="rounded-lg my-0.5 hover:bg-foreground/10">Newest First</SelectItem>
+                <SelectItem value="oldest" className="rounded-lg my-0.5 hover:bg-foreground/10">Oldest First</SelectItem>
+                <SelectItem value="alpha" className="rounded-lg my-0.5 hover:bg-foreground/10">Alphabetical</SelectItem>
+                <SelectItem value="updated" className="rounded-lg my-0.5 hover:bg-foreground/10">Most Recently Updated</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -275,7 +275,7 @@ export default function AdminProjectsPage() {
           </div>
         ) : !projectList?.length ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
-            <div className="w-16 h-16 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
+            <div className="w-16 h-16 rounded-2xl bg-card/40 border border-foreground/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
               <FolderOpen className="w-8 h-8 text-muted-foreground" />
             </div>
             <div>
@@ -305,7 +305,7 @@ export default function AdminProjectsPage() {
             {paginatedProjects.map((project) => (
               <div
                 key={project.id}
-                className="group flex flex-col md:flex-row md:items-center rounded-3xl bg-white/[0.02] border border-white/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] p-6 hover:bg-white/[0.04] hover:border-white/[0.1] hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300 gap-5 relative overflow-hidden"
+                className="group flex flex-col md:flex-row md:items-center rounded-3xl bg-foreground/[0.02] border border-foreground/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] p-6 hover:bg-foreground/[0.04] hover:border-foreground/[0.1] hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300 gap-5 relative overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                 
@@ -313,7 +313,7 @@ export default function AdminProjectsPage() {
                 <div className="flex-1 min-w-0 relative z-10">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-foreground font-bold text-xl truncate tracking-tight" title={project.name}>{project.name}</h3>
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${project.isActive ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-white/5 border-white/10 text-muted-foreground"} shrink-0`}>
+                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${project.isActive ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-foreground/5 border-foreground/10 text-muted-foreground"} shrink-0`}>
                       <div className={`w-1.5 h-1.5 rounded-full ${project.isActive ? "bg-emerald-400" : "bg-muted-foreground"}`} />
                       <span className="text-[10px] font-bold uppercase tracking-wider">
                         {project.isActive ? "Active" : "Inactive"}
@@ -329,13 +329,13 @@ export default function AdminProjectsPage() {
                     <span title="Created Date" className="flex items-center gap-1">
                       Created {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
-                    <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                    <span className="w-1 h-1 rounded-full bg-foreground/20"></span>
                     <span title="Knowledge Sources" className="flex items-center gap-1">
                       {project.knowledgeCount || 0} Knowledge Sources
                     </span>
                     {project.updatedAt && (
                       <>
-                        <span className="w-1 h-1 rounded-full bg-white/20"></span>
+                        <span className="w-1 h-1 rounded-full bg-foreground/20"></span>
                         <span title="Last Updated" className="flex items-center gap-1">
                           Updated {new Date(project.updatedAt).toLocaleDateString()}
                         </span>
@@ -345,11 +345,11 @@ export default function AdminProjectsPage() {
                 </div>
 
                 {/* Right: Actions */}
-                <div className="flex items-center gap-2 md:shrink-0 mt-2 md:mt-0 pt-4 md:pt-0 border-t md:border-0 border-white/5 relative z-10">
+                <div className="flex items-center gap-2 md:shrink-0 mt-2 md:mt-0 pt-4 md:pt-0 border-t md:border-0 border-foreground/5 relative z-10">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-9 gap-2 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 hover:text-foreground transition-all"
+                    className="h-9 gap-2 rounded-xl border-foreground/10 bg-foreground/5 hover:bg-foreground/10 hover:text-foreground transition-all"
                     onClick={() => setLocation(`/admin/projects/${project.id}/edit`)}
                   >
                     <FolderOpen className="w-3.5 h-3.5" />
@@ -367,20 +367,20 @@ export default function AdminProjectsPage() {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-9 w-9 ml-1 rounded-xl hover:bg-white/10">
+                      <Button variant="ghost" size="icon" className="h-9 w-9 ml-1 rounded-xl hover:bg-foreground/10">
                         <MoreVertical className="w-4 h-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-[#121214]/95 backdrop-blur-xl border-white/10 rounded-xl">
-                      <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-white/10" onClick={() => setLocation(`/admin/projects/${project.id}/edit`)}>
+                    <DropdownMenuContent align="end" className="w-48 bg-[#121214]/95 backdrop-blur-xl border-foreground/10 rounded-xl">
+                      <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-foreground/10" onClick={() => setLocation(`/admin/projects/${project.id}/edit`)}>
                         <Pencil className="w-4 h-4 mr-2" /> Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-white/10" onClick={() => copyShareLink(project.shareToken)}>
+                      <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-foreground/10" onClick={() => copyShareLink(project.shareToken)}>
                         <Copy className="w-4 h-4 mr-2" /> Copy Link
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-white/10" />
+                      <DropdownMenuSeparator className="bg-foreground/10" />
                       <DropdownMenuItem 
-                        className="rounded-lg my-0.5 hover:bg-white/10"
+                        className="rounded-lg my-0.5 hover:bg-foreground/10"
                         onClick={() => toggleMutation.mutate({ id: project.id, isActive: !project.isActive })}
                       >
                         {project.isActive ? (
@@ -389,7 +389,7 @@ export default function AdminProjectsPage() {
                           <><Power className="w-4 h-4 mr-2 text-emerald-400" /> Activate</>
                         )}
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-white/10" />
+                      <DropdownMenuSeparator className="bg-foreground/10" />
                       
                       <DropdownMenuItem 
                         className="text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5"
