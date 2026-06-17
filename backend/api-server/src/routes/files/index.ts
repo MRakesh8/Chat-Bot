@@ -207,18 +207,20 @@ router.post("/analyze", upload.single("file"), async (req, res) => {
       return;
     }
 
+    const userId = (req as any).auth?.userId || null;
+
     const extractedText = await extractSourceContent({
       sourceType,
       sourceUrl,
       fileBuffer,
-      filename
+      filename,
+      userId
     });
 
     if (localPath) fs.unlinkSync(localPath);
 
     const prompt = `Based on the following extracted text from a knowledge source, suggest a concise title, 2-3 relevant tags, and brief summary notes. Return strictly valid JSON with keys: "title" (string), "tags" (comma-separated string), "notes" (string). \n\nText: ${extractedText.substring(0, 30000)}`;
     
-    const userId = (req as any).auth?.userId || null;
     const resAi = await ai.models.generateContent(userId, {
       model: "gemini-2.5-flash",
       contents: prompt
