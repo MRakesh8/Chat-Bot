@@ -457,6 +457,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             <Moon className="w-4 h-4 mr-2" /> Dark
           </Button>
         </div>
+      </div>
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!conversationToDelete} onOpenChange={(open) => !open && setConversationToDelete(null)}>
