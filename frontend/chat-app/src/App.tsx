@@ -43,7 +43,7 @@ export default function App() {
   return (
     <WouterRouter base={basePath}>
       <AuthProvider>
-        <ThemeProvider defaultTheme="dark">
+        <ThemeProvider defaultTheme="light">
           <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <Suspense fallback={<div className="flex items-center justify-center h-screen w-screen text-muted-foreground">Loading...</div>}>

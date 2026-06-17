@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3 } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3, LayoutTemplate, FileText, Users, Clock, HelpCircle, Sun, Moon } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -352,15 +352,15 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   }), [typedConversations, search, showFavorites]);
 
   return (
-    <div className={cn("w-full md:w-64 bg-sidebar backdrop-blur-2xl border-r border-sidebar-border flex flex-col h-full shadow-[8px_0_32px_rgba(0,0,0,0.5)] z-20", className)}>
-      <div className="p-4 space-y-4 border-b border-white/[0.05]">
+    <div className={cn("w-full md:w-[260px] bg-sidebar border-r border-sidebar-border flex flex-col h-full z-20", className)}>
+      <div className="p-4 space-y-4">
         {/* Logo and window controls */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3 px-1">
-            <div className="bg-gradient-to-br from-primary/40 to-primary/10 p-1.5 rounded-lg border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.2)]">
-               <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Aria AI" className="w-5 h-5" />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 px-1">
+            <div className="bg-primary p-1.5 rounded-full">
+               <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Script AI" className="w-4 h-4 invert" />
             </div>
-            <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-sidebar-foreground to-sidebar-foreground/70">Aria AI</span>
+            <span className="font-bold text-lg text-sidebar-foreground">Script</span>
           </div>
           <div className="flex items-center gap-1">
             {onClose && (
@@ -376,88 +376,87 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           </div>
         </div>
 
-        {/* Primary Actions */}
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleNewChat}
-            className="flex-1 justify-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 h-10 rounded-xl font-medium transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Plus className="w-4 h-4" />
-            New Chat
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={isRefreshing}
-            onClick={reloadSidebar}
-            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border-white/5 text-muted-foreground hover:text-foreground shrink-0 transition-all duration-300"
-            title="Refresh"
-          >
-            {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-          </Button>
-        </div>
-
-        {/* Search and Secondary Actions */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleBack}
-            className="w-9 h-9 rounded-lg bg-transparent border-0 hover:bg-white/5 text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-            title="Back"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div className="relative flex-1 group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
-            <Input 
-              placeholder="Search..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-8 h-9 rounded-lg bg-white/5 border-transparent hover:bg-white/10 focus:bg-white/10 focus:border-primary/30 text-sm text-foreground placeholder:text-muted-foreground/70 transition-all duration-300 focus-visible:ring-0"
-            />
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowFavorites(!showFavorites)}
-            className={cn("h-9 w-9 rounded-lg transition-all duration-300 border border-transparent", showFavorites ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-transparent text-muted-foreground hover:bg-white/5 hover:text-foreground")}
-            title="Toggle Favorites"
-          >
-            <Heart className={cn("w-4 h-4", showFavorites && "fill-current")} />
-          </Button>
+        {/* Search */}
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="Search" 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 pr-8 h-10 rounded-full bg-transparent border-border focus:border-primary text-sm transition-all focus-visible:ring-0"
+          />
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground bg-accent px-1.5 py-0.5 rounded">⌘K</div>
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-1 pr-4">
-          {isLoading ? (
-            <div className="text-sm text-muted-foreground p-2">Loading...</div>
-          ) : filteredConversations?.length === 0 ? (
-            <div className="text-sm text-muted-foreground p-2">No conversations</div>
-          ) : (
-            filteredConversations?.map((conv) => (
-              <MemoizedConversationItem
-                key={conv.id}
-                conv={conv}
-                isActive={location === `/chat/${conv.id}`}
-                isEditing={editingId === conv.id}
-                editTitle={editTitle}
-                pendingFavorite={pendingFavoriteIds.has(conv.id)}
-                projectList={projectList || []}
-                onLocationChange={handleLocationChange}
-                onSaveEdit={saveEdit}
-                onCancelEdit={cancelEdit}
-                onEditTitleChange={setEditTitle}
-                onStartEdit={startEdit}
-                onToggleFavorite={handleToggleFavorite}
-                onMoveToProject={handleMoveToProject}
-                onDelete={handleDeleteRequest}
-              />
-            ))
-          )}
+      <ScrollArea className="flex-1 px-3">
+        <div className="space-y-1">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start h-10 px-3 rounded-full bg-primary/10 text-primary font-medium hover:bg-primary/20"
+            onClick={handleNewChat}
+          >
+            <div className="bg-primary text-primary-foreground rounded-sm p-0.5 mr-3">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            AI Chat
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-start h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => setLocation("/admin/projects")}>
+            <FolderKanban className="w-5 h-5 mr-3" />
+            Projects
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-start h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent">
+            <LayoutTemplate className="w-5 h-5 mr-3" />
+            Templates
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-between h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent">
+            <div className="flex items-center">
+              <FileText className="w-5 h-5 mr-3" />
+              Documents
+            </div>
+            <Plus className="w-4 h-4" />
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-between h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent">
+            <div className="flex items-center">
+              <Users className="w-5 h-5 mr-3" />
+              Community
+            </div>
+            <span className="text-[10px] font-semibold bg-blue-500 text-white px-2 py-0.5 rounded-full">NEW</span>
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-start h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent">
+            <Clock className="w-5 h-5 mr-3" />
+            History
+          </Button>
+
+          <div className="pt-6 pb-2 px-3 text-xs font-semibold text-muted-foreground">Settings & Help</div>
+
+          <Button variant="ghost" className="w-full justify-start h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => setLocation("/settings")}>
+            <Settings className="w-5 h-5 mr-3" />
+            Settings
+          </Button>
+
+          <Button variant="ghost" className="w-full justify-start h-10 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent">
+            <HelpCircle className="w-5 h-5 mr-3" />
+            Help
+          </Button>
         </div>
+
       </ScrollArea>
+      
+      <div className="p-4 mt-auto">
+        <div className="flex bg-accent/50 rounded-full p-1 mb-4">
+          <Button variant="ghost" className="flex-1 h-8 rounded-full bg-background shadow-sm text-foreground font-medium text-xs">
+            <Sun className="w-4 h-4 mr-2" /> Light
+          </Button>
+          <Button variant="ghost" className="flex-1 h-8 rounded-full text-muted-foreground hover:text-foreground text-xs">
+            <Moon className="w-4 h-4 mr-2" /> Dark
+          </Button>
+        </div>
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!conversationToDelete} onOpenChange={(open) => !open && setConversationToDelete(null)}>
@@ -479,20 +478,18 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="p-3 mt-auto flex-shrink-0 bg-gradient-to-t from-background/80 to-transparent">
+      <div className="px-4 pb-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start px-3 py-6 h-auto rounded-xl hover:bg-white/10 transition-all duration-300 group border border-transparent hover:border-white/5 shadow-sm hover:shadow-md">
+            <Button variant="ghost" className="w-full justify-start px-2 py-6 h-auto rounded-xl hover:bg-accent transition-all duration-300">
               <div className="flex items-center gap-3 w-full">
-                <Avatar className="h-9 w-9 ring-2 ring-white/10 shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:ring-primary/30">
+                <Avatar className="h-10 w-10">
                   <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
                   <AvatarFallback className="bg-primary/20 text-primary">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 text-left truncate flex flex-col justify-center">
-                  <p className="text-sm font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
-                </div>
-                <div className="bg-white/5 rounded-full p-1 transition-opacity duration-300">
-                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                <div className="flex-1 text-left flex flex-col justify-center">
+                  <p className="text-sm font-semibold text-foreground truncate">{user?.email?.split('@')[0] || "User"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email || "user@example.com"}</p>
                 </div>
               </div>
             </Button>

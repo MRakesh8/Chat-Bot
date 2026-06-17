@@ -535,9 +535,9 @@ export function ChatArea() {
   const renderInput = (isCentered = false) => (
     <div className={cn("mx-auto w-full max-w-3xl", !isCentered && "sticky bottom-4 z-20")}>
       <div className={cn(
-        "relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 ease-out",
-        "bg-card/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] focus-within:border-primary/50 focus-within:shadow-[0_0_25px_rgba(168,85,247,0.25)] focus-within:bg-card/60",
-        isCentered ? "shadow-xl" : "shadow-lg"
+        "relative flex flex-col overflow-hidden rounded-3xl transition-all duration-300 ease-out border",
+        "bg-card/80 backdrop-blur-xl shadow-sm focus-within:border-primary focus-within:shadow-md",
+        isCentered ? "shadow-md" : "shadow-sm"
       )}>
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 p-3 pb-0">
@@ -559,64 +559,59 @@ export function ChatArea() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="How can I help you today?"
+          placeholder="Summarize the latest..."
           rows={1}
-          className="min-h-[60px] w-full resize-none bg-transparent px-4 py-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-[60px] w-full resize-none bg-transparent px-5 pt-5 pb-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none border-0 shadow-none focus-visible:ring-0 rounded-t-3xl"
         />
-        <div className="flex items-center justify-between px-3 pb-3">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between px-4 pb-4">
+          <div className="flex items-center gap-4 pl-1">
             <input type="file" id="file-upload" className="hidden" multiple onChange={handleFileChange} />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              title="Attach file"
+            <button
+              className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => document.getElementById("file-upload")?.click()}
             >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-9 w-9 rounded-full transition-colors",
-                isRecording
-                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-              title="Voice input"
+              <Paperclip className="h-3.5 w-3.5" /> Attach
+            </button>
+            <button
+              className={cn("flex items-center gap-1.5 text-xs font-semibold transition-colors", isRecording ? "text-destructive" : "text-muted-foreground hover:text-foreground")}
               onClick={startVoiceInput}
             >
-              <Mic className="h-4 w-4" />
-            </Button>
+              <Mic className="h-3.5 w-3.5" /> Voice Message
+            </button>
+            <button className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+              <LayoutTemplate className="h-3.5 w-3.5" /> Browse Prompts
+            </button>
           </div>
 
-          {isStreaming ? (
-            <Button size="icon" onClick={stopStreaming} className="h-9 w-9 rounded-full bg-muted text-muted-foreground hover:bg-accent">
-              <StopCircle className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSend}
-              disabled={!input.trim() && files.length === 0}
-              size="icon"
-              className={cn(
-                "h-9 w-9 rounded-full transition-all",
-                input.trim() || files.length > 0
-                  ? "bg-foreground text-background hover:bg-foreground/85"
-                  : "bg-muted text-muted-foreground",
-              )}
-              title="Send message"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex items-center gap-4">
+            <span className="text-[10px] text-muted-foreground font-medium">{input.length}/3,000</span>
+            {isStreaming ? (
+              <Button size="icon" onClick={stopStreaming} className="h-10 w-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
+                <StopCircle className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSend}
+                disabled={!input.trim() && files.length === 0}
+                size="icon"
+                className={cn(
+                  "h-10 w-10 rounded-full transition-all shadow-md border-0",
+                  input.trim() || files.length > 0
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "bg-muted text-muted-foreground",
+                )}
+                title="Send message"
+              >
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 ml-0.5"><path d="M1.20308 1.04312C1.00481 0.954998 0.772341 1.0048 0.627577 1.16641C0.482813 1.32802 0.458794 1.56455 0.568117 1.75196L3.92115 7.50002L0.568117 13.2481C0.458794 13.4355 0.482813 13.672 0.627577 13.8336C0.772341 13.9952 1.00481 14.045 1.20308 13.9569L14.5364 8.02832C14.7176 7.94781 14.8333 7.76722 14.8333 7.50002C14.8333 7.23282 14.7176 7.05223 14.5364 6.97172L1.20308 1.04312ZM4.8455 7.15002L2.09117 2.42718L12.5666 7.15002H4.8455ZM12.5666 7.85002L2.09117 12.5729L4.8455 7.85002H12.5666Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {!isCentered && (
-        <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          Aria can make mistakes. Consider verifying important information.
+        <p className="mt-4 text-center text-[10px] text-muted-foreground/70 tracking-wide font-medium">
+          Script may generate inaccurate information about people, places, or facts. Model: Script AI v1.3
         </p>
       )}
     </div>
@@ -726,13 +721,44 @@ export function ChatArea() {
         )}
       >
         {!conversationId ? (
-          <div className="w-full -translate-y-8 transition-transform duration-300 md:-translate-y-12">
-            <h2 className="mb-8 flex flex-wrap items-center justify-center gap-3 text-center font-serif text-3xl text-foreground md:text-5xl">
-              <Sparkle className="h-8 w-8 text-primary md:h-10 md:w-10" />
-              <span>
-                {greeting()}, {displayName}
-              </span>
+          <div className="w-full flex flex-col items-center justify-center mt-20">
+            <h2 className="mb-4 text-center font-bold text-4xl text-foreground">
+              Welcome to Script
             </h2>
+            <p className="text-muted-foreground mb-12 text-center text-sm max-w-md">
+              Get started by Script a task and Chat can do the rest. Not sure where to start?
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full mb-12 px-4">
+              <Button variant="outline" className="h-14 justify-between px-4 rounded-xl border-border bg-card hover:bg-accent text-foreground font-medium shadow-sm transition-all" onClick={() => setInput("Write copy ")}>
+                <div className="flex items-center gap-3">
+                  <div className="bg-orange-100 text-orange-600 p-2 rounded-lg"><FileText className="w-4 h-4" /></div>
+                  Write copy
+                </div>
+                <Plus className="w-4 h-4 text-muted-foreground" />
+              </Button>
+              <Button variant="outline" className="h-14 justify-between px-4 rounded-xl border-border bg-card hover:bg-accent text-foreground font-medium shadow-sm transition-all" onClick={() => setInput("Generate an image of ")}>
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-100 text-blue-600 p-2 rounded-lg"><Sparkle className="w-4 h-4" /></div>
+                  Image generation
+                </div>
+                <Plus className="w-4 h-4 text-muted-foreground" />
+              </Button>
+              <Button variant="outline" className="h-14 justify-between px-4 rounded-xl border-border bg-card hover:bg-accent text-foreground font-medium shadow-sm transition-all" onClick={() => setInput("Create an avatar for ")}>
+                <div className="flex items-center gap-3">
+                  <div className="bg-green-100 text-green-600 p-2 rounded-lg"><Users className="w-4 h-4" /></div>
+                  Create avatar
+                </div>
+                <Plus className="w-4 h-4 text-muted-foreground" />
+              </Button>
+              <Button variant="outline" className="h-14 justify-between px-4 rounded-xl border-border bg-card hover:bg-accent text-foreground font-medium shadow-sm transition-all" onClick={() => setInput("Write code for ")}>
+                <div className="flex items-center gap-3">
+                  <div className="bg-pink-100 text-pink-600 p-2 rounded-lg"><LayoutTemplate className="w-4 h-4" /></div>
+                  Write code
+                </div>
+                <Plus className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            </div>
             {renderInput(true)}
           </div>
         ) : (
