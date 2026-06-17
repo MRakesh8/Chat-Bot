@@ -94,7 +94,25 @@ const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
         {msg.role === "assistant" ? (
           <>
             <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+                components={{
+                  a({ node, children, href, ...props }: any) {
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline font-semibold"
+                        {...props}
+                      >
+                        {children}
+                      </a>
+                    );
+                  }
+                }}
+              >
                 {msg.content}
               </ReactMarkdown>
             </div>
@@ -515,7 +533,25 @@ export default function SharedChatPage() {
               <div className="max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm bg-card border border-border text-foreground">
                 {streamingContent ? (
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeHighlight]}
+                      components={{
+                        a({ node, children, href, ...props }: any) {
+                          return (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline font-semibold"
+                              {...props}
+                            >
+                              {children}
+                            </a>
+                          );
+                        }
+                      }}
+                    >
                       {streamingContent}
                     </ReactMarkdown>
                   </div>

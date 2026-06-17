@@ -144,6 +144,19 @@ const MemoizedMessage = memo(function MemoizedMessage({
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight, rehypeSanitize]}
             components={{
+              a({ node, children, href, ...props }: any) {
+                return (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-semibold"
+                    {...props}
+                  >
+                    {children}
+                  </a>
+                );
+              },
               code({ node, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || "");
                 const lang = match ? match[1] : "";
@@ -806,6 +819,19 @@ export function ChatArea() {
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeHighlight, rehypeSanitize]}
                           components={{
+                            a({ node, children, href, ...props }: any) {
+                              return (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline font-semibold"
+                                  {...props}
+                                >
+                                  {children}
+                                </a>
+                              );
+                            },
                             code({ node, className, children, ...props }: any) {
                               const match = /language-(\w+)/.exec(className || "");
                               const lang = match ? match[1] : "";
