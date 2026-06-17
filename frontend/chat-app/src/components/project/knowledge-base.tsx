@@ -719,6 +719,27 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         </Button>
                       </TabsContent>
 
+                      <TabsContent value="instagram" className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Instagram URL</label>
+                          <Input placeholder="https://www.instagram.com/p/..." value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} />
+                          <p className="text-xs text-muted-foreground">Add an Instagram link. The chatbot will explicitly mention this link when answering questions related to it.</p>
+                        </div>
+                        <Button 
+                          className="w-full" 
+                          onClick={() => {
+                            if (websiteUrl) {
+                              addSourceUrlMutation.mutate({ sourceType: "instagram", sourceUrls: [websiteUrl] } as any);
+                            }
+                          }}
+                          disabled={!websiteUrl || addSourceUrlMutation.isPending}
+                        >
+                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LinkIcon className="w-4 h-4 mr-2" />}
+                          Add Instagram Link
+                        </Button>
+                      </TabsContent>
+
+
                       <TabsContent value="github" className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">GitHub Repository URL</label>
