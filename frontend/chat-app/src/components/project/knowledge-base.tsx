@@ -641,12 +641,13 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         </div>
                       ) : (
                         <>
-                          <TabsList className="grid w-full grid-cols-5 mb-4 h-auto">
-                            <TabsTrigger value="file" className="text-xs sm:text-sm">File</TabsTrigger>
-                            <TabsTrigger value="website" className="text-xs sm:text-sm">Website</TabsTrigger>
-                            <TabsTrigger value="video" className="text-xs sm:text-sm">Video</TabsTrigger>
-                            <TabsTrigger value="github" className="text-xs sm:text-sm">GitHub</TabsTrigger>
-                            <TabsTrigger value="note" className="text-xs sm:text-sm">Note</TabsTrigger>
+                          <TabsList className="grid w-full grid-cols-6 mb-4 h-auto">
+                            <TabsTrigger value="file" className="text-[10px] sm:text-xs">File</TabsTrigger>
+                            <TabsTrigger value="website" className="text-[10px] sm:text-xs">Website</TabsTrigger>
+                            <TabsTrigger value="video" className="text-[10px] sm:text-xs">Video</TabsTrigger>
+                            <TabsTrigger value="instagram" className="text-[10px] sm:text-xs">Insta</TabsTrigger>
+                            <TabsTrigger value="github" className="text-[10px] sm:text-xs">GitHub</TabsTrigger>
+                            <TabsTrigger value="note" className="text-[10px] sm:text-xs">Note</TabsTrigger>
                           </TabsList>
                           
                           <TabsContent value="file" className="space-y-4">

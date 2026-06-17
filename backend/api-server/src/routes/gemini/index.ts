@@ -311,7 +311,9 @@ Rules:
 - If Project Knowledge contains the answer, use it.
 - General model knowledge is only a fallback.
 
-Treat the Knowledge & Instructions text as authoritative project knowledge, not just behavior guidance. Use all selected projects together; do not ignore later projects when multiple projects are selected. If the user's question cannot be answered using the selected projects' Knowledge & Instructions or retrieved chunks, explicitly state that the answer is not in the selected project knowledge. Then, and only then, you may offer general knowledge, clearly labeled as outside the project's knowledge. Mention the relevant project name when you find the answer in that project's instructions or context.`;
+Treat the Knowledge & Instructions text as authoritative project knowledge, not just behavior guidance. Use all selected projects together; do not ignore later projects when multiple projects are selected. If the user's question cannot be answered using the selected projects' Knowledge & Instructions or retrieved chunks, explicitly state that the answer is not in the selected project knowledge. Then, and only then, you may offer general knowledge, clearly labeled as outside the project's knowledge. Mention the relevant project name when you find the answer in that project's instructions or context.
+
+When you use information from a provided knowledge source (like a Website, Video, GitHub, or Instagram reference), YOU MUST explicitly mention and provide the source URL in your chat response so the user can easily click and visit it.`;
 
 type GeminiPart =
   | { text: string }
