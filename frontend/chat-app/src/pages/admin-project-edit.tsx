@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
 import { Deployment } from "../components/project/deployment";
@@ -60,6 +60,8 @@ export default function AdminProjectEditPage() {
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [savedToken, setSavedToken] = useState<string | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["admin-project", projectId],
@@ -102,7 +104,7 @@ export default function AdminProjectEditPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string; systemPrompt: string }) => {
+    mutationFn: async (data: Partial<{ name: string; description: string; systemPrompt: string }>) => {
       const res = await authFetch(apiUrl(`/api/projects/${projectId}`), {
         method: "PATCH",
         body: JSON.stringify(data),
@@ -191,9 +193,54 @@ export default function AdminProjectEditPage() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">
-              {isNew ? "New Project" : "Edit Project"}
-            </h1>
+            {isNew ? (
+              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">
+                New Project
+              </h1>
+            ) : (
+              <div className="flex items-center gap-3">
+                {isEditingName ? (
+                  <Input
+                    autoFocus
+                    value={tempName}
+                    onChange={(e) => setTempName(e.target.value)}
+                    onBlur={() => {
+                      setIsEditingName(false);
+                      if (tempName.trim() && tempName.trim() !== project?.name) {
+                        updateMutation.mutate({ name: tempName.trim() });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      } else if (e.key === "Escape") {
+                        setTempName(project?.name || name);
+                        setIsEditingName(false);
+                      }
+                    }}
+                    className="text-4xl font-bold h-14 bg-transparent border-white/20 focus:border-primary px-2"
+                  />
+                ) : (
+                  <div 
+                    className="flex items-center gap-3 group cursor-pointer" 
+                    onClick={() => { setTempName(project?.name || name); setIsEditingName(true); }}
+                  >
+                    <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">
+                      {project?.name || "Loading..."}
+                    </h1>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 rounded-full hover:bg-white/10" 
+                      onClick={(e) => { e.stopPropagation(); setTempName(project?.name || name); setIsEditingName(true); }}
+                    >
+                      <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
             <p className="text-muted-foreground mt-2 font-medium">
               {isNew
                 ? "Build a custom AI assistant with your own knowledge"

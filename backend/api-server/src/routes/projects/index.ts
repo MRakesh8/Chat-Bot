@@ -432,40 +432,70 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
 
     let fullResponse = "";
     let streamStarted = false;
+    let retries = 0;
 
-    try {
-      const stream = await ai.models.generateContentStream(project.userId, {
-        model: "gemini-2.5-flash",
-        contents: chatMessages,
-        config: { maxOutputTokens: 8192 },
-      });
+    while (retries < 4 && !streamStarted) {
+      try {
+        const stream = await ai.models.generateContentStream(project.userId, {
+          model: "gemini-2.5-flash",
+          contents: chatMessages,
+          config: { maxOutputTokens: 8192 },
+        });
 
-      for await (const chunk of stream) {
-        streamStarted = true;
-        const text = chunk.text;
-        if (text) {
-          fullResponse += text;
-          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        let chunkCount = 0;
+        let isFirstChunkWhitespace = false;
+
+        for await (const chunk of stream) {
+          streamStarted = true;
+          chunkCount++;
+          const text = chunk.text;
+          
+          if (chunkCount === 1 && (!text || !text.trim())) {
+             isFirstChunkWhitespace = true;
+          }
+          
+          if (text && !isFirstChunkWhitespace) {
+            fullResponse += text;
+            res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+            if (typeof (res as any).flush === 'function') {
+              (res as any).flush();
+            }
+          }
         }
-      }
-    } catch (err: any) {
-      logger.error({ err }, "Error generating stream in project chat");
-      
-      const isQuotaError = err?.type === "quota_exceeded";
-      const status = err?.status || err?.response?.status;
-      const isBusy = isQuotaError || status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
-      const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
-
-      if (!res.headersSent) {
-        if (isBusy || isQuotaError) {
-          res.status(200).json({ error: errorMessage });
-          return;
+        
+        if (isFirstChunkWhitespace && chunkCount <= 2) {
+           throw new Error("Validation failed: empty response");
+        }
+        
+        break; // Success
+      } catch (err: any) {
+        retries++;
+        const status = err?.status || err?.response?.status;
+        const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503") || err?.message?.includes("Validation failed");
+        
+        if (isBusy && retries < 4 && !streamStarted) {
+          const backoff = retries === 1 ? 2000 : retries === 2 ? 5000 : 10000;
+          req.log.warn(`Gemini busy/failed. Retrying in ${backoff}ms... (Attempt ${retries})`);
+          await new Promise(r => setTimeout(r, backoff));
         } else {
-          res.status(500).json({ error: errorMessage });
-          return;
+          logger.error({ err }, "Error generating stream in project chat");
+          
+          const isQuotaError = err?.type === "quota_exceeded";
+          const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
+
+          if (!res.headersSent) {
+            if (isBusy || isQuotaError) {
+              res.status(200).json({ error: errorMessage });
+              return;
+            } else {
+              res.status(500).json({ error: errorMessage });
+              return;
+            }
+          } else {
+            res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
+          }
+          break;
         }
-      } else {
-        res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
       }
     }
 

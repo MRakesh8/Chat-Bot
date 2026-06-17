@@ -537,31 +537,34 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                     <Folder className={`w-4 h-4 ${activeCategoryId === cat.id ? "text-primary" : ""}`} />
                     <span className="truncate text-sm">{cat.name}</span>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 transition-opacity opacity-100">
-                        <MoreVertical className="h-3 w-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem 
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          setRenameCategoryId(cat.id); 
-                          setRenameCategoryName(cat.name); 
-                          setIsRenameCategoryOpen(true); 
-                        }}
-                      >
-                        <Edit2 className="w-4 h-4 mr-2" /> Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-destructive focus:text-destructive"
-                        onClick={(e) => { e.stopPropagation(); deleteCategoryMutation.mutate(cat.id); }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6 text-muted-foreground hover:text-primary"
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setRenameCategoryId(cat.id); 
+                        setRenameCategoryName(cat.name); 
+                        setIsRenameCategoryOpen(true); 
+                      }}
+                      title="Rename Category"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        deleteCategoryMutation.mutate(cat.id); 
+                      }}
+                      title="Delete Category"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
