@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ArrowLeft,
   Plus,
   Copy,
   Pencil,
@@ -208,14 +207,6 @@ export default function AdminProjectsPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation("/chat")}
-              className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 rounded-full mt-1 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
             <div>
               <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-foreground/70 tracking-tight">Projects</h1>
               <div className="text-sm text-muted-foreground mt-2 flex gap-3 font-medium">

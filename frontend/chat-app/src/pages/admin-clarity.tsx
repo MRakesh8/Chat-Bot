@@ -1,10 +1,8 @@
-import { useLocation } from "wouter";
-import { ArrowLeft, BarChart3, AlertCircle } from "lucide-react";
+import { BarChart3, AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 
 export default function AdminClarityPage() {
-  const [, setLocation] = useLocation();
   const { user } = useAuth();
 
   // Protect this route, although it should also be protected by a router guard in App.tsx
@@ -15,15 +13,6 @@ export default function AdminClarityPage() {
     <div className="flex flex-col h-full bg-background overflow-hidden">
       <div className="flex-none p-4 border-b border-border flex items-center justify-between bg-card z-10">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLocation("/")}
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
           <div className="flex items-center gap-2">
             <BarChart3 className="w-6 h-6 text-primary" />
             <h1 className="text-xl font-bold text-foreground tracking-tight">Analytics Dashboard</h1>
