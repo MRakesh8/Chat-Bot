@@ -30,6 +30,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-background relative">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-500/15 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[40%] left-[60%] w-[30%] h-[30%] bg-purple-500/10 rounded-full blur-[100px] pointer-events-none" />
+
       {desktopSidebarOpen && (
         <Sidebar className="hidden md:flex relative z-20 w-[260px] flex-shrink-0" onDesktopClose={() => handleToggle()} />
       )}
@@ -76,51 +80,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </Sheet>
       </div>
 
-      <main className="flex-1 relative z-10 overflow-y-auto h-full flex">
-        <div className="flex-1 overflow-y-auto h-full relative">
-          {children}
-        </div>
-        
-        {/* Right Sidebar for Projects (Desktop only) */}
-        <div className="hidden xl:flex w-[280px] flex-shrink-0 border-l border-border bg-sidebar flex-col h-full z-20">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Projects</h2>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <Menu className="h-3 w-3" />
-            </Button>
-          </div>
-          <div className="p-4 space-y-3 overflow-y-auto flex-1">
-            <Button className="w-full justify-start border border-dashed border-border bg-transparent text-foreground hover:bg-accent h-12 rounded-xl">
-              <span className="font-medium text-sm">New Project</span>
-            </Button>
-            
-            {/* Example project cards matching the screenshot style */}
-            <div className="border border-border rounded-xl p-3 bg-card hover:bg-accent transition-colors cursor-pointer">
-              <h3 className="text-sm font-medium text-foreground">Learning From 100 Years...</h3>
-              <p className="text-xs text-muted-foreground mt-1 truncate">For athletes, high altitude prod...</p>
-            </div>
-            
-            <div className="border border-border rounded-xl p-3 bg-card hover:bg-accent transition-colors cursor-pointer">
-              <h3 className="text-sm font-medium text-foreground">Research officiants</h3>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Maxwell's equations - the foun...</p>
-            </div>
-            
-            <div className="border border-border rounded-xl p-3 bg-card hover:bg-accent transition-colors cursor-pointer">
-              <h3 className="text-sm font-medium text-foreground">What does a senior lead do...</h3>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Physiological respiration involv...</p>
-            </div>
-            
-            <div className="border border-border rounded-xl p-3 bg-card hover:bg-accent transition-colors cursor-pointer">
-              <h3 className="text-sm font-medium text-foreground">Write a sweet note to your...</h3>
-              <p className="text-xs text-muted-foreground mt-1 truncate">In the eighteenth century the G...</p>
-            </div>
-            
-            <div className="border border-border rounded-xl p-3 bg-card hover:bg-accent transition-colors cursor-pointer">
-              <h3 className="text-sm font-medium text-foreground">Meet with cake bakers</h3>
-              <p className="text-xs text-muted-foreground mt-1 truncate">Physical space is often conceiv...</p>
-            </div>
-          </div>
-        </div>
+      <main className="flex-1 relative z-10 overflow-y-auto h-full">
+        {children}
       </main>
     </div>
   );

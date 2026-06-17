@@ -37,35 +37,62 @@ export default function Home() {
   return (
     <>
       {user && <Redirect to="/chat" />}
-      <div className="min-h-[100dvh] bg-background flex flex-col relative overflow-hidden text-foreground selection:bg-primary/20 selection:text-primary">
-        {/* Subtle dot grid background */}
-        <div className="absolute inset-0 z-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
-        
-        {/* Soft radial gradient for depth */}
-        <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-primary/5 opacity-50 blur-[100px]" />
+      <div className="min-h-screen bg-background flex flex-col relative overflow-hidden text-foreground">
+        {/* Animated Gradient Background */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          <motion.div
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.5, 0.3],
+              x: [0, 100, 0],
+              y: [0, -50, 0],
+            }}
+            transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+            className="absolute -top-[20%] -left-[10%] w-[50vw] h-[50vw] rounded-full bg-purple-600/20 blur-[120px]"
+          />
+          <motion.div
+            animate={{
+              scale: [1, 1.5, 1],
+              opacity: [0.2, 0.4, 0.2],
+              x: [0, -100, 0],
+              y: [0, 100, 0],
+            }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            className="absolute top-[20%] right-[0%] w-[40vw] h-[40vw] rounded-full bg-indigo-600/20 blur-[100px]"
+          />
+          <motion.div
+            animate={{
+              scale: [1, 1.3, 1],
+              opacity: [0.3, 0.6, 0.3],
+              x: [0, 50, 0],
+              y: [0, 50, 0],
+            }}
+            transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+            className="absolute bottom-[-10%] left-[20%] w-[60vw] h-[60vw] rounded-full bg-blue-600/20 blur-[150px]"
+          />
+          {/* Subtle noise overlay */}
+          <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }} />
+        </div>
 
         {/* Navigation */}
-        {/* Navigation */}
-        <header className="px-6 py-5 flex items-center justify-between z-10 max-w-6xl w-full mx-auto">
+        <header className="px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-full">
-              <img src={`${basePath}/logo.svg`} alt="Script" className="w-4 h-4 invert" />
-            </div>
-            <span className="font-bold text-xl tracking-tight text-foreground">Script</span>
+            <img src={`${basePath}/logo.svg`} alt="Aria AI" className="w-8 h-8" />
+            <span className="font-bold text-xl tracking-tight text-foreground">Aria AI</span>
           </div>
           <div className="flex items-center gap-4">
             {user ? (
               <>
                 <Button
                   variant="ghost"
-                  className="text-muted-foreground hover:text-foreground font-medium rounded-full"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => setLocation("/chat")}
                 >
                   Chat
                 </Button>
                 <Button
                   variant="ghost"
-                  className="text-muted-foreground hover:text-foreground font-medium rounded-full"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => signOut()}
                 >
                   Sign Out
@@ -74,7 +101,7 @@ export default function Home() {
             ) : (
               <Button
                 variant="outline"
-                className="bg-white hover:bg-gray-50 border-gray-200 text-gray-700 font-medium rounded-full shadow-sm"
+                className="bg-background/50 backdrop-blur-sm border-white/10 hover:bg-white/10"
                 onClick={handleGoogleAuth}
                 disabled={isAuthenticating}
               >
@@ -88,66 +115,73 @@ export default function Home() {
                     <path d="M12.0004 24.0001C15.2404 24.0001 17.9654 22.935 19.9454 21.095L16.0804 18.095C15.0054 18.82 13.6204 19.245 12.0004 19.245C8.8704 19.245 6.21537 17.135 5.26538 14.29L1.27539 17.385C3.25539 21.31 7.3104 24.0001 12.0004 24.0001Z" fill="#34A853" />
                   </svg>
                 )}
-                Log in
+                Continue with Google
               </Button>
             )}
           </div>
         </header>
 
         {/* Hero Section */}
-        <main className="flex-1 flex flex-col items-center justify-center px-6 text-center z-10 pt-20 pb-28">
+        <main className="flex-1 flex flex-col items-center justify-center px-6 text-center z-10 mt-12 mb-24">
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-gray-200 shadow-sm mb-10"
+            transition={{ duration: 0.5 }}
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border mb-8"
           >
-            <Sparkles className="w-4 h-4 text-blue-500" />
-            <span className="text-sm font-semibold text-gray-700 tracking-wide">Meet the new Script</span>
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium text-muted-foreground">Introducing Aria AI 3.0</span>
           </motion.div>
 
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
-            className="text-6xl md:text-[5.5rem] font-bold tracking-tight text-primary max-w-4xl leading-[1.05]"
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-5xl md:text-7xl font-bold tracking-tighter text-foreground max-w-4xl leading-[1.1]"
           >
-            The smart assistant for your best work.
+            Intelligence that feels <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">alive.</span>
           </motion.h1>
 
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-            className="mt-8 text-xl md:text-2xl text-muted-foreground max-w-2xl font-medium"
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl"
           >
-            Streamline tasks, write copy, generate images, and code effortlessly. Your ultimate workspace companion is here.
+            Your personal AI companion. Powerful enough for complex coding, casual enough for daily chats. Experience the next evolution of conversation.
           </motion.p>
 
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: "easeOut" }}
-            className="mt-12 flex flex-col sm:flex-row items-center gap-4"
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="mt-10 flex flex-col sm:flex-row items-center gap-4"
           >
             {!user ? (
               <Button 
                 onClick={handleGoogleAuth}
                 disabled={isAuthenticating}
                 size="lg" 
-                className="w-full sm:w-auto text-lg h-14 px-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-transform hover:scale-105 active:scale-95"
+                className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 shadow-[0_0_30px_-5px_rgba(124,58,237,0.4)]"
               >
                 {isAuthenticating ? (
                   <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                ) : null}
-                Get Started for Free
+                ) : (
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 mr-3 bg-white rounded-full p-0.5" aria-hidden="true">
+                    <path d="M12.0003 4.75C13.7703 4.75 15.3553 5.36002 16.6053 6.54998L20.0303 3.125C17.9502 1.19 15.2353 0 12.0003 0C7.31028 0 3.25527 2.69 1.28027 6.60998L5.27028 9.70498C6.21525 6.86002 8.87028 4.75 12.0003 4.75Z" fill="#EA4335" />
+                    <path d="M23.49 12.275C23.49 11.49 23.415 10.73 23.3 10H12V14.51H18.47C18.18 15.99 17.34 17.25 16.08 18.1L19.945 21.1C22.2 19.01 23.49 15.92 23.49 12.275Z" fill="#4285F4" />
+                    <path d="M5.26498 14.2949C5.02498 13.5699 4.88501 12.7999 4.88501 11.9999C4.88501 11.1999 5.01998 10.4299 5.26498 9.7049L1.275 6.60986C0.46 8.22986 0 10.0599 0 11.9999C0 13.9399 0.46 15.7699 1.28 17.3899L5.26498 14.2949Z" fill="#FBBC05" />
+                    <path d="M12.0004 24.0001C15.2404 24.0001 17.9654 22.935 19.9454 21.095L16.0804 18.095C15.0054 18.82 13.6204 19.245 12.0004 19.245C8.8704 19.245 6.21537 17.135 5.26538 14.29L1.27539 17.385C3.25539 21.31 7.3104 24.0001 12.0004 24.0001Z" fill="#34A853" />
+                  </svg>
+                )}
+                Continue with Google
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             ) : (
               <Button 
                 onClick={() => setLocation("/chat")}
                 size="lg" 
-                className="w-full sm:w-auto text-lg h-14 px-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-transform hover:scale-105 active:scale-95"
+                className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 shadow-[0_0_30px_-5px_rgba(124,58,237,0.4)]"
               >
                 Go to Workspace
                 <ArrowRight className="ml-2 w-5 h-5" />
@@ -157,21 +191,21 @@ export default function Home() {
         </main>
 
         {/* Features Grid */}
-        <section className="px-6 py-28 relative z-10">
+        <section className="px-6 py-24 bg-muted/40 border-t border-border z-10">
           <div className="max-w-6xl mx-auto">
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 gap-8">
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5 }}
-                className="p-8 rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                className="p-6 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-card/60 transition-colors"
               >
-                <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center mb-6">
-                  <BrainCircuit className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-lg bg-violet-500/20 flex items-center justify-center mb-6">
+                  <BrainCircuit className="w-6 h-6 text-violet-400" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Intelligent Writing</h3>
-                <p className="text-gray-600 leading-relaxed">Instantly generate high-converting copy, essays, and reports with deep contextual awareness.</p>
+                <h3 className="text-xl font-semibold text-card-foreground mb-3">Advanced Reasoning</h3>
+                <p className="text-muted-foreground">Powered by the latest models for deep analysis, coding, and creative problem-solving.</p>
               </motion.div>
               
               <motion.div 
@@ -179,13 +213,13 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.1 }}
-                className="p-8 rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                className="p-6 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-card/60 transition-colors"
               >
-                <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center mb-6">
-                  <Zap className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-lg bg-indigo-500/20 flex items-center justify-center mb-6">
+                  <Zap className="w-6 h-6 text-indigo-400" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Lightning Fast</h3>
-                <p className="text-gray-600 leading-relaxed">Experience zero-latency streaming responses that keep up with your fastest workflows.</p>
+                <h3 className="text-xl font-semibold text-card-foreground mb-3">Lightning Fast</h3>
+                <p className="text-muted-foreground">Real-time streaming responses and an optimized interface that never keeps you waiting.</p>
               </motion.div>
 
               <motion.div 
@@ -193,13 +227,13 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.2 }}
-                className="p-8 rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                className="p-6 rounded-2xl bg-card/40 border border-white/5 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-card/60 transition-colors"
               >
-                <div className="w-12 h-12 rounded-xl bg-green-100 text-green-600 flex items-center justify-center mb-6">
-                  <Lock className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-6">
+                  <Lock className="w-6 h-6 text-blue-400" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Enterprise Secure</h3>
-                <p className="text-gray-600 leading-relaxed">Your data is strictly yours. Enjoy peace of mind with enterprise-grade privacy and security.</p>
+                <h3 className="text-xl font-semibold text-card-foreground mb-3">Private & Secure</h3>
+                <p className="text-muted-foreground">Your conversations are yours. Enterprise-grade security keeps your data protected.</p>
               </motion.div>
             </div>
           </div>
