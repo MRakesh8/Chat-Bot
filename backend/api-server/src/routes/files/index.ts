@@ -4,10 +4,10 @@ import path from "path";
 import fs from "fs";
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { knowledgeCategories, knowledgeSources, projects } from "@workspace/db";
+import { knowledgeCategories, knowledgeSources, projects, knowledgeChunks } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
-import { processKnowledgeSource, extractSourceContent } from "../../services/knowledge";
+import { processKnowledgeSource, extractSourceContent, invalidateKnowledgeCache } from "../../services/knowledge";
 import { extractYouTubeId } from "../../lib/youtube";
 import { ai } from "@workspace/integrations-gemini-ai";
 
@@ -378,7 +378,9 @@ router.delete("/:id", async (req, res) => {
       }
     }
 
+    await db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledgeSourceId, id));
     await db.delete(knowledgeSources).where(eq(knowledgeSources.id, id));
+    await invalidateKnowledgeCache(record.projectId);
     res.status(204).send();
   } catch (err: any) {
     req.log.error({ err }, "Error deleting source");

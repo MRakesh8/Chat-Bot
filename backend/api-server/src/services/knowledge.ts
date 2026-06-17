@@ -554,7 +554,7 @@ export async function searchProjectKnowledge(params: {
           notes: knowledgeSources.notes,
         })
         .from(knowledgeChunks)
-        .leftJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
+        .innerJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
         .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
         .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding)))
         .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
