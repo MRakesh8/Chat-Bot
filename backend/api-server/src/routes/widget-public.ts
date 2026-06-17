@@ -108,7 +108,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     });
     const userId = project ? project.userId : null;
 
-    // Resolve Key (Project -> User -> System)
+    // Resolve Key (Project -> User -> System -> Env)
     const projectKey = await db.query.projectApiKeys.findFirst({
       where: and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
     });
@@ -121,6 +121,37 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       activeKey = crypto.decrypt(projectKey.encryptedKey); // Decrypted here
       providerName = projectKey.provider;
       modelName = projectKey.model || modelName;
+    } else {
+      // Fallback logic to User (project owner) or System keys
+      let userKey = null;
+      if (userId) {
+        userKey = await db.query.userApiKeys.findFirst({
+          where: and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
+        });
+      }
+      
+      if (userKey) {
+        activeKey = crypto.decrypt(userKey.encryptedKey);
+        providerName = userKey.provider;
+      } else {
+        const systemKeys = await db.query.userApiKeys.findMany({
+          where: and(eq(userApiKeys.isSystem, true), eq(userApiKeys.isEnabled, true))
+        });
+        if (systemKeys.length > 0) {
+          activeKey = crypto.decrypt(systemKeys[0].encryptedKey);
+          providerName = systemKeys[0].provider;
+        } else if (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+          activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+          providerName = "gemini";
+          modelName = "gemini-2.5-flash";
+        }
+      }
+    }
+
+    if (!activeKey) {
+      res.write(`data: ${JSON.stringify({ content: "Sorry, no AI API keys are configured for this chatbot. Please configure an API key in your dashboard." })}\n\n`);
+      res.end();
+      return res;
     }
 
     const lastUserMessage = messages[messages.length - 1]?.content || "";
@@ -139,7 +170,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         Respond with only "YES" or "NO".`;
         
         let confirmRes;
-        if (projectKey && providerName === "gemini" && activeKey) {
+        if (providerName === "gemini") {
           const directClient = new GoogleGenAI({
             apiKey: activeKey,
             httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
@@ -177,7 +208,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       let verifiedText = "";
       try {
         let searchRes;
-        if (projectKey && providerName === "gemini" && activeKey) {
+        if (providerName === "gemini") {
           const directClient = new GoogleGenAI({
             apiKey: activeKey,
             httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
@@ -219,7 +250,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         
         Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
 
-        if (projectKey && providerName === "gemini" && activeKey) {
+        if (providerName === "gemini") {
           const directClient = new GoogleGenAI({
             apiKey: activeKey,
             httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
@@ -268,6 +299,36 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Error retrieving knowledge for widget chat:", err);
     }
 
+    // Non-Gemini Fallback: returns whole content in single chunk
+    if (providerName !== "gemini") {
+      const adapter = new UniversalProviderAdapter({
+        provider: providerName,
+        apiKey: activeKey as string,
+        model: modelName
+      });
+      
+      const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions.
+      
+      Knowledge Base Context:
+      ${contextString}
+      
+      Answer user questions accurately and concisely.`;
+
+      const fullMessages = [
+        { role: "system" as const, content: systemPrompt },
+        ...messages
+      ];
+
+      const response = await adapter.generateChat({
+        messages: fullMessages as any,
+        temperature: 0.7
+      });
+
+      res.write(`data: ${JSON.stringify({ content: response.content })}\n\n`);
+      res.end();
+      return res;
+    }
+
     const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions. If the user tells you that you made a mistake or gave a wrong answer, check your sources, search the web if needed, and correct your answer.
 
 Knowledge Base Context:
@@ -285,31 +346,18 @@ Answer user questions accurately and concisely.`;
     ];
 
     try {
-      if (projectKey && providerName === "gemini" && activeKey) {
-        const directClient = new GoogleGenAI({
-          apiKey: activeKey,
-          httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
-        });
-        const stream = await directClient.models.generateContentStream({
-          model: modelName,
-          contents: chatMessages as any
-        } as any);
-        for await (const chunk of stream) {
-          if (chunk.text) {
-            res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
-            if (typeof (res as any).flush === 'function') (res as any).flush();
-          }
-        }
-      } else {
-        const stream = await ai.models.generateContentStream(userId, {
-          model: "gemini-2.5-flash",
-          contents: chatMessages as any
-        });
-        for await (const chunk of stream) {
-          if (chunk.text) {
-            res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
-            if (typeof (res as any).flush === 'function') (res as any).flush();
-          }
+      const directClient = new GoogleGenAI({
+        apiKey: activeKey,
+        httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
+      });
+      const stream = await directClient.models.generateContentStream({
+        model: modelName,
+        contents: chatMessages as any
+      } as any);
+      for await (const chunk of stream) {
+        if (chunk.text) {
+          res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+          if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       }
     } catch (err) {
