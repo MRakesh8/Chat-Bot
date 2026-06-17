@@ -3,11 +3,14 @@ import { db, crypto } from "@workspace/db";
 import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
+import { GoogleGenAI } from "@google/genai";
+import { ai } from "@workspace/integrations-gemini-ai";
+import { searchProjectKnowledge, saveAutoKnowledgeItem } from "../services/knowledge";
 
 const router = Router();
 
 // Middleware to validate origin for widget routes
-router.use(async (req: Request, res: Response, next) => {
+router.use(async (req: Request, res: Response, next): Promise<any> => {
   // Extract token from URL path if possible, since req.params isn't populated yet in top-level use()
   const pathToken = req.path.split('/')[1]; 
   const widgetToken = req.params?.widgetToken || req.body?.widgetToken || req.query?.widgetToken || pathToken;
@@ -47,14 +50,14 @@ router.use(async (req: Request, res: Response, next) => {
 
     // Pass projectId to request
     (req as any).projectId = settings.projectId;
-    next();
+    return next();
   } catch (error) {
     console.error("Widget validation error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.get("/:widgetToken/config", async (req: Request, res: Response) => {
+router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<any> => {
   try {
     const projectId = (req as any).projectId;
     const settings = await db.query.projectWidgetSettings.findFirst({
@@ -66,7 +69,7 @@ router.get("/:widgetToken/config", async (req: Request, res: Response) => {
     }
 
     // Return safe configuration (no keys, no internal ids if possible)
-    res.json({
+    return res.json({
       botName: settings.botName,
       botAvatar: settings.botAvatar,
       welcomeMessage: settings.welcomeMessage,
@@ -80,19 +83,31 @@ router.get("/:widgetToken/config", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Failed to fetch widget config", error);
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
+router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<any> => {
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "Invalid messages format" });
   }
 
+  // SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
   try {
     const projectId = (req as any).projectId;
-    
+
+    // Get project details to know the owner's userId for key failover/rotation
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, projectId)
+    });
+    const userId = project ? project.userId : null;
+
     // Resolve Key (Project -> User -> System)
     const projectKey = await db.query.projectApiKeys.findFirst({
       where: and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
@@ -106,57 +121,209 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response) => {
       activeKey = crypto.decrypt(projectKey.encryptedKey); // Decrypted here
       providerName = projectKey.provider;
       modelName = projectKey.model || modelName;
-    } else {
-      // Fallback logic to User or System keys
-      const systemKeys = await db.query.userApiKeys.findMany({
-        where: and(eq(userApiKeys.isSystem, true), eq(userApiKeys.isEnabled, true))
-      });
-      if (systemKeys.length > 0) {
-        activeKey = crypto.decrypt(systemKeys[0].encryptedKey);
-        providerName = systemKeys[0].provider;
-      } else if (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
-        activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        providerName = "gemini";
-        modelName = "gemini-2.5-flash";
-      } else {
-        return res.status(503).json({ error: "No API keys configured" });
+    }
+
+    const lastUserMessage = messages[messages.length - 1]?.content || "";
+    const previousAssistantMessage = messages.length >= 2 ? messages[messages.length - 2]?.content : "";
+
+    // 1. Check if the user is pointing out a mistake
+    let userIsPointingOutMistake = false;
+    const isCorrectionTriggerWord = lastUserMessage.match(/\b(wrong|mistake|incorrect|false|error|fix|correct|not right|bullshit|fake)\b/i);
+    
+    if (isCorrectionTriggerWord && messages.length >= 3) {
+      try {
+        const confirmPrompt = `Analyze the user's message and determine if they are indicating that the assistant made a mistake, gave a wrong or incorrect answer in the previous turn, or is correcting/updating the assistant's facts.
+        
+        User Message: "${lastUserMessage}"
+        
+        Respond with only "YES" or "NO".`;
+        
+        let confirmRes;
+        if (projectKey && providerName === "gemini" && activeKey) {
+          const directClient = new GoogleGenAI({
+            apiKey: activeKey,
+            httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
+          });
+          confirmRes = await directClient.models.generateContent({
+            model: modelName,
+            contents: confirmPrompt
+          });
+        } else {
+          confirmRes = await ai.models.generateContent(userId, {
+            model: "gemini-2.5-flash",
+            contents: confirmPrompt
+          });
+        }
+        
+        if (confirmRes.text?.trim().toUpperCase() === "YES") {
+          userIsPointingOutMistake = true;
+        }
+      } catch (err) {
+        console.error("Error confirming correction:", err);
       }
     }
 
-    const adapter = new UniversalProviderAdapter({
-      provider: providerName,
-      apiKey: activeKey as string, 
-      model: modelName
-    });
+    // 2. Correction flow using Google Search
+    if (userIsPointingOutMistake) {
+      res.write(`data: ${JSON.stringify({ content: "🔍 *Checking Google Search to verify and correct my answer...*\n\n" })}\n\n`);
+      if (typeof (res as any).flush === 'function') (res as any).flush();
 
-    // TODO: Retrieval logic filtering by isWidgetExposed
-    // This is a placeholder for actual vector search
-    // const context = await retrieveKnowledge(projectId, lastUserMessage, true);
+      const verifyPrompt = `The user claims the assistant's previous answer was wrong or incomplete.
+      Previous Assistant Answer: "${previousAssistantMessage}"
+      User Message: "${lastUserMessage}"
+      
+      Perform a Google search to verify the facts and find the correct, up-to-date answer. Summarize the verified facts clearly.`;
 
-    const systemPrompt = `You are a helpful assistant.`;
+      let verifiedText = "";
+      try {
+        let searchRes;
+        if (projectKey && providerName === "gemini" && activeKey) {
+          const directClient = new GoogleGenAI({
+            apiKey: activeKey,
+            httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
+          });
+          searchRes = await directClient.models.generateContent({
+            model: modelName,
+            contents: verifyPrompt,
+            config: {
+              tools: [{ googleSearch: {} }]
+            }
+          } as any);
+        } else {
+          searchRes = await ai.models.generateContent(userId, {
+            model: "gemini-2.5-flash",
+            contents: verifyPrompt,
+            tools: [{ googleSearch: {} }]
+          });
+        }
 
-    const fullMessages = [
-      { role: "system", content: systemPrompt },
-      ...messages
+        verifiedText = searchRes.text || "";
+
+        // Save new verified fact to project knowledge base
+        const correctionContent = `Corrected Fact (based on user feedback and Google search verification):
+        Topic/Context: User stated "${lastUserMessage}" in response to previous answer "${previousAssistantMessage}".
+        Verified Correct Information: ${verifiedText}
+        Updated on: ${new Date().toISOString()}`;
+
+        await saveAutoKnowledgeItem({
+          projectId,
+          userId,
+          content: correctionContent
+        });
+
+        // Stream explanation & answer
+        const systemPrompt = `You are a helpful customer support chatbot. The user just corrected your previous answer, and you verified the correct info using Google Search.
+        
+        Verified Information from Google:
+        ${verifiedText}
+        
+        Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
+
+        if (projectKey && providerName === "gemini" && activeKey) {
+          const directClient = new GoogleGenAI({
+            apiKey: activeKey,
+            httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
+          });
+          const stream = await directClient.models.generateContentStream({
+            model: modelName,
+            contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
+          } as any);
+          for await (const chunk of stream) {
+            if (chunk.text) {
+              res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+              if (typeof (res as any).flush === 'function') (res as any).flush();
+            }
+          }
+        } else {
+          const stream = await ai.models.generateContentStream(userId, {
+            model: "gemini-2.5-flash",
+            contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
+          });
+          for await (const chunk of stream) {
+            if (chunk.text) {
+              res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+              if (typeof (res as any).flush === 'function') (res as any).flush();
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error in correction flow:", err);
+        res.write(`data: ${JSON.stringify({ content: "Sorry, I encountered an error while verifying the information on Google." })}\n\n`);
+      }
+      res.end();
+      return res;
+    }
+
+    // 3. Normal flow with Knowledge Base retrieval
+    let contextString = "";
+    try {
+      const searchResult = await searchProjectKnowledge({
+        projectIds: [projectId],
+        userId,
+        query: lastUserMessage,
+        limit: 3
+      });
+      contextString = searchResult.contextString;
+    } catch (err) {
+      console.error("Error retrieving knowledge for widget chat:", err);
+    }
+
+    const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions. If the user tells you that you made a mistake or gave a wrong answer, check your sources, search the web if needed, and correct your answer.
+
+Knowledge Base Context:
+${contextString}
+
+Answer user questions accurately and concisely.`;
+
+    const chatMessages = [
+      { role: "user", parts: [{ text: systemPrompt }] },
+      { role: "model", parts: [{ text: "Understood. I will act as a helpful customer support chatbot using the provided knowledge base context." }] },
+      ...messages.map(m => ({
+        role: (m.role === "assistant" ? "model" : "user"),
+        parts: [{ text: m.content }]
+      }))
     ];
 
-    const response = await adapter.generateChat({
-      messages: fullMessages as any,
-      temperature: 0.7
-    });
+    try {
+      if (projectKey && providerName === "gemini" && activeKey) {
+        const directClient = new GoogleGenAI({
+          apiKey: activeKey,
+          httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
+        });
+        const stream = await directClient.models.generateContentStream({
+          model: modelName,
+          contents: chatMessages as any
+        } as any);
+        for await (const chunk of stream) {
+          if (chunk.text) {
+            res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
+          }
+        }
+      } else {
+        const stream = await ai.models.generateContentStream(userId, {
+          model: "gemini-2.5-flash",
+          contents: chatMessages as any
+        });
+        for await (const chunk of stream) {
+          if (chunk.text) {
+            res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error generating normal stream response:", err);
+      res.write(`data: ${JSON.stringify({ content: "Sorry, I am having trouble connecting right now." })}\n\n`);
+    }
+    res.end();
+    return res;
 
-    res.json({
-      content: response.content,
-      usage: response.usage
-    });
   } catch (error: any) {
-    console.error("Widget chat error:", error);
-    // Return a more descriptive error if it's an API Error, otherwise generic 500
-    const errorMessage = error.message && error.message.includes("API error") 
-      ? error.message 
-      : "Failed to process chat";
-      
-    res.status(500).json({ error: errorMessage });
+    console.error("Widget chat general error:", error);
+    res.write(`data: ${JSON.stringify({ content: "Internal server error occurred." })}\n\n`);
+    res.end();
+    return res;
   }
 });
 

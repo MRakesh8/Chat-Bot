@@ -62,6 +62,15 @@
         --text-muted: #a1a1aa;
         all: initial;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        z-index: 2147483647 !important;
+        pointer-events: none !important;
       }
       
       * { box-sizing: border-box; }
@@ -69,6 +78,7 @@
       .widget-wrapper {
         position: fixed;
         z-index: 2147483647;
+        pointer-events: none !important;
       }
 
       .widget-wrapper.position-bottom-right { bottom: 24px; right: 24px; }
@@ -83,13 +93,14 @@
         color: white;
         display: flex;
         align-items: center;
-        justify-center;
+        justify-content: center;
         box-shadow: 0 10px 25px rgba(0,0,0,0.2);
         cursor: pointer;
         border: none;
         outline: none;
         transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         justify-content: center;
+        pointer-events: auto !important;
       }
       .floating-button:hover { transform: scale(1.05); }
       .floating-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
@@ -111,7 +122,7 @@
         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
         opacity: 0;
         transform: translateY(20px) scale(0.95);
-        pointer-events: none;
+        pointer-events: none !important;
         transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.1);
         transform-origin: bottom right;
       }
@@ -123,7 +134,7 @@
       .chat-panel.open {
         opacity: 1;
         transform: translateY(0) scale(1);
-        pointer-events: auto;
+        pointer-events: auto !important;
       }
 
       /* Mobile Full Screen */
@@ -258,6 +269,21 @@
 
   let chatHistory = [];
 
+  function formatMessageText(text) {
+    if (!text) return "";
+    let escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+      
+    escaped = escaped.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    escaped = escaped.replace(/^\*\s+(.*?)$/gm, "&bull; $1");
+    escaped = escaped.replace(/\n/g, "<br>");
+    return escaped;
+  }
+
   function render() {
     // If custom container
     if (config.displayMode === "custom" && config.customContainerId) {
@@ -291,7 +317,7 @@
             </button>
           </div>
           <div class="messages" id="messages-container">
-            <div class="message bot">${config.welcomeMessage}</div>
+            <div class="message bot">${formatMessageText(config.welcomeMessage)}</div>
             <div class="typing-indicator" id="typing-indicator">
               <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
             </div>
@@ -319,7 +345,7 @@
               </div>
             </div>
             <div class="messages" id="messages-container">
-              <div class="message bot">${config.welcomeMessage}</div>
+              <div class="message bot">${formatMessageText(config.welcomeMessage)}</div>
               <div class="typing-indicator" id="typing-indicator">
                 <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
               </div>
@@ -389,11 +415,60 @@
           
           if (!res.ok) throw new Error("API Error");
           
-          const data = await res.json();
           typingIndicator.classList.remove('visible');
           
-          addMessage('bot', data.content);
-          chatHistory.push({ role: 'assistant', content: data.content });
+          const botMsgDiv = document.createElement('div');
+          botMsgDiv.className = 'message bot';
+          messagesContainer.insertBefore(botMsgDiv, typingIndicator);
+          scrollToBottom();
+          
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let botResponse = "";
+          let buffer = "";
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(trimmed.substring(6));
+                  if (data.content) {
+                    botResponse += data.content;
+                    botMsgDiv.innerHTML = formatMessageText(botResponse);
+                    scrollToBottom();
+                  }
+                } catch (e) {
+                  // Ignore parse error
+                }
+              }
+            }
+          }
+          
+          // Flush remainder
+          if (buffer.startsWith("data: ")) {
+             try {
+               const data = JSON.parse(buffer.substring(6));
+               if (data.content) {
+                 botResponse += data.content;
+                 botMsgDiv.innerHTML = formatMessageText(botResponse);
+                 scrollToBottom();
+               }
+             } catch(e) {}
+          }
+          
+          if (!botResponse) {
+            botMsgDiv.textContent = "Sorry, I received an empty response.";
+          } else {
+            chatHistory.push({ role: 'assistant', content: botResponse });
+          }
         } catch (err) {
           typingIndicator.classList.remove('visible');
           addMessage('bot', 'Sorry, I am having trouble connecting right now.');
@@ -408,7 +483,7 @@
     
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${role}`;
-    msgDiv.textContent = text;
+    msgDiv.innerHTML = formatMessageText(text);
     
     messagesContainer.insertBefore(msgDiv, typingIndicator);
     scrollToBottom();
