@@ -697,14 +697,36 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     }
   } else if (sourceType === "website") {
     const safeUrl = assertPublicHttpUrl(sourceUrl);
-    const res = await fetch(safeUrl, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error(`Failed to fetch website: ${res.statusText}`);
-    const html = (await res.text()).slice(0, 2_000_000);
-    extractedText = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    try {
+      const res = await fetch(safeUrl, { 
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5"
+        },
+        signal: AbortSignal.timeout(10000) 
+      });
+      if (!res.ok) throw new Error(`Failed to fetch website: ${res.statusText}`);
+      const html = (await res.text()).slice(0, 2_000_000);
+      extractedText = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch (err) {
+      logger.warn({ err }, `Direct fetch failed for website ${safeUrl}. Falling back to Gemini search.`);
+      try {
+        const res = await ai.models.generateContent(params.userId || null, {
+          model: "gemini-2.5-flash",
+          contents: `Search the web for this URL and extract the main text content, purpose, and key details: ${safeUrl}`,
+          tools: [{ googleSearch: {} }],
+        });
+        extractedText = res.text || `Website Reference: ${safeUrl}`;
+      } catch (geminiErr) {
+        logger.warn({ err: geminiErr }, `Gemini fallback failed for website ${safeUrl}. Saving link only.`);
+        extractedText = `Website Reference: ${safeUrl}`;
+      }
+    }
   } else if (sourceType === "github") {
     let repoPath = sourceUrl?.replace(/https?:\/\/github\.com\//, "");
     if (repoPath?.endsWith("/")) repoPath = repoPath.slice(0, -1);
@@ -732,7 +754,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     }
     logger.info(`Extracting Instagram video content via Gemini for ${sourceUrl}`);
     try {
-      const res = await ai.models.generateContent({
+      const res = await ai.models.generateContent(params.userId || null, {
         model: "gemini-2.5-flash",
         contents: `Search the web for this Instagram URL and extract any available public metadata, caption, visible text, and likely topic for this Instagram reel/post/video. URL: ${sourceUrl}`,
         tools: [{ googleSearch: {} }],
