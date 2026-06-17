@@ -71,6 +71,7 @@
         height: 100% !important;
         z-index: 2147483647 !important;
         pointer-events: none !important;
+        overflow: hidden !important;
       }
       
       * { box-sizing: border-box; }
