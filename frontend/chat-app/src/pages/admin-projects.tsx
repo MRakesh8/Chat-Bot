@@ -94,7 +94,7 @@ export default function AdminProjectsPage() {
   
   const authFetch = useAuthFetch();
 
-  const { data: projectList, isLoading } = useQuery({
+  const { data: projectList, isLoading, isError, isFetching } = useQuery({
     queryKey: ["admin-projects"],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/projects"));
@@ -272,6 +272,18 @@ export default function AdminProjectsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-24">
             <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+          </div>
+        ) : (isError || (isFetching && !projectList?.length)) ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
+            <div className="w-16 h-16 rounded-2xl bg-card/40 border border-foreground/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+            <div>
+              <p className="text-foreground font-medium mb-1">Connecting to server...</p>
+              <p className="text-muted-foreground text-sm">
+                The server is waking up. Your data will load automatically in a few seconds.
+              </p>
+            </div>
           </div>
         ) : !projectList?.length ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
