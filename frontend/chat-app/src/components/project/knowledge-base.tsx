@@ -537,33 +537,41 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                     <Folder className={`w-4 h-4 ${activeCategoryId === cat.id ? "text-primary" : ""}`} />
                     <span className="truncate text-sm">{cat.name}</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-6 w-6 text-muted-foreground hover:text-primary"
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setRenameCategoryId(cat.id); 
-                        setRenameCategoryName(cat.name); 
-                        setIsRenameCategoryOpen(true); 
-                      }}
-                      title="Rename Category"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        deleteCategoryMutation.mutate(cat.id); 
-                      }}
-                      title="Delete Category"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                  <div className="flex items-center">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className={`h-6 w-6 text-muted-foreground hover:text-foreground transition-opacity ${activeCategoryId === cat.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 data-[state=open]:opacity-100"}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setRenameCategoryId(cat.id); 
+                          setRenameCategoryName(cat.name); 
+                          setIsRenameCategoryOpen(true); 
+                        }}>
+                          <Pencil className="w-4 h-4 mr-2" />
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            deleteCategoryMutation.mutate(cat.id); 
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               ))
@@ -578,45 +586,10 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
           <>
             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
               <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    {categories.find(c => c.id === activeCategoryId)?.name || "Knowledge"}
-                  </h2>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-70 hover:opacity-100 transition-opacity">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
-                      <DropdownMenuItem onClick={() => {
-                        const cat = categories.find(c => c.id === activeCategoryId);
-                        if (cat) {
-                          setRenameCategoryId(cat.id);
-                          setRenameCategoryName(cat.name);
-                          setIsRenameCategoryOpen(true);
-                        }
-                      }}>
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Rename Category
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                        onClick={() => {
-                          if (activeCategoryId) {
-                            deleteCategoryMutation.mutate(activeCategoryId);
-                          }
-                        }}
-                        disabled={deleteCategoryMutation.isPending}
-                      >
-                        {deleteCategoryMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />} 
-                        Delete Category
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">Manage files, links, and notes in this category.</p>
+                <h2 className="text-lg font-semibold text-foreground">
+                  {categories.find(c => c.id === activeCategoryId)?.name || "Knowledge"}
+                </h2>
+                <p className="text-sm text-muted-foreground">Manage files, links, and notes in this category.</p>
               </div>
               
               <Dialog open={isAddKnowledgeOpen} onOpenChange={setIsAddKnowledgeOpen}>
