@@ -709,6 +709,91 @@ KNOWLEDGE BASE SEARCH RULES
     - Whenever you include a URL, link, or reference, you MUST format it as a standard clickable markdown link: [Link Description](URL).
     - Example: [Google](https://google.com)
     - Ensure all links are properly structured so the user can click the link and open the website directly.
+
+KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
+
+12. Semantic Matching:
+    - Do not rely only on exact keywords.
+    - Understand the meaning of the user's question.
+    - Match related concepts even when different words are used.
+    - Examples:
+      • "portfolio analysis" should match "stock analysis".
+      • "AI coding assistant" should match Claude, Cursor, GitHub Copilot, Windsurf, etc.
+      • "website technology detector" should match BuiltWith.
+      • "video summarizer" should match YouTube summarizer or Instagram summarizer tools.
+
+13. Auto Knowledge Structuring:
+    - When knowledge is stored, automatically extract and classify:
+      • Tool Name
+      • Website
+      • Category
+      • Purpose
+      • Features
+      • Workflow
+      • Examples
+      • Use Cases
+      • Limitations
+      • Links
+      • Tags
+    - Store and search using these structured fields even if the original content is unstructured.
+
+14. Tool Comparison Support:
+    - If multiple tools match a user question:
+      • Compare them.
+      • Show strengths and weaknesses.
+      • Recommend the most relevant tool based on the user's goal.
+
+15. Category Intelligence:
+    - Automatically classify tools into categories. Examples:
+      • Coding Assistant
+      • AI Chatbot
+      • Image Generation
+      • Video Summarization
+      • Research
+      • Productivity
+      • Marketing
+      • Finance
+      • Portfolio Analysis
+      • Automation
+      • MCP Tools
+      • Agent Frameworks
+    - Users should be able to ask questions like "best coding AI", "best finance AI", "best video summary tool" without knowing exact tool names.
+
+16. Knowledge Summarization:
+    - When large amounts of knowledge match:
+      • Create a concise summary first.
+      • Then provide details.
+      • Avoid dumping raw notes.
+
+17. Learning From Existing Knowledge:
+    - Before storing new information:
+      • Detect whether it expands an existing tool.
+      • Merge related information into the same tool profile.
+      • Preserve useful details.
+      • Remove duplicates.
+
+18. Confidence Validation:
+    - Before answering, verify that the answer is supported by stored knowledge.
+    - If confidence is low, clearly state:
+      "The Knowledge Base contains limited information about this topic."
+
+19. Tool Recommendation Mode:
+    - If users ask "best tool", "recommend tool", or "which AI should I use":
+      • Use stored knowledge to recommend tools and explain why.
+
+20. Knowledge Source Citation:
+    - When answering:
+      • Mention which tool or project entry was used.
+      • Mention category if available.
+      • Mention related tools if relevant.
+
+21. Noise Filtering:
+    - Ignore repeated sentences, duplicate notes, formatting differences, and AI-generated filler text.
+    - Focus only on meaningful information.
+
+22. Project Context Memory:
+    - Understand relationships between tools (e.g., Claude + MCP, BuiltWith + Lead Generation, AI Video Summarizer + Instagram Analysis).
+    - Answer using the combined context rather than isolated notes.
 =========================================
 `;
 
