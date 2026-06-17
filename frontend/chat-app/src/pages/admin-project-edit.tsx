@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil } from "lucide-react";
+import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
 import { Deployment } from "../components/project/deployment";
@@ -184,14 +184,6 @@ export default function AdminProjectEditPage() {
     <>
       <div className="flex-1 w-full min-w-0 px-6 py-6 md:px-8 lg:px-10">
         <div className="flex items-center gap-6 mb-12">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLocation("/admin/projects")}
-            className="text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
           <div>
             {isNew ? (
               <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">
