@@ -232,7 +232,7 @@ export default function AdminProjectEditPage() {
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 rounded-full hover:bg-white/10" 
+                      className="opacity-100 transition-opacity h-8 w-8 rounded-full hover:bg-white/10" 
                       onClick={(e) => { e.stopPropagation(); setTempName(project?.name || name); setIsEditingName(true); }}
                     >
                       <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />

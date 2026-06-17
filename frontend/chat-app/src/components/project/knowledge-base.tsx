@@ -537,7 +537,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                     <Folder className={`w-4 h-4 ${activeCategoryId === cat.id ? "text-primary" : ""}`} />
                     <span className="truncate text-sm">{cat.name}</span>
                   </div>
-                  <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className={`flex items-center transition-opacity ${activeCategoryId === cat.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"}`}>
                     <Button 
                       variant="ghost" 
                       size="icon" 
