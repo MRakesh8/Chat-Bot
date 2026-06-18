@@ -431,12 +431,17 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       return;
     }
 
+    if (editingSource.sourceType === "instagram" && !editUrl.trim().match(/^https?:\/\/(www\.)?instagram\.com\/.*$/i)) {
+      toast({ title: "Error", description: "Please enter a valid Instagram URL", variant: "destructive" });
+      return;
+    }
+
     updateSourceMutation.mutate({
       id: editingSource.id,
       tag: editTag.trim(),
       categoryId: editCategoryId,
       ...(editingSource.sourceType === "note" ? { notes: editNotes.trim() } : {}),
-      ...(["website", "youtube", "github"].includes(editingSource.sourceType)
+      ...(["website", "youtube", "github", "instagram"].includes(editingSource.sourceType)
         ? { sourceUrl: editUrl.trim() }
         : {}),
     });
@@ -622,6 +627,12 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground border border-border">
                             Review the AI-suggested metadata before saving. You can edit these fields.
                           </div>
+                          {draftData.sourceUrl && (
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Source URL</label>
+                              <Input value={draftData.sourceUrl} readOnly disabled className="bg-muted/50 opacity-80" />
+                            </div>
+                          )}
                           <div className="space-y-2">
                             <label className="text-sm font-medium">Title</label>
                             <Input value={draftData.title} onChange={(e) => setDraftData({ ...draftData, title: e.target.value })} />
@@ -824,7 +835,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       processing: { color: "bg-blue-500 animate-pulse", text: "text-blue-500", label: "Processing" },
                     }[source.status] || { color: "bg-muted-foreground", text: "text-muted-foreground", label: source.status };
 
-                    const previewText = source.notes || source.summary || (source.sourceType === "website" || source.sourceType === "youtube" || source.sourceType === "github" ? source.sourceUrl : source.filename) || "No preview available.";
+                    const previewText = source.notes || source.summary || (["website", "youtube", "github", "instagram"].includes(source.sourceType) ? source.sourceUrl : source.filename) || "No preview available.";
 
                     return (
                     <div 
@@ -964,11 +975,12 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                 </div>
               )}
 
-              {["website", "youtube", "github"].includes(editingSource.sourceType) && (
+              {["website", "youtube", "github", "instagram"].includes(editingSource.sourceType) && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
                     {editingSource.sourceType === "youtube" ? "YouTube URL" :
-                     editingSource.sourceType === "github" ? "GitHub Repository URL" : "Website URL"}
+                     editingSource.sourceType === "github" ? "GitHub Repository URL" :
+                     editingSource.sourceType === "instagram" ? "Instagram URL" : "Website URL"}
                   </label>
                   <Input value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
                 </div>

@@ -713,6 +713,7 @@ KNOWLEDGE BASE SEARCH RULES
     - Whenever you include a URL, link, or reference, you MUST format it as a standard clickable markdown link: [Link Description](URL).
     - Example: [Google](https://google.com)
     - Ensure all links are properly structured so the user can click the link and open the website directly.
+    - You MUST find and output the relevant links (Source URL, website links, video links, instagram links, or github links) from the matched knowledge base item in your response. For example, if the user asks about color patterns, and the matched knowledge item includes an Instagram URL, you MUST write: "[Instagram Link](https://www.instagram.com/...)" or similar in your response so the user can click and view the source. Do not skip or hide any links that are relevant to the user's question.
 
 KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 
