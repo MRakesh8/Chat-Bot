@@ -1,3 +1,7 @@
+/**
+ * @file test_cobalt.js
+ * @description Test script to verify extracting metadata and content from an Instagram URL via the Cobalt API service.
+ */
 const url = "https://api.cobalt.tools/api/json";
 fetch(url, {
   method: "POST",

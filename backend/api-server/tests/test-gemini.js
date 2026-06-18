@@ -1,4 +1,7 @@
-// Test script for Gemini API - API key must be set in environment variable GEMINI_API_KEY
+/**
+ * @file test-gemini.js
+ * @description Test script to verify connection to the Gemini API endpoint directly using standard fetch and the environment API key.
+ */
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
   console.error("Error: GEMINI_API_KEY environment variable is not set.");

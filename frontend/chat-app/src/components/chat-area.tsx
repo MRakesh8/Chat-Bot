@@ -67,6 +67,8 @@ const MemoizedMessage = memo(function MemoizedMessage({
   basePath,
   hasSelectedProjects,
   isSelected,
+  onToggleSelection,
+  onAddToProject,
   onCopy,
   onRegenerate,
   onOpenArtifact,

@@ -159,7 +159,7 @@ export function ApiKeysSettings() {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 pt-2 border-t border-border/50 gap-2">
                   <div className="text-xs text-muted-foreground break-all">
                     Provider: <span className="uppercase font-medium">{key.provider}</span>
-                    {key.failureReason && <span className="text-red-500 ml-2" title={key.failureReason}>| Error: {key.failureReason.substring(0, 30)}...</span>}
+                    {key.status !== "HEALTHY" && key.failureReason && <span className="text-red-500 ml-2" title={key.failureReason}>| Error: {key.failureReason.substring(0, 30)}...</span>}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => handleAction(key.id, "primary")} className="p-1.5 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10 rounded-md transition-colors" title="Set as Primary">

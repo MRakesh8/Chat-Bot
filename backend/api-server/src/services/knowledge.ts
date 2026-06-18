@@ -1,3 +1,7 @@
+/**
+ * @file knowledge.ts
+ * @description Core service handling text extraction (from files, youtube, websites), document chunking, embedding, vector database integration, search retrieval scoring, and duplicate detection.
+ */
 import { db, knowledgeCategories, knowledgeChunks, knowledgeSources, projects, knowledgeRetrievalCache } from "@workspace/db";
 import { supabaseAdmin } from "../lib/supabase";
 import { ai } from "@workspace/integrations-gemini-ai";

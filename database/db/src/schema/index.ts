@@ -1,3 +1,7 @@
+/**
+ * @file index.ts (Schema)
+ * @description Declares the PostgreSQL database schema using Drizzle ORM, defining tables for users, projects, knowledge base categories, items (sources), chunks, chat sessions, messages, and feedback.
+ */
 import {
   pgTable,
   text,

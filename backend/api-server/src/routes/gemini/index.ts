@@ -1,3 +1,7 @@
+/**
+ * @file index.ts (gemini route)
+ * @description Routes for processing chat sessions and messaging with the Gemini model. Handles context (RAG) loading, chat logs, history limits, and feedback loops.
+ */
 import { Router } from "express";
 import { and, eq, desc, like, inArray, or, isNull, gt } from "drizzle-orm";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";

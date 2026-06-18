@@ -1,3 +1,7 @@
+/**
+ * @file index.ts
+ * @description Initializes the Drizzle ORM client with pg.Pool and exports the database connection instance (`db`).
+ */
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";

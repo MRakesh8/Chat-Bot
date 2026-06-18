@@ -1,7 +1,15 @@
+/**
+ * @file seed-db.mjs
+ * @description Seeds the PostgreSQL database with the default system API key required for Gemini integrations.
+ * It reads the database connection string from environment variables and checks for existing system keys before inserting.
+ */
 import postgres from "postgres";
 import { config } from "dotenv";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
 
-config();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../../../.env") });
 
 async function checkAndSeed() {
   const connectionString = process.env.DATABASE_URL;

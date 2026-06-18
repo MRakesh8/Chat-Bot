@@ -1,3 +1,7 @@
+/**
+ * @file index.ts (files route)
+ * @description Defines Express routes for uploading, analyzing, and managing knowledge sources (files, URLs, repositories, notes) in the system.
+ */
 import { Router } from "express";
 import multer from "multer";
 import path from "path";

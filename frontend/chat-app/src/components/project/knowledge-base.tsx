@@ -1,3 +1,8 @@
+/**
+ * @file knowledge-base.tsx
+ * @description Frontend React component for the project knowledge base dashboard.
+ * It manages categories, files uploads, text notes, web/instagram/github/video link indexing, and exposes control switches.
+ */
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../contexts/AuthContext";

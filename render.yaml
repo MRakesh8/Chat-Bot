@@ -1,3 +1,4 @@
+# Render infrastructure-as-code deployment configuration for the backend API service.
 services:
   - type: web
     name: chat-bot-api

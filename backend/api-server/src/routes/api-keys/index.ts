@@ -164,6 +164,7 @@ router.put("/:id", async (req, res): Promise<any> => {
       updateData.status = "HEALTHY";
       updateData.lastSuccess = new Date();
       updateData.isEnabled = true;
+      updateData.failureReason = null;
     }
 
     await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, id));
@@ -203,14 +204,14 @@ router.post("/:id/test", async (req, res): Promise<any> => {
     const testRes = await testGeminiKey(decryptedKey || existing[0].encryptedKey);
 
     if (testRes.success) {
-      await db.update(userApiKeys).set({ status: "HEALTHY", isEnabled: true, lastSuccess: new Date() }).where(eq(userApiKeys.id, id));
+      await db.update(userApiKeys).set({ status: "HEALTHY", isEnabled: true, lastSuccess: new Date(), failureReason: null }).where(eq(userApiKeys.id, id));
       res.json({ status: "Healthy" });
     } else {
       if (testRes.message === "Quota Exceeded") {
-        await db.update(userApiKeys).set({ status: "QUOTA_EXCEEDED" }).where(eq(userApiKeys.id, id));
+        await db.update(userApiKeys).set({ status: "QUOTA_EXCEEDED", failureReason: testRes.message }).where(eq(userApiKeys.id, id));
         res.json({ status: "Quota Exceeded" });
       } else {
-        await db.update(userApiKeys).set({ status: "INVALID", isEnabled: false }).where(eq(userApiKeys.id, id));
+        await db.update(userApiKeys).set({ status: "INVALID", isEnabled: false, failureReason: testRes.message }).where(eq(userApiKeys.id, id));
         res.json({ status: "Invalid" });
       }
     }
@@ -225,7 +226,7 @@ router.patch("/:id/enable", async (req, res): Promise<any> => {
     const userId = (req as any).auth?.userId;
     const { id } = req.params;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    await db.update(userApiKeys).set({ isEnabled: true, status: "HEALTHY" }).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
+    await db.update(userApiKeys).set({ isEnabled: true, status: "HEALTHY", failureReason: null }).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
     res.json({ success: true, message: "Key enabled." });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to enable API key" });

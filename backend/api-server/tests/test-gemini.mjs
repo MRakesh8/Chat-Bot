@@ -1,3 +1,7 @@
+/**
+ * @file test-gemini.mjs
+ * @description ESM test script to verify connection to the Gemini API via the official `@google/genai` library client.
+ */
 import { GoogleGenAI } from "@google/genai";
 import { config } from "dotenv";
 

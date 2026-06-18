@@ -1,3 +1,7 @@
+/**
+ * @file check-console.js
+ * @description Test script using Puppeteer to navigate to a live portfolio page, checking and logging console warnings, page errors, or failed requests.
+ */
 const puppeteer = require('puppeteer');
 
 (async () => {

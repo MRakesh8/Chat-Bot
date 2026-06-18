@@ -1,3 +1,4 @@
+// Base TypeScript configuration options shared across all projects in the workspace.
 {
   "compilerOptions": {
     "isolatedModules": true,

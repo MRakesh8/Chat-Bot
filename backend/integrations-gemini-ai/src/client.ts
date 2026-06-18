@@ -62,16 +62,19 @@ class GeminiFailoverModels {
            dailyUsed: 0,
            status: "HEALTHY",
            cooldownUntil: null,
-           lastResetAt: now
+           lastResetAt: now,
+           failureReason: null
          }).where(eq(userApiKeys.id, key.id));
          key.dailyUsed = 0;
          key.status = "HEALTHY";
          key.cooldownUntil = null;
          key.lastResetAt = now;
+         key.failureReason = null;
        } else if (key.status === "COOLDOWN" && key.cooldownUntil && now > key.cooldownUntil) {
-         await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null }).where(eq(userApiKeys.id, key.id));
+         await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
          key.status = "HEALTHY";
          key.cooldownUntil = null;
+         key.failureReason = null;
        }
     }
 
@@ -139,7 +142,8 @@ class GeminiFailoverModels {
       dailyUsed: newUsed,
       lastSuccess: now,
       totalRequests: key.totalRequests + 1,
-      status
+      status,
+      failureReason: null
     }).where(eq(userApiKeys.id, key.id));
   }
 

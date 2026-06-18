@@ -1,3 +1,4 @@
+// TypeScript workspace configuration mapping project references.
 {
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,

@@ -1,4 +1,8 @@
 
+/**
+ * @file test_gemini_api.mjs
+ * @description ESM test script to check the local API server's chat endpoint (/api/gemini/conversations/:id/messages) directly.
+ */
 async function test() {
   try {
     const res = await fetch('http://localhost:3000/api/gemini/conversations/test-id/messages', {
