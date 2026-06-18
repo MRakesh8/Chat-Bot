@@ -4,7 +4,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Pencil, Edit2 } from "lucide-react";
+import { Loader2, Trash2, File as FileIcon, Link as LinkIcon, Youtube, Plus, Upload, RotateCcw, Folder, Github, StickyNote, MoreVertical, Search, Pencil, Edit2, Instagram } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { apiUrl } from "@/lib/api-url";
@@ -103,6 +103,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [tag, setTag] = useState("");
   const [draftData, setDraftData] = useState<{ title: string; tags: string; notes: string; file?: File; sourceUrl?: string; sourceType?: string } | null>(null);
@@ -293,6 +294,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
     setWebsiteUrl("");
     setVideoUrl("");
     setGithubUrl("");
+    setInstagramUrl("");
     setNotes("");
     setTag("");
     queryClient.invalidateQueries({ queryKey: ["knowledge-sources", projectId] });
@@ -452,6 +454,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       case "youtube": return <Youtube className="w-5 h-5 text-red-500" />;
       case "website": return <LinkIcon className="w-5 h-5 text-blue-400" />;
       case "github": return <Github className="w-5 h-5 text-foreground" />;
+      case "instagram": return <Instagram className="w-5 h-5 text-pink-500" />;
       case "note": return <StickyNote className="w-5 h-5 text-yellow-500" />;
       case "video": return <Youtube className="w-5 h-5 text-purple-500" />;
       case "image": return <FileIcon className="w-5 h-5 text-emerald-400" />;
@@ -623,7 +626,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                             <Input value={draftData.tags} onChange={(e) => setDraftData({ ...draftData, tags: e.target.value })} />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium">Summary Notes</label>
+                            <label className="text-sm font-medium">Detailed Data</label>
                             <Textarea className="min-h-[100px]" value={draftData.notes} onChange={(e) => setDraftData({ ...draftData, notes: e.target.value })} />
                           </div>
                           <div className="flex gap-2 justify-end pt-4">
@@ -722,19 +725,21 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       <TabsContent value="instagram" className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Instagram URL</label>
-                          <Input placeholder="https://www.instagram.com/p/..." value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} />
+                          <Input placeholder="https://www.instagram.com/p/... or https://www.instagram.com/reel/..." value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} />
                           <p className="text-xs text-muted-foreground">Add an Instagram link. The chatbot will explicitly mention this link when answering questions related to it.</p>
                         </div>
                         <Button 
                           className="w-full" 
                           onClick={() => {
-                            if (websiteUrl) {
-                              addSourceUrlMutation.mutate({ sourceType: "instagram", sourceUrls: [websiteUrl] } as any);
+                            if (!instagramUrl.trim().match(/^https?:\/\/(www\.)?instagram\.com\/.*$/i)) {
+                              toast({ title: "Error", description: "Please enter a valid Instagram URL", variant: "destructive" });
+                              return;
                             }
+                            handleAnalyze("instagram", instagramUrl);
                           }}
-                          disabled={!websiteUrl || addSourceUrlMutation.isPending}
+                          disabled={!instagramUrl.trim() || addSourceUrlMutation.isPending || isAnalyzing}
                         >
-                          {addSourceUrlMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LinkIcon className="w-4 h-4 mr-2" />}
+                          {(addSourceUrlMutation.isPending || isAnalyzing) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                           Add Instagram Link
                         </Button>
                       </TabsContent>
@@ -814,7 +819,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                       processing: { color: "bg-blue-500 animate-pulse", text: "text-blue-500", label: "Processing" },
                     }[source.status] || { color: "bg-muted-foreground", text: "text-muted-foreground", label: source.status };
 
-                    const previewText = source.summary || source.notes || (source.sourceType === "website" || source.sourceType === "youtube" || source.sourceType === "github" ? source.sourceUrl : source.filename) || "No preview available.";
+                    const previewText = source.notes || source.summary || (source.sourceType === "website" || source.sourceType === "youtube" || source.sourceType === "github" ? source.sourceUrl : source.filename) || "No preview available.";
 
                     return (
                     <div 

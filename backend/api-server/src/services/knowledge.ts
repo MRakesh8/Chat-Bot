@@ -224,7 +224,7 @@ Return strictly valid JSON:
   "tags": ["3 to 10 concise tags"],
   "tools": ["any specific tools, technologies, or software mentioned"],
   "steps": ["any step-by-step instructions or processes found"],
-  "notes": "brief useful notes",
+  "notes": "detailed notes and data containing all critical details, definitions, step-by-step instructions, and key information (do not summarize briefly)",
   "summary": "retrieval summary preserving tools, links, names, and use cases",
   "cleanedContent": "pure factual core of the text, completely stripping out any AI conversational wrappers (e.g. 'Understood...', 'I will...', 'Here is...', 'Let\\'s...', 'Project Structure', 'Category 1'), maintaining ONLY the exact factual information.",
   "websiteLinks": ["all website links"],
@@ -572,18 +572,18 @@ export async function searchProjectKnowledge(params: {
   for (const match of metadataMatches) {
     const id = match.id;
     if (!candidatesMap.has(id)) {
-      candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: match.summary || match.rawContent || match.notes || "" });
+      candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: match.notes || match.rawContent || match.summary || "" });
     }
   }
 
   for (const chunk of similarChunks) {
     const id = chunk.sourceId;
     if (id && !candidatesMap.has(id)) {
-      candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: chunk.chunkText || chunk.summary || chunk.rawContent || "" });
+      candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: chunk.chunkText || chunk.notes || chunk.rawContent || chunk.summary || "" });
     } else if (id && candidatesMap.has(id)) {
       const existing = candidatesMap.get(id);
       existing.isVectorMatch = true;
-      existing.contentText = existing.contentText.length > 0 ? existing.contentText : (chunk.chunkText || chunk.summary || chunk.rawContent || "");
+      existing.contentText = existing.contentText.length > 0 ? existing.contentText : (chunk.chunkText || chunk.notes || chunk.rawContent || chunk.summary || "");
     }
   }
 
@@ -656,7 +656,20 @@ export async function searchProjectKnowledge(params: {
   const retrievedIdsSet = new Set<string>();
 
   for (const candidate of topCandidates) {
-    const itemStr = `Category: ${candidate.categoryName || "Uncategorized"}\nTag: ${candidate.tag || "None"}\n\nContent:\n${candidate.contentText}`;
+    let itemStr = `Category: ${candidate.categoryName || "Uncategorized"}\nTag: ${candidate.tag || "None"}\n`;
+    if (candidate.sourceUrl) {
+      itemStr += `Source URL: ${candidate.sourceUrl}\n`;
+    }
+    if (candidate.websiteLinks && candidate.websiteLinks.length > 0) {
+      itemStr += `Website Links: ${candidate.websiteLinks.join(", ")}\n`;
+    }
+    if (candidate.videoLinks && candidate.videoLinks.length > 0) {
+      itemStr += `Video Links: ${candidate.videoLinks.join(", ")}\n`;
+    }
+    if (candidate.githubLinks && candidate.githubLinks.length > 0) {
+      itemStr += `GitHub Links: ${candidate.githubLinks.join(", ")}\n`;
+    }
+    itemStr += `\nContent:\n${candidate.contentText}`;
     
     if (currentChars + itemStr.length > MAX_CHARS && finalItems.length > 0) break;
 
