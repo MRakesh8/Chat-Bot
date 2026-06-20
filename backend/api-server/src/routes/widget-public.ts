@@ -248,7 +248,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         Verified Information from Google:
         ${verifiedText}
         
-        Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
+        ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
 
         if (providerName === "gemini") {
           const directClient = new GoogleGenAI({
@@ -309,7 +309,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       
       const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions.
       
-      Knowledge Base Context:
+      ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
       ${contextString}
       
       Answer user questions accurately and concisely.`;
@@ -331,7 +331,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
     const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions. If the user tells you that you made a mistake or gave a wrong answer, check your sources, search the web if needed, and correct your answer.
 
-Knowledge Base Context:
+${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
 ${contextString}
 
 Answer user questions accurately and concisely.`;

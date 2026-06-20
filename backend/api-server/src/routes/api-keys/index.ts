@@ -17,6 +17,51 @@ const UpdateKeyBody = z.object({
   apiKey: z.string().optional(),
 });
 
+const UpdateSettingsBody = z.object({
+  apiMode: z.enum(["auto", "user_first", "system_first"]),
+});
+
+// GET /api/api-keys/settings
+router.get("/settings", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    let settings = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
+    if (settings.length === 0) {
+      const [newSettings] = await db.insert(userApiSettings).values({ userId, apiMode: "auto" }).returning();
+      return res.json(newSettings);
+    }
+    res.json(settings[0]);
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to fetch API settings");
+    res.status(500).json({ error: "Failed to fetch API settings" });
+  }
+});
+
+// PUT /api/api-keys/settings
+router.put("/settings", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const parsed = UpdateSettingsBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+
+    const existing = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
+    if (existing.length === 0) {
+      await db.insert(userApiSettings).values({ userId, apiMode: parsed.data.apiMode });
+    } else {
+      await db.update(userApiSettings).set({ apiMode: parsed.data.apiMode }).where(eq(userApiSettings.userId, userId));
+    }
+    
+    res.json({ success: true, apiMode: parsed.data.apiMode });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to update API settings");
+    res.status(500).json({ error: "Failed to update API settings" });
+  }
+});
+
 // Test API Key logic
 async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
   try {

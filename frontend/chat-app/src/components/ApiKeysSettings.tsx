@@ -20,6 +20,7 @@ type ApiKey = {
 
 export function ApiKeysSettings() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [apiMode, setApiMode] = useState<string>("auto");
   const [loading, setLoading] = useState(true);
   const [newKey, setNewKey] = useState("");
   const [newName, setNewName] = useState("");
@@ -41,10 +42,34 @@ export function ApiKeysSettings() {
         const json = await res.json();
         setKeys(json || []);
       }
+
+      const modeRes = await fetch(apiUrl("/api/api-keys/settings"), { headers });
+      if (modeRes.ok) {
+        const modeJson = await modeRes.json();
+        if (modeJson.apiMode) setApiMode(modeJson.apiMode);
+      }
     } catch (err) {
       console.error("Failed to fetch API key settings", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleModeChange = async (newMode: string) => {
+    setApiMode(newMode);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (data.session?.access_token) {
+        headers.Authorization = `Bearer ${data.session.access_token}`;
+      }
+      await fetch(apiUrl("/api/api-keys/settings"), {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ apiMode: newMode }),
+      });
+    } catch (err) {
+      console.error("Failed to update API mode", err);
     }
   };
 
@@ -119,6 +144,37 @@ export function ApiKeysSettings() {
   return (
     <section className="space-y-4">
       <h2 className="text-xl font-medium border-b border-foreground/5 pb-2 text-foreground/80">Multi-Provider API Keys</h2>
+
+      {/* API Key Mode */}
+      <div className="p-4 rounded-xl bg-card/40 border border-foreground/5 backdrop-blur-md shadow-sm space-y-4">
+        <div>
+          <h3 className="font-medium">Routing Mode</h3>
+          <p className="text-sm text-muted-foreground">Choose how the system prioritizes API keys when making requests.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => handleModeChange("auto")}
+            className={`flex-1 p-3 rounded-lg border text-left transition-all ${apiMode === "auto" ? "border-primary bg-primary/5 shadow-[0_0_10px_rgba(var(--primary),0.1)]" : "border-foreground/10 hover:border-foreground/20 hover:bg-foreground/5"}`}
+          >
+            <div className="font-medium text-sm">Auto</div>
+            <div className="text-xs text-muted-foreground mt-1">Smart load balancing</div>
+          </button>
+          <button
+            onClick={() => handleModeChange("user_first")}
+            className={`flex-1 p-3 rounded-lg border text-left transition-all ${apiMode === "user_first" ? "border-primary bg-primary/5 shadow-[0_0_10px_rgba(var(--primary),0.1)]" : "border-foreground/10 hover:border-foreground/20 hover:bg-foreground/5"}`}
+          >
+            <div className="font-medium text-sm">User First</div>
+            <div className="text-xs text-muted-foreground mt-1">Prioritize your custom keys</div>
+          </button>
+          <button
+            onClick={() => handleModeChange("system_first")}
+            className={`flex-1 p-3 rounded-lg border text-left transition-all ${apiMode === "system_first" ? "border-primary bg-primary/5 shadow-[0_0_10px_rgba(var(--primary),0.1)]" : "border-foreground/10 hover:border-foreground/20 hover:bg-foreground/5"}`}
+          >
+            <div className="font-medium text-sm">System First</div>
+            <div className="text-xs text-muted-foreground mt-1">Prioritize system default keys</div>
+          </button>
+        </div>
+      </div>
       
       {/* Keys List */}
       <div className="p-4 rounded-xl bg-card/40 border border-foreground/5 backdrop-blur-md shadow-sm space-y-4">

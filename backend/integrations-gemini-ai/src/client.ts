@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { db, userApiKeys, userApiSettings } from "@workspace/db";
+import { db, userApiKeys, userApiSettings, crypto } from "@workspace/db";
 import { eq, and, isNull, asc } from "drizzle-orm";
 
 if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
@@ -49,8 +49,35 @@ class GeminiFailoverModels {
     if (userId) {
        userKeys = await db.select().from(userApiKeys).where(and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true)));
     }
-    const systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
+    let systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     
+    if (systemKeys.length === 0) {
+      const fallbackKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (fallbackKey) {
+        try {
+          const encryptedKey = crypto.encrypt(fallbackKey);
+          const maskedKey = fallbackKey.substring(0, 4) + "..." + fallbackKey.slice(-4);
+          
+          const newSystemKeys = await db.insert(userApiKeys).values({
+            name: "Default System Key (Auto-Provisioned)",
+            provider: "gemini",
+            encryptedKey: encryptedKey,
+            maskedKey: maskedKey,
+            isPrimary: true,
+            isEnabled: true,
+            isSystem: true,
+            status: "HEALTHY",
+            dailyLimit: null
+          }).returning();
+          
+          systemKeys = [...systemKeys, ...newSystemKeys];
+          console.log("[Gemini Routing] Auto-provisioned default system key from environment.");
+        } catch (insertErr) {
+          console.error("[Gemini Routing] Failed to auto-provision system key:", insertErr);
+        }
+      }
+    }
+
     let keys = [...userKeys, ...systemKeys];
 
     // 3. Reset logic
@@ -158,8 +185,6 @@ class GeminiFailoverModels {
     const modelsToTry = method === 'embedContent' ? [originalModel] : Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
     
     for (const key of keys) {
-      // Import the crypto dynamically or rely on it being imported, wait db exports crypto
-      const { crypto } = await import("@workspace/db");
       const decryptedKey = crypto.decrypt(key.encryptedKey);
       
       const client = new GoogleGenAI({
