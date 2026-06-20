@@ -182,31 +182,33 @@
         display: flex;
         flex-direction: column;
         gap: 16px;
-        /* Firefox scrollbar */
+      }
+
+      /* Global Scrollbar for everything inside Shadow DOM */
+      * {
         scrollbar-width: thin;
-        scrollbar-color: rgba(161,161,170,0.25) transparent;
+        scrollbar-color: #52525b transparent;
       }
 
-      /* Webkit scrollbar (Chrome, Edge, Safari) inside Shadow DOM */
-      .messages::-webkit-scrollbar {
-        width: 5px;
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
       }
 
-      .messages::-webkit-scrollbar-track {
+      ::-webkit-scrollbar-track {
         background: transparent;
       }
 
-      .messages::-webkit-scrollbar-thumb {
-        background: rgba(161,161,170,0.25);
+      ::-webkit-scrollbar-thumb {
+        background: #52525b;
         border-radius: 9999px;
-        transition: background 0.2s ease;
       }
 
-      .messages::-webkit-scrollbar-thumb:hover {
-        background: rgba(161,161,170,0.5);
+      ::-webkit-scrollbar-thumb:hover {
+        background: #71717a;
       }
 
-      .messages::-webkit-scrollbar-corner {
+      ::-webkit-scrollbar-corner {
         background: transparent;
       }
 

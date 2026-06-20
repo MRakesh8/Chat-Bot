@@ -269,7 +269,7 @@ export function WidgetStudio({ projectId }: { projectId: string }) {
               </div>
               
               {/* Messages Area */}
-              <div className="flex-1 p-4 bg-zinc-950 overflow-y-auto">
+              <div className="flex-1 p-4 bg-zinc-950 overflow-y-auto custom-scrollbar">
                 <div className="flex items-start gap-2 mb-4">
                   <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: formData.themeColor || "#8B5CF6" }}>
                     {formData.botName?.charAt(0) || "A"}
