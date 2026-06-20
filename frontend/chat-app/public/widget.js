@@ -182,6 +182,32 @@
         display: flex;
         flex-direction: column;
         gap: 16px;
+        /* Firefox scrollbar */
+        scrollbar-width: thin;
+        scrollbar-color: rgba(161,161,170,0.25) transparent;
+      }
+
+      /* Webkit scrollbar (Chrome, Edge, Safari) inside Shadow DOM */
+      .messages::-webkit-scrollbar {
+        width: 5px;
+      }
+
+      .messages::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .messages::-webkit-scrollbar-thumb {
+        background: rgba(161,161,170,0.25);
+        border-radius: 9999px;
+        transition: background 0.2s ease;
+      }
+
+      .messages::-webkit-scrollbar-thumb:hover {
+        background: rgba(161,161,170,0.5);
+      }
+
+      .messages::-webkit-scrollbar-corner {
+        background: transparent;
       }
 
       .message {
