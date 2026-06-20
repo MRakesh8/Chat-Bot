@@ -7,7 +7,7 @@ import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import { db } from "@workspace/db";
-import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, projectSettings } from "@workspace/db";
+import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, projectSettings, projectWidgetSettings } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";

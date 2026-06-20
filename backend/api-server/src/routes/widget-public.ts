@@ -119,10 +119,14 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
     if (projectKey) {
       activeKey = crypto.decrypt(projectKey.encryptedKey); // Decrypted here
-      providerName = projectKey.provider;
-      modelName = projectKey.model || modelName;
-    } else {
-      // Fallback logic to User (project owner) or System keys
+      if (activeKey) {
+        providerName = projectKey.provider;
+        modelName = projectKey.model || modelName;
+      }
+    }
+    
+    if (!activeKey) {
+      // Fallback logic to User (project owner)
       let userKey = null;
       if (userId) {
         userKey = await db.query.userApiKeys.findFirst({
@@ -132,19 +136,28 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       
       if (userKey) {
         activeKey = crypto.decrypt(userKey.encryptedKey);
-        providerName = userKey.provider;
-      } else {
-        const systemKeys = await db.query.userApiKeys.findMany({
-          where: and(eq(userApiKeys.isSystem, true), eq(userApiKeys.isEnabled, true))
-        });
-        if (systemKeys.length > 0) {
-          activeKey = crypto.decrypt(systemKeys[0].encryptedKey);
-          providerName = systemKeys[0].provider;
-        } else if (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
-          activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-          providerName = "gemini";
-          modelName = "gemini-2.5-flash";
+        if (activeKey) {
+          providerName = userKey.provider;
         }
+      }
+    }
+    
+    if (!activeKey) {
+      // Fallback to System keys or Env
+      const systemKeys = await db.query.userApiKeys.findMany({
+        where: and(eq(userApiKeys.isSystem, true), eq(userApiKeys.isEnabled, true))
+      });
+      if (systemKeys.length > 0) {
+        activeKey = crypto.decrypt(systemKeys[0].encryptedKey);
+        if (activeKey) {
+          providerName = systemKeys[0].provider;
+        }
+      }
+      
+      if (!activeKey && (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
+        activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        providerName = "gemini";
+        modelName = "gemini-2.5-flash";
       }
     }
 
