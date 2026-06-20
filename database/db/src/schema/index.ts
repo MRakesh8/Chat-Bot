@@ -267,11 +267,18 @@ export const projectWidgetSettings = pgTable("project_widget_settings", {
 export const projectApiKeys = pgTable("project_api_keys", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }),
   provider: varchar("provider", { length: 50 }).notNull(), // gemini, openai, claude, groq, etc.
   encryptedKey: text("encrypted_key").notNull(),
   maskedKey: varchar("masked_key", { length: 50 }).notNull(),
   model: varchar("model", { length: 255 }), // Default model to use for this project & provider
+  isPrimary: boolean("is_primary").default(false).notNull(),
   isEnabled: boolean("is_enabled").default(true).notNull(),
+  status: varchar("status", { length: 50 }).default("HEALTHY").notNull(), // HEALTHY, COOLDOWN, QUOTA_EXCEEDED, INVALID, UNHEALTHY
+  lastSuccess: timestamp("last_success"),
+  lastFailure: timestamp("last_failure"),
+  failureReason: text("failure_reason"),
+  cooldownUntil: timestamp("cooldown_until"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

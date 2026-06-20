@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, crypto } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys } from "@workspace/db/schema";
+import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
 import { GoogleGenAI } from "@google/genai";
@@ -107,6 +107,43 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       where: eq(projects.id, projectId)
     });
     const userId = project ? project.userId : null;
+
+    // Track Analytics
+    try {
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const estimatedTokens = Math.floor(JSON.stringify(messages).length / 4);
+
+      const existingAnalytics = await db.query.widgetAnalytics.findFirst({
+        where: and(
+          eq(widgetAnalytics.projectId, projectId),
+          eq(widgetAnalytics.date, today)
+        )
+      });
+
+      if (existingAnalytics) {
+        await db.update(widgetAnalytics)
+          .set({
+            messages: existingAnalytics.messages + 1,
+            conversations: messages.length <= 2 ? existingAnalytics.conversations + 1 : existingAnalytics.conversations,
+            tokenUsage: existingAnalytics.tokenUsage + estimatedTokens,
+            uniqueVisitors: messages.length <= 2 ? existingAnalytics.uniqueVisitors + 1 : existingAnalytics.uniqueVisitors
+          })
+          .where(eq(widgetAnalytics.id, existingAnalytics.id));
+      } else {
+        await db.insert(widgetAnalytics).values({
+          projectId,
+          date: today,
+          messages: 1,
+          conversations: 1,
+          tokenUsage: estimatedTokens,
+          uniqueVisitors: 1,
+          aiCosts: "0"
+        } as any);
+      }
+    } catch (e) {
+      console.error("Failed to track analytics:", e);
+    }
 
     // Resolve Key (Project -> User -> System -> Env)
     const projectKey = await db.query.projectApiKeys.findFirst({
