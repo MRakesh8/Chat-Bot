@@ -415,6 +415,24 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
       ...(messageContent ? [{ text: messageContent }] : []),
     ];
 
+    const widgetSettings = await db.query.projectWidgetSettings.findFirst({
+      where: eq(projectWidgetSettings.projectId, project.id)
+    });
+
+    let handoffInfo = "";
+    if (widgetSettings?.humanHandoffLinks) {
+      const links = widgetSettings.humanHandoffLinks as Record<string, string>;
+      const details = [];
+      if (links.whatsapp) details.push(`WhatsApp: ${links.whatsapp}`);
+      if (links.phone) details.push(`Phone Number: ${links.phone}`);
+      if (links.email) details.push(`Email Address: ${links.email}`);
+      if (links.telegram) details.push(`Telegram: ${links.telegram}`);
+      
+      if (details.length > 0) {
+        handoffInfo = `\n\nCONTACT DETAILS (HUMAN HANDOFF):\nIf the user asks to speak to a human, contact support, or asks for contact details (like phone number, email, or whatsapp), you MUST provide these exact details directly to them:\n${details.join("\n")}\n`;
+      }
+    }
+
     const PROJECT_BRAIN_DIRECTIVE = `
 =========================================
 RETRIEVAL AND ANSWER CONTROL DIRECTIVES (PRIORITY 0)
@@ -587,7 +605,7 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 
     // Build Gemini chat — project's systemPrompt replaces the default Aria prompt
     const chatMessages: { role: "user" | "model"; parts: GeminiPart[] }[] = [
-      { role: "user", parts: [{ text: project.systemPrompt + PROJECT_BRAIN_DIRECTIVE }] },
+      { role: "user", parts: [{ text: project.systemPrompt + handoffInfo + PROJECT_BRAIN_DIRECTIVE }] },
       { role: "model", parts: [{ text: "Ready." }] },
       ...historyWithoutCurrent.map((m) => ({
         role: (m.sender === "assistant" ? "model" : "user") as "user" | "model",

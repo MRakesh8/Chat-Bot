@@ -299,6 +299,27 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Error retrieving knowledge for widget chat:", err);
     }
 
+    let handoffInfo = "";
+    try {
+      const widgetSettings = await db.query.projectWidgetSettings.findFirst({
+        where: eq(projectWidgetSettings.projectId, projectId)
+      });
+      if (widgetSettings?.humanHandoffLinks) {
+        const links = widgetSettings.humanHandoffLinks as Record<string, string>;
+        const details = [];
+        if (links.whatsapp) details.push(`WhatsApp: ${links.whatsapp}`);
+        if (links.phone) details.push(`Phone Number: ${links.phone}`);
+        if (links.email) details.push(`Email Address: ${links.email}`);
+        if (links.telegram) details.push(`Telegram: ${links.telegram}`);
+        
+        if (details.length > 0) {
+          handoffInfo = `\n\nCONTACT DETAILS (HUMAN HANDOFF):\nIf the user asks to speak to a human, contact support, or asks for contact details (like phone number, email, or whatsapp), you MUST provide these exact details directly to them:\n${details.join("\n")}\n`;
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching widget settings for handoff:", err);
+    }
+
     // Non-Gemini Fallback: returns whole content in single chunk
     if (providerName !== "gemini") {
       const adapter = new UniversalProviderAdapter({
@@ -307,7 +328,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         model: modelName
       });
       
-      const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions.
+      const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions.${handoffInfo}
       
       ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
       ${contextString}
@@ -329,7 +350,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       return res;
     }
 
-    const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions. If the user tells you that you made a mistake or gave a wrong answer, check your sources, search the web if needed, and correct your answer.
+    const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions. If the user tells you that you made a mistake or gave a wrong answer, check your sources, search the web if needed, and correct your answer.${handoffInfo}
 
 ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
 ${contextString}

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { db } from "@workspace/db";
+import { db, crypto as dbCrypto } from "@workspace/db";
 import { projectWidgetSettings, projectApiKeys } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import crypto from "crypto";
@@ -166,7 +166,7 @@ router.post("/api-keys", async (req: Request, res: Response) => {
     const maskedKey = apiKey.substring(0, 5) + "..." + apiKey.substring(apiKey.length - 4);
     
     // In real implementation, encrypt this with KMS or env secret
-    const encryptedKey = apiKey; 
+    const encryptedKey = dbCrypto.encrypt(apiKey);
 
     await db.insert(projectApiKeys).values({
       projectId,
