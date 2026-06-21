@@ -19,11 +19,11 @@ async function start() {
   try {
     await runMigrations();
   } catch (err) {
-    logger.error("Failed to run migrations on startup", err);
+    logger.error(err, "Failed to run migrations on startup");
   }
 
   try {
-    const executablePath = puppeteer.executablePath();
+    const executablePath = await puppeteer.executablePath();
     if (!fs.existsSync(executablePath)) {
       logger.error(`[PUPPETEER] Chrome executable not found at ${executablePath}. PDF generation will fail.`);
     } else {

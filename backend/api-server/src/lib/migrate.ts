@@ -35,8 +35,16 @@ export async function runMigrations() {
         await migrate(db, { migrationsFolder });
         logger.info("Migrations completed successfully");
       } catch (err: any) {
-        if (err.message?.includes("already exists") || err.message?.includes("Duplicate")) {
-          logger.warn("Schema already exists. Attempting to mark existing migrations as applied...");
+        const errMsg = String(err.message || err.description || err.stack || err).toLowerCase();
+        const errCode = String(err.code || err.statusCode || "");
+        if (
+          errMsg.includes("already exists") || 
+          errMsg.includes("duplicate") || 
+          errMsg.includes("42p07") || 
+          errCode === '42P07' || 
+          errCode === '42701'
+        ) {
+          logger.warn("Schema already exists or table duplicate. Attempting to mark existing migrations as applied...");
           
           try {
              const journalStr = fs.readFileSync(path.join(migrationsFolder, "meta/_journal.json"), "utf8");

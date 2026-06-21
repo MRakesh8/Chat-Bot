@@ -83,7 +83,8 @@ router.post("/generate", async (req, res) => {
       }
     } catch (err: any) {
       req.log.error({ err }, "md-to-pdf or puppeteer failed");
-      return res.json({ success: false, reason: "Chrome not installed" });
+      res.json({ success: false, reason: "Chrome not installed" });
+      return;
     }
 
     // Upload to Supabase Storage
