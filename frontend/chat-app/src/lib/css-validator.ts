@@ -172,10 +172,56 @@ export function validateBlock(block: CSSBlock): { valid: boolean; error?: string
   return { valid: true };
 }
 
+function isNonCSSContent(css: string): boolean {
+  const trimmed = css.trim();
+  if (!trimmed) return false;
+
+  // 1. Check if it is a JSON object or array (often JSON errors, config payloads, etc.)
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      JSON.parse(trimmed);
+      return true;
+    } catch (e) {}
+  }
+
+  // 2. Check for JSON log properties
+  if (/"level":\s*\d+/.test(trimmed) && /"time":\s*\d+/.test(trimmed) && /"pid":\s*\d+/.test(trimmed)) {
+    return true;
+  }
+
+  // 3. Check for stack trace signatures
+  if (/\b(at\s+[a-zA-Z0-9_$<>#.-]+\s+\(|at\s+async\s+<anonymous>|at\s+process\.)/i.test(trimmed)) {
+    return true;
+  }
+  if (/\bError:\s+Failed\s+query:/i.test(trimmed)) {
+    return true;
+  }
+
+  // 4. Check for absolute file paths (ignoring CSS URLs)
+  const unixPathRegex = /(?:\s|^)\/(?:opt|usr|home|var|tmp|etc|bin|lib|node_modules)\/[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+/i;
+  const winPathRegex = /[a-zA-Z]:\\[a-zA-Z0-9_.-]+(?:\\[a-zA-Z0-9_.-]+)+/i;
+  if (unixPathRegex.test(trimmed) || winPathRegex.test(trimmed)) {
+    return true;
+  }
+
+  // 5. Check for SQL queries
+  const sqlRegex = /\b(select\s+[\s\S]*?\s+from|insert\s+into|update\s+[\s\S]*?\s+set|delete\s+from|create\s+table|alter\s+table)\b/i;
+  if (sqlRegex.test(trimmed)) {
+    return true;
+  }
+
+  return false;
+}
+
 // CSS Validation Function
 export function validateCSS(css: string): { valid: boolean; error?: string } {
   const trimmed = css.trim();
   if (!trimmed) return { valid: true };
+
+  // Reject non-CSS content
+  if (isNonCSSContent(trimmed)) {
+    return { valid: false, error: "This does not appear to be CSS" };
+  }
   
   const parsed = parseCSS(trimmed);
   if (!parsed.valid) {

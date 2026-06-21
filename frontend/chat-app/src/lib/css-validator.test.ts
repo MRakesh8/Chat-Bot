@@ -85,4 +85,19 @@ assert.deepStrictEqual(validateCSS(".panel color: red; }").valid, false);
 // Unexpected closing brace
 assert.deepStrictEqual(validateCSS(".panel { color: red; }}").valid, false);
 
+// Test Case 6: Rejecting non-CSS content
+console.log("6. Testing rejection of non-CSS content...");
+const expectedReject = { valid: false, error: "This does not appear to be CSS" };
+
+// JSON Error payload
+assert.deepStrictEqual(validateCSS('{"error":{"code":503,"message":"Unavailable"}}'), expectedReject);
+// JSON log line
+assert.deepStrictEqual(validateCSS('{"level":50,"time":1782063773036,"pid":90,"msg":"Failed to run migrations"}'), expectedReject);
+// Stack trace
+assert.deepStrictEqual(validateCSS('at NodePgPreparedQuery.queryWithCache (/opt/render/project/src/node_modules/...)'), expectedReject);
+// SQL Query
+assert.deepStrictEqual(validateCSS('CREATE TABLE "audit_logs" ("id" uuid PRIMARY KEY);'), expectedReject);
+// Server path
+assert.deepStrictEqual(validateCSS('/opt/render/project/src/backend/api-server/src/lib/migrate.ts'), expectedReject);
+
 console.log("All CSS Validator automated tests passed successfully!");

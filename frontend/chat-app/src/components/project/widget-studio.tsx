@@ -826,7 +826,7 @@ export function WidgetStudio({ projectId }: { projectId: string }) {
                         ) : validationError ? (
                           <span className="text-red-500 flex items-center gap-1.5 animate-pulse">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            ❌ Syntax Error: {validationError}
+                            {validationError === "This does not appear to be CSS" ? "❌ " : "❌ Syntax Error: "}{validationError}
                           </span>
                         ) : (
                           <span className="text-green-500 flex items-center gap-1.5">
@@ -840,7 +840,11 @@ export function WidgetStudio({ projectId }: { projectId: string }) {
                 </div>
 
                 <div className="pt-6 border-t border-border mt-auto">
-                  <Button type="submit" disabled={updateMutation.isPending} className="w-full gap-2">
+                  <Button 
+                    type="submit" 
+                    disabled={updateMutation.isPending || validationError === "This does not appear to be CSS"} 
+                    className="w-full gap-2"
+                  >
                     {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Save Widget Settings
                   </Button>
