@@ -3,6 +3,7 @@ import { db, crypto as dbCrypto } from "@workspace/db";
 import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { ai } from "@workspace/integrations-gemini-ai";
 
 const router = Router({ mergeParams: true });
 
@@ -327,6 +328,78 @@ router.get("/leads", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Leads fetch error:", error);
     res.status(500).json({ error: "Failed to fetch leads" });
+  }
+});
+
+// AI CSS Generator (Optional)
+router.post("/generate-css", async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const userId = (req as any).auth?.userId ?? null;
+  const { prompt } = req.body;
+
+  if (!prompt || typeof prompt !== "string") {
+    return res.status(400).json({ error: "Prompt is required" });
+  }
+
+  try {
+    const systemPrompt = `You are an expert UI/UX designer and CSS assistant for a chat widget.
+Your goal is to generate clean, valid, and beautiful CSS code that changes the look and feel of the widget based on the user's instructions.
+
+The widget has the following DOM structure and class selectors:
+- .widget-wrapper (the overall fixed position outer container)
+- .chat-panel (the open/active chat card container)
+- .header (chat panel header bar)
+- .avatar (the circular badge with the bot initial)
+- .title (the bot's name text)
+- .subtitle (the online status text indicator)
+- .close-btn (the header button to close the panel)
+- .messages (the scrolling message history container)
+- .message (a message bubble base class)
+- .message.bot (bot message bubble specifically)
+- .message.user (user message bubble specifically)
+- .input-area (the bottom container for form and elements)
+- .input-wrapper (the form container that wraps the input box and send button)
+- .input-wrapper input (the text input field, NOT a textarea)
+- .send-btn (the button inside the input area to submit messages)
+- .floating-button (the FAB launcher button shown when the widget is closed)
+
+CSS Custom properties (variables) defined on :host:
+- --primary: theme primary color (used for header, user bubble, send btn, launcher button)
+- --bg-dark: background of the messages container
+- --bg-panel: background of the panel card and bot message bubbles
+- --border: border colors between header, messages, and input
+- --text-main: core text color
+- --text-muted: secondary or muted text color
+
+User request: "${prompt}"
+
+Rules:
+1. ONLY return the valid CSS code block.
+2. DO NOT wrap the output in markdown block code markers like \`\`\`css ... \`\`\`.
+3. DO NOT include explanations, introductions, or warnings. Return ONLY CSS.
+4. Use "!important" on CSS properties to ensure they override the default widget styles.
+5. If the request is impossible or malicious, return empty string or default styling overrides.`;
+
+    const aiRes = await ai.models.generateContent(userId, {
+      model: "gemini-2.5-flash",
+      contents: systemPrompt,
+    });
+
+    let cssText = aiRes.text || "";
+    // Clean up in case Gemini still outputs markdown code fences
+    cssText = cssText.replace(/```css/g, "").replace(/```/g, "").trim();
+
+    return res.json({ css: cssText });
+  } catch (error: any) {
+    console.error("AI CSS Generation failed:", error);
+    // Graceful error indicator for missing/unhealthy keys
+    if (error?.code === "NO_HEALTHY_KEYS" || error?.status === 503 || error?.status === 403 || error?.status === 429) {
+      return res.status(200).json({ 
+        error: "AI service is unavailable. Please check your Gemini API key configuration.", 
+        code: "AI_DISABLED" 
+      });
+    }
+    return res.status(500).json({ error: error.message || "Failed to generate CSS" });
   }
 });
 
