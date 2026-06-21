@@ -90,6 +90,11 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
 
 router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<any> => {
   try {
+    // Prevent caching of the configuration so CSS/theme updates reflect instantly in production
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     const projectId = (req as any).projectId;
     const settings = await db.query.projectWidgetSettings.findFirst({
       where: eq(projectWidgetSettings.projectId, projectId)
