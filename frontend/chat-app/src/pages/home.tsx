@@ -7,7 +7,16 @@ import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
+import { useSEO } from "@/hooks/use-seo";
+
 export default function Home() {
+  useSEO({
+    title: "Rakesh AI Chatbot - Multi Provider AI Assistant",
+    description: "AI-powered chatbot supporting multiple AI providers, customer support, intelligent conversations, and business automation.",
+    keywords: "AI chatbot, customer support chatbot, Gemini AI, OpenAI chatbot, AI assistant, Rakesh chatbot",
+    canonicalPath: ""
+  });
+
   const { user, signOut } = useAuth();
   const [, setLocation] = useLocation();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
