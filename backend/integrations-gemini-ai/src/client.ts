@@ -192,6 +192,7 @@ class GeminiFailoverModels {
         httpOptions: { apiVersion: "", baseUrl: baseUrl }
       });
 
+      let keyFailed = false;
       for (const modelToUse of modelsToTry) {
         const attemptOptions = { ...options, model: modelToUse };
         
@@ -217,24 +218,35 @@ class GeminiFailoverModels {
             const retryAfterHeader = err?.response?.headers?.get('retry-after');
             const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
             await this._updateKeyFailure(key, '429', err.message, retryAfter);
+            keyFailed = true;
             break; // Move to next key
           } else if (status === 403) {
             console.error(`[Gemini Routing] Permission Denied:\n${logOutput}`);
             await this._updateKeyFailure(key, '403', err.message);
+            keyFailed = true;
             break; // Move to next key
           } else if (isTimeout) {
             console.warn(`[Gemini Routing] Timeout:\n${logOutput}`);
             await this._updateKeyFailure(key, 'timeout', err.message);
+            keyFailed = true;
             break; // Move to next key
+          } else if (status === 503 || status === 404 || err?.message?.includes("503") || err?.message?.includes("404")) {
+            console.warn(`[Gemini Routing] Model Unavailable (Status ${status}): Trying fallback model...\n${logOutput}`);
+            continue; // Try next fallback model for the SAME key
           } else if (isRetryableError(err)) {
             console.warn(`[Gemini Routing] Retryable Error:\n${logOutput}`);
             await this._updateKeyFailure(key, 'other', err.message);
+            keyFailed = true;
             break; // Move to next key
           } else {
             console.error(`[Gemini Routing] Non-Retryable Error:\n${logOutput}`);
             throw err;
           }
         }
+      }
+
+      if (!keyFailed) {
+        await this._updateKeyFailure(key, 'other', `All models failed to respond (including fallbacks)`);
       }
     }
 

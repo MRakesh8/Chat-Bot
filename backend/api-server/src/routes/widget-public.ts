@@ -7,7 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { searchProjectKnowledge, saveAutoKnowledgeItem } from "../services/knowledge";
 
-async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any) {
+async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
   const directClient = new GoogleGenAI({
     apiKey: activeKey,
     httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
@@ -28,14 +28,18 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
       }
     } catch (err: any) {
       const status = err?.status || err?.response?.status || err?.code;
-      const isRateLimit = status === 429 || err?.message?.includes("429");
-      if (isRateLimit && !isLast) {
-        console.warn(`Widget API 429 on model ${attemptModel}, falling back to next model...`);
+      const isRetryable = status === 429 || status === 503 || status === 404 || status === 500 ||
+                          err?.message?.includes("429") || err?.message?.includes("503") || err?.message?.includes("404") || err?.message?.includes("500") ||
+                          err?.message?.toLowerCase().includes("timeout");
+      if (isRetryable && !isLast) {
+        console.warn(`Widget API error ${status} on model ${attemptModel}, falling back to next model...`);
         continue;
       }
       throw err;
     }
   }
+  
+  throw new Error("No healthy models available to execute");
 }
 
 const router = Router();
