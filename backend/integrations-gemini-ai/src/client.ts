@@ -11,7 +11,7 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 

@@ -110,7 +110,7 @@ export function Analytics({ projectId }: { projectId: string }) {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Est. AI Cost</p>
-                      <p className="text-2xl font-semibold">${analytics?.aiCost?.toFixed(4) || "0.00"}</p>
+                      <p className="text-2xl font-semibold">${Number(analytics?.aiCost || 0).toFixed(4)}</p>
                     </div>
                   </CardContent>
                 </Card>

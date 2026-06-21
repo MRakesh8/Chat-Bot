@@ -21,9 +21,14 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(encryptedText: string): string {
+  if (!encryptedText) return "";
+  
   try {
     const parts = encryptedText.split(":");
-    if (parts.length !== 3) throw new Error("Invalid encrypted format");
+    // If it doesn't match the IV:AuthTag:Data format, assume it's a legacy unencrypted key
+    if (parts.length !== 3) {
+      return encryptedText;
+    }
     
     const iv = Buffer.from(parts[0], "hex");
     const authTag = Buffer.from(parts[1], "hex");
@@ -36,8 +41,10 @@ export function decrypt(encryptedText: string): string {
     decrypted += decipher.final("utf8");
 
     return decrypted;
-  } catch (e) {
-    console.error("Failed to decrypt API key:", e);
-    return "";
+  } catch (e: any) {
+    // Only log if it actually looked like an encrypted string but failed to decrypt
+    // (e.g., wrong ENCRYPTION_KEY)
+    console.warn("Warning: Could not decrypt API key (possibly due to changed ENCRYPTION_KEY). Returning raw value.");
+    return encryptedText;
   }
 }

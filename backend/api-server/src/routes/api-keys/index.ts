@@ -69,7 +69,9 @@ async function testGeminiKey(apiKey: string): Promise<{ success: boolean; messag
     await client.models.generateContent({ model: "gemini-2.5-flash", contents: "test" });
     return { success: true, message: "API key verified successfully." };
   } catch (e: any) {
-    if (e?.status === 429) return { success: false, message: "Quota Exceeded" };
+    const status = e?.status || e?.response?.status || e?.code;
+    const isRateLimit = status === 429 || e?.message?.includes("429");
+    if (isRateLimit) return { success: true, message: "API key is valid (Quota Exceeded)" };
     return { success: false, message: "Invalid API key." };
   }
 }

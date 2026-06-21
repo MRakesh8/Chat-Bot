@@ -7,6 +7,37 @@ import { GoogleGenAI } from "@google/genai";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { searchProjectKnowledge, saveAutoKnowledgeItem } from "../services/knowledge";
 
+async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any) {
+  const directClient = new GoogleGenAI({
+    apiKey: activeKey,
+    httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
+  });
+  
+  const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-1.5-flash"];
+  const modelsToTry = Array.from(new Set([options.model, ...FALLBACK_MODELS]));
+  
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const attemptModel = modelsToTry[i];
+    const isLast = i === modelsToTry.length - 1;
+    try {
+      const attemptOptions = { ...options, model: attemptModel };
+      if (method === 'generateContent') {
+        return await directClient.models.generateContent(attemptOptions);
+      } else {
+        return await directClient.models.generateContentStream(attemptOptions);
+      }
+    } catch (err: any) {
+      const status = err?.status || err?.response?.status || err?.code;
+      const isRateLimit = status === 429 || err?.message?.includes("429");
+      if (isRateLimit && !isLast) {
+        console.warn(`Widget API 429 on model ${attemptModel}, falling back to next model...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 const router = Router();
 
 // Middleware to validate origin for widget routes
@@ -221,11 +252,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         
         let confirmRes;
         if (providerName === "gemini") {
-          const directClient = new GoogleGenAI({
-            apiKey: activeKey,
-            httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
-          });
-          confirmRes = await directClient.models.generateContent({
+          confirmRes = await executeWithFallback(activeKey as string, 'generateContent', {
             model: modelName,
             contents: confirmPrompt
           });
@@ -259,17 +286,13 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       try {
         let searchRes;
         if (providerName === "gemini") {
-          const directClient = new GoogleGenAI({
-            apiKey: activeKey,
-            httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
-          });
-          searchRes = await directClient.models.generateContent({
+          searchRes = await executeWithFallback(activeKey as string, 'generateContent', {
             model: modelName,
             contents: verifyPrompt,
             config: {
               tools: [{ googleSearch: {} }]
             }
-          } as any);
+          });
         } else {
           searchRes = await ai.models.generateContent(userId, {
             model: "gemini-2.5-flash",
@@ -301,14 +324,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
 
         if (providerName === "gemini") {
-          const directClient = new GoogleGenAI({
-            apiKey: activeKey,
-            httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
-          });
-          const stream = await directClient.models.generateContentStream({
+          const stream = await executeWithFallback(activeKey as string, 'generateContentStream', {
             model: modelName,
             contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
-          } as any);
+          }) as any;
           for await (const chunk of stream) {
             if (chunk.text) {
               res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
@@ -417,14 +436,10 @@ Answer user questions accurately and concisely.`;
     ];
 
     try {
-      const directClient = new GoogleGenAI({
-        apiKey: activeKey,
-        httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL }
-      });
-      const stream = await directClient.models.generateContentStream({
+      const stream = await executeWithFallback(activeKey as string, 'generateContentStream', {
         model: modelName,
         contents: chatMessages as any
-      } as any);
+      }) as any;
       for await (const chunk of stream) {
         if (chunk.text) {
           res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
