@@ -163,12 +163,14 @@ export default function SharedChatPage() {
   const storageKey = `shared_conv_${token}`;
 
   const scrollToBottom = useCallback((smooth = false) => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: smooth ? "smooth" : "instant",
-      });
-    }
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: smooth ? "smooth" : "instant",
+        });
+      }
+    });
   }, []);
 
   const handleScroll = useCallback(() => {

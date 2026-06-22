@@ -29,8 +29,11 @@
     } catch(e) {}
   }
 
+  const storageKeyOpen = `aria_widget_open_${widgetToken}`;
+  const storageKeyHistory = `aria_widget_history_${widgetToken}`;
+
   let config = null;
-  let isOpen = false;
+  let isOpen = sessionStorage.getItem(storageKeyOpen) === 'true';
   let isMobile = window.innerWidth <= 768;
 
   const container = document.createElement('div');
@@ -297,6 +300,53 @@
   }
 
   let chatHistory = [];
+  try {
+    const saved = sessionStorage.getItem(storageKeyHistory);
+    if (saved) {
+      chatHistory = JSON.parse(saved);
+      if (!Array.isArray(chatHistory)) chatHistory = [];
+    }
+  } catch (e) {
+    chatHistory = [];
+  }
+
+  function saveHistory(history) {
+    const capped = history.slice(-50);
+    try {
+      sessionStorage.setItem(storageKeyHistory, JSON.stringify(capped));
+    } catch (e) {
+      console.warn("Aria Widget: failed to save chat history to sessionStorage:", e);
+    }
+  }
+
+  function renderMessages() {
+    const messagesContainer = shadow.querySelector('#messages-container');
+    if (!messagesContainer) return;
+    
+    messagesContainer.innerHTML = '';
+    
+    if (config && config.welcomeMessage) {
+      const welcomeDiv = document.createElement('div');
+      welcomeDiv.className = 'message bot';
+      welcomeDiv.innerHTML = formatMessageText(config.welcomeMessage);
+      messagesContainer.appendChild(welcomeDiv);
+    }
+    
+    chatHistory.forEach(msg => {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `message ${msg.role === 'assistant' ? 'bot' : 'user'}`;
+      msgDiv.innerHTML = formatMessageText(msg.content);
+      messagesContainer.appendChild(msgDiv);
+    });
+    
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'typing-indicator';
+    typingIndicator.id = 'typing-indicator';
+    typingIndicator.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+    messagesContainer.appendChild(typingIndicator);
+    
+    scrollToBottom();
+  }
 
   function formatMessageText(text) {
     if (!text) return "";
@@ -314,7 +364,6 @@
   }
 
   function render() {
-    // If custom container
     if (config.displayMode === "custom" && config.customContainerId) {
       const customDiv = document.getElementById(config.customContainerId);
       if (customDiv) {
@@ -345,12 +394,7 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
-          <div class="messages" id="messages-container">
-            <div class="message bot">${formatMessageText(config.welcomeMessage)}</div>
-            <div class="typing-indicator" id="typing-indicator">
-              <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-            </div>
-          </div>
+          <div class="messages" id="messages-container"></div>
           <div class="input-area">
             <form id="chat-form" class="input-wrapper">
               <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
@@ -373,12 +417,7 @@
                 <div><div class="title">${config.botName}</div></div>
               </div>
             </div>
-            <div class="messages" id="messages-container">
-              <div class="message bot">${formatMessageText(config.welcomeMessage)}</div>
-              <div class="typing-indicator" id="typing-indicator">
-                <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
-              </div>
-            </div>
+            <div class="messages" id="messages-container"></div>
             <div class="input-area">
               <form id="chat-form" class="input-wrapper">
                 <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
@@ -392,6 +431,7 @@
       </div>
     `;
 
+    renderMessages();
     bindEvents();
   }
 
@@ -407,6 +447,7 @@
     if (fab) {
       fab.addEventListener('click', () => {
         isOpen = true;
+        sessionStorage.setItem(storageKeyOpen, 'true');
         panel.classList.add('open');
         fab.style.display = 'none';
         setTimeout(() => input.focus(), 300);
@@ -416,6 +457,7 @@
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
         isOpen = false;
+        sessionStorage.setItem(storageKeyOpen, 'false');
         panel.classList.remove('open');
         if (fab) fab.style.display = 'flex';
       });
@@ -431,6 +473,7 @@
         addMessage('user', text);
         
         chatHistory.push({ role: 'user', content: text });
+        saveHistory(chatHistory);
         typingIndicator.classList.add('visible');
         messagesContainer.appendChild(typingIndicator); // Move to bottom
         scrollToBottom();
@@ -497,6 +540,7 @@
             botMsgDiv.textContent = "Sorry, I received an empty response.";
           } else {
             chatHistory.push({ role: 'assistant', content: botResponse });
+            saveHistory(chatHistory);
           }
         } catch (err) {
           typingIndicator.classList.remove('visible');
@@ -518,9 +562,16 @@
     scrollToBottom();
   }
 
+  let scrollFrameId = null;
   function scrollToBottom() {
-    const messagesContainer = shadow.querySelector('#messages-container');
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    if (scrollFrameId) cancelAnimationFrame(scrollFrameId);
+    scrollFrameId = requestAnimationFrame(() => {
+      const messagesContainer = shadow.querySelector('#messages-container');
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+      scrollFrameId = null;
+    });
   }
 
   // Handle resizing for mobile

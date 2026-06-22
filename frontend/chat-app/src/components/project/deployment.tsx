@@ -184,6 +184,9 @@ export function AriaWidget() {
 
     return () => {
       document.body.removeChild(script);
+      const widgetRoot = document.getElementById("aria-ai-widget-root");
+      if (widgetRoot) widgetRoot.remove();
+      delete (window as any).AriaWidgetInitialized;
     };
   }, []);
 
@@ -194,7 +197,7 @@ export function AriaWidget() {
                       size="sm" 
                       variant="outline" 
                       className="absolute top-2 right-2 bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white"
-                      onClick={() => copyToClipboard(`import { useEffect } from "react";\n\nexport function AriaWidget() {\n  useEffect(() => {\n    const script = document.createElement("script");\n    script.src = "${widgetUrl}";\n    script.setAttribute("data-widget-token", "${settings?.widgetToken}");\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      document.body.removeChild(script);\n    };\n  }, []);\n\n  return null;\n}`)}
+                      onClick={() => copyToClipboard(`import { useEffect } from "react";\n\nexport function AriaWidget() {\n  useEffect(() => {\n    const script = document.createElement("script");\n    script.src = "${widgetUrl}";\n    script.setAttribute("data-widget-token", "${settings?.widgetToken}");\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      document.body.removeChild(script);\n      const widgetRoot = document.getElementById("aria-ai-widget-root");\n      if (widgetRoot) widgetRoot.remove();\n      delete (window as any).AriaWidgetInitialized;\n    };\n  }, []);\n\n  return null;\n}`)}
                     >
                       <Copy className="w-4 h-4 mr-2" /> Copy Code
                     </Button>

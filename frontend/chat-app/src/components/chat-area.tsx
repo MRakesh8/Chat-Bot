@@ -232,6 +232,10 @@ export function ChatArea() {
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   const [chatSearchQuery, setChatSearchQuery] = useState("");
+
+  const handleOpenArtifact = useCallback((code: string, language: string) => {
+    setActiveArtifact({ code, language });
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -303,9 +307,11 @@ export function ChatArea() {
   }, [session]);
 
   const scrollToBottom = useCallback((smooth = false) => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: smooth ? "smooth" : "instant",
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: smooth ? "smooth" : "instant",
+      });
     });
   }, []);
 
@@ -637,14 +643,7 @@ export function ChatArea() {
     </div>
   );
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Loading chat...</span>
-      </div>
-    );
-  }
+
 
   if (convError || messagesError) {
     return (
@@ -774,9 +773,15 @@ export function ChatArea() {
               </div>
             </div>
             
-            {filteredMessages?.map((msg) => (
-              <MemoizedMessage
-                key={msg.id}
+            {isLoading ? (
+              <div className="flex h-32 w-full items-center justify-center">
+                <Loader2 className="h-6 h-6 animate-spin text-primary" />
+                <span className="ml-2 text-sm text-muted-foreground">Loading chat history...</span>
+              </div>
+            ) : (
+              filteredMessages?.map((msg) => (
+                <MemoizedMessage
+                  key={msg.id}
                   msg={msg}
                   basePath={basePath}
                   hasSelectedProjects={selectedProjectIds.length > 0}
@@ -785,11 +790,12 @@ export function ChatArea() {
                   onAddToProject={handleAddToProjectSingle}
                   onCopy={copyToClipboard}
                   onRegenerate={regenerate}
-                  onOpenArtifact={(code, lang) => setActiveArtifact({ code, language: lang })}
+                  onOpenArtifact={handleOpenArtifact}
                   onReadAloud={handleReadAloud}
                   isSpeaking={speakingMessageId === msg.id}
                 />
-            ))}
+              ))
+            )}
 
             {followUps.length > 0 && !isStreaming && (
               <div className="flex flex-col gap-2 mt-2 px-4 pb-4">
