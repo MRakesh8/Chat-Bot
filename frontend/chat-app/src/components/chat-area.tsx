@@ -208,6 +208,15 @@ const MemoizedMessage = memo(function MemoizedMessage({
       )}
     </div>
   );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.msg.id === nextProps.msg.id &&
+    prevProps.msg.content === nextProps.msg.content &&
+    prevProps.msg.role === nextProps.msg.role &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.hasSelectedProjects === nextProps.hasSelectedProjects &&
+    prevProps.isSpeaking === nextProps.isSpeaking
+  );
 });
 
 export function ChatArea() {
@@ -245,7 +254,32 @@ export function ChatArea() {
   });
 
   const { data: messages, isLoading: isMessagesLoading, error: messagesError } = useListGeminiMessages(conversationId!, {
-    query: { enabled: !!conversationId, queryKey: getListGeminiMessagesQueryKey(conversationId!) },
+    query: {
+      enabled: !!conversationId,
+      queryKey: getListGeminiMessagesQueryKey(conversationId!),
+      select: (serverData: any) => {
+        const cached = queryClient.getQueryData<any[]>(getListGeminiMessagesQueryKey(conversationId!));
+        if (!cached || !Array.isArray(serverData)) return serverData;
+        return serverData.map((msg: any, index: number) => {
+          const cachedMsg = cached[index];
+          if (!cachedMsg) return msg;
+
+          // If the server content matches the cached content exactly
+          const contentMatch = cachedMsg.content === msg.content && cachedMsg.role === msg.role;
+          
+          if (cachedMsg.id.toString().startsWith("optimistic-") && cachedMsg.role === msg.role) {
+            if (contentMatch) return cachedMsg; // Keep reference to avoid re-renders
+            return { ...msg, id: cachedMsg.id }; // Preserve optimistic ID to prevent remounts
+          }
+          
+          if (contentMatch && cachedMsg.id === msg.id) {
+            return cachedMsg;
+          }
+
+          return msg;
+        });
+      }
+    },
   });
 
   useEffect(() => {
@@ -293,7 +327,7 @@ export function ChatArea() {
     if (!messages) return [];
     if (!chatSearchQuery.trim()) return messages;
     const query = chatSearchQuery.toLowerCase();
-    return messages.filter(m => m.content.toLowerCase().includes(query));
+    return (messages as any[]).filter((m: any) => m.content.toLowerCase().includes(query));
   }, [messages, chatSearchQuery]);
 
   const activeProject = useMemo(
@@ -436,8 +470,9 @@ export function ChatArea() {
       queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
       setLocation(`/chat/${targetId}`);
       
+      const optimisticUserMessageId = "optimistic-user-" + Date.now();
       const newMessage = {
-        id: "optimistic-" + Date.now(),
+        id: optimisticUserMessageId,
         role: "user",
         content: messageText,
         createdAt: new Date().toISOString(),
@@ -447,12 +482,13 @@ export function ChatArea() {
         return [...old, newMessage];
       });
 
-      setTimeout(() => sendMessage(targetId!, messageText, fileIds, selectedProjectIds, useNormalAi), 50);
+      setTimeout(() => sendMessage(targetId!, messageText, fileIds, selectedProjectIds, useNormalAi, optimisticUserMessageId), 50);
       return;
     }
 
+    const optimisticUserMessageId = "optimistic-user-" + Date.now();
     const newMessage = {
-      id: "optimistic-" + Date.now(),
+      id: optimisticUserMessageId,
       role: "user",
       content: messageText,
       createdAt: new Date().toISOString(),
@@ -462,7 +498,7 @@ export function ChatArea() {
       return [...old, newMessage];
     });
 
-    sendMessage(targetId, messageText, fileIds, selectedProjectIds, useNormalAi);
+    sendMessage(targetId, messageText, fileIds, selectedProjectIds, useNormalAi, optimisticUserMessageId);
     setTimeout(() => scrollToBottom(), 50);
   };
 
@@ -507,7 +543,7 @@ export function ChatArea() {
 
   const regenerate = useCallback(() => {
     if (!conversationId || !messages?.length) return;
-    const lastUser = [...messages].reverse().find((message) => message.role === "user");
+    const lastUser = [...(messages as any[])].reverse().find((message: any) => message.role === "user");
     if (lastUser) sendMessage(conversationId, lastUser.content, [], selectedProjectIds, selectedSources.has("normal"));
   }, [conversationId, messages, sendMessage, selectedProjectIds, selectedSources]);
 
@@ -541,7 +577,7 @@ export function ChatArea() {
   const handleAddToProject = async () => {
     if (!targetProjectId || selectedMessages.size === 0) return;
     const contents = Array.from(selectedMessages)
-      .map((messageId) => messages?.find((message) => message.id === messageId)?.content)
+      .map((messageId) => (messages as any[])?.find((message: any) => message.id === messageId)?.content)
       .filter(Boolean) as string[];
 
     try {
@@ -779,7 +815,7 @@ export function ChatArea() {
                 <span className="ml-2 text-sm text-muted-foreground">Loading chat history...</span>
               </div>
             ) : (
-              filteredMessages?.map((msg) => (
+              (filteredMessages as any[])?.map((msg: any) => (
                 <MemoizedMessage
                   key={msg.id}
                   msg={msg}

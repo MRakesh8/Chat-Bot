@@ -74,10 +74,7 @@ export default function App() {
                   <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
 
-                <Route path="/chat">
-                  <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/chat/:id">
+                <Route path="/chat/:id?">
                   <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
                 </Route>
                 <Route path="/settings">

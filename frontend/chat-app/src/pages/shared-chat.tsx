@@ -136,6 +136,12 @@ const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
       )}
     </div>
   );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.msg.id === nextProps.msg.id &&
+    prevProps.msg.role === nextProps.msg.role &&
+    prevProps.msg.content === nextProps.msg.content
+  );
 });
 
 export default function SharedChatPage() {

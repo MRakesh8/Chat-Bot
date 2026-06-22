@@ -23,9 +23,10 @@ export function useChatStream() {
     setStreamingContent("");
   };
 
-  const sendMessage = async (conversationId: string, content: string, fileIds: string[], projectIds: string[] = [], useNormalAi: boolean = true) => {
+  const sendMessage = async (conversationId: string, content: string, fileIds: string[], projectIds: string[] = [], useNormalAi: boolean = true, optimisticUserMessageId?: string) => {
     setIsStreaming(true);
     setStreamingContent("");
+    let fullContent = "";
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -75,6 +76,28 @@ export function useChatStream() {
             try {
               const json = JSON.parse(line.slice(6));
               if (json.done) {
+                // Optimistically write final messages to prevent layout flash before refetch
+                const userMsg = {
+                  id: optimisticUserMessageId || "optimistic-user-" + Date.now(),
+                  role: "user",
+                  content: content,
+                  createdAt: new Date().toISOString(),
+                };
+                const assistantMsg = {
+                  id: "optimistic-assistant-" + Date.now(),
+                  role: "assistant",
+                  content: fullContent,
+                  createdAt: new Date().toISOString(),
+                };
+                queryClient.setQueryData(getListGeminiMessagesQueryKey(conversationId), (old: any) => {
+                  if (!old) return [userMsg, assistantMsg];
+                  const existingUserMsg = old.find((m: any) => m.id === userMsg.id);
+                  const filtered = old.filter((m: any) => 
+                    m.id !== userMsg.id && !m.id.toString().startsWith("optimistic-")
+                  );
+                  return [...filtered, existingUserMsg || userMsg, assistantMsg];
+                });
+
                 setStreamingContent("");
                 setIsStreaming(false);
                 abortControllerRef.current = null;
@@ -88,6 +111,7 @@ export function useChatStream() {
                   queryKey: getListGeminiConversationsQueryKey(),
                 });
               } else if (json.content) {
+                fullContent += json.content;
                 setStreamingContent((prev) => prev + json.content);
               } else if (json.error) {
                 throw new Error(json.error);
