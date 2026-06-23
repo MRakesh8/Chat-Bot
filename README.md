@@ -1,103 +1,139 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" alt="Status" />
-  <img src="https://img.shields.io/badge/PRs-Welcome-blue?style=for-the-badge" alt="PRs Welcome" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
+  <a href="#">
+    <img src="https://via.placeholder.com/1000x250/0f172a/ffffff?text=AI+Chatbot+Platform" alt="Project Banner" width="100%" />
+  </a>
+
+  <br />
+  <br />
+
+  <h1 align="center">
+    <strong>Elevated AI Chatbot Experience</strong>
+  </h1>
+
+  <p align="center">
+    A robust, full-stack conversational intelligence platform powered by Google Gemini and Supabase. Engineered for speed, designed for elegance, and built for maximum extensibility.
+  </p>
+
+  <p align="center">
+    <a href="#-core-features"><strong>Explore Features</strong></a> ·
+    <a href="#-architecture--tech-stack"><strong>View Tech Stack</strong></a> ·
+    <a href="#-quick-start"><strong>Quick Start</strong></a>
+  </p>
+
+  <br />
+
+  <!-- Badges -->
+  <p align="center">
+    <img src="https://img.shields.io/badge/Version-1.0.0-0f172a?style=flat-square&logo=github" alt="Version" />
+    <img src="https://img.shields.io/badge/Build-Passing-22c55e?style=flat-square&logo=vercel" alt="Build" />
+    <img src="https://img.shields.io/badge/Powered_by-Gemini_AI-4f46e5?style=flat-square&logo=google" alt="AI Engine" />
+    <img src="https://img.shields.io/badge/Database-Supabase-3ecf8e?style=flat-square&logo=supabase" alt="Database" />
+    <img src="https://img.shields.io/badge/License-MIT-0f172a?style=flat-square" alt="License" />
+  </p>
 </div>
 
-<h1 align="center">🚀 Next-Gen AI Chatbot</h1>
+<hr />
 
-<p align="center">
-  <b>A powerful, full-stack, and intelligent AI Chatbot powered by Google Gemini and Supabase.</b><br>
-  Built with modern web technologies for a seamless, blazing-fast, and highly interactive user experience.
-</p>
+## 🌟 Overview
 
----
+Welcome to the **Next-Gen AI Chatbot Platform**. This repository hosts a premium, production-ready conversational application that bridges the gap between deep AI intelligence and seamless user interaction. 
 
-## ✨ Features
+It is designed to be more than just a chatbot—it's a comprehensive workspace capable of parsing complex documents, scraping real-time web data, executing code dynamically, and maintaining context with ultra-low latency.
 
-Our chatbot is packed with advanced capabilities, ensuring an intelligent and versatile experience:
+<br />
 
-- 🧠 **Advanced AI Conversations**: Powered by Google's Gemini AI for deep, context-aware, and natural responses.
-- 📄 **Multi-Format Document Parsing**: Upload and analyze diverse files seamlessly.
-  - *Supported formats*: PDF, Word (`.docx`), and other Office documents.
-- 🌐 **Web & Media Intelligence**:
-  - Automatically fetch and analyze YouTube video transcripts.
-  - Scrape and summarize external web pages and links (via Puppeteer).
-- 💻 **Live Code Execution**: Features an integrated code playground (Sandpack) to write, test, and render code snippets directly within the chat!
-- 🎨 **Sleek, Modern UI**: Designed with TailwindCSS, Radix UI, and Framer Motion for buttery-smooth animations and glassmorphism aesthetics.
-- ⚡ **Real-Time Data**: Backed by a robust Supabase database architecture to keep your chat history perfectly synced.
+## ✨ Core Features
 
----
+| Feature | Description |
+| :--- | :--- |
+| 🧠 **Cognitive Intelligence** | Powered by **Google Gemini AI** for nuanced, context-aware reasoning and natural language processing. |
+| 📄 **Universal Document Parsing** | Effortlessly ingest and analyze knowledge from PDFs, Word Documents (`.docx`), and standard Office files. |
+| 🌐 **Web & Media Scraping** | Integrated with **Puppeteer** to extract insights from web pages, Instagram, and YouTube video transcripts. |
+| 💻 **Live Code Playground** | Embedded **Sandpack** environment allows users to write, execute, and preview code safely directly inside the chat. |
+| 🎨 **Premium UI/UX** | A buttery-smooth, responsive interface built with **Tailwind CSS**, **Radix UI**, and **Framer Motion** for glassmorphic aesthetics. |
+| ⚡ **Real-Time Synchronization** | Built on **Supabase** for robust authentication, instantaneous state synchronization, and secure data persistence. |
 
-## 🛠️ Technology Stack
+<br />
 
-This project uses a monorepo architecture (pnpm workspaces) to neatly separate the frontend and backend while sharing core utilities.
+## 🏗 Architecture & Tech Stack
 
-### 🎨 Frontend
-> The user interface is built to be fast, responsive, and visually stunning.
-- **Framework**: React.js with Vite
-- **Styling**: Tailwind CSS, Radix UI, Framer Motion
-- **Routing & State**: Wouter, React Query, React Hook Form
-- **Markdown & Code**: React Markdown, Highlight.js, Sandpack (CodeSandbox)
+This project utilizes a scalable **Monorepo Architecture** managed via `pnpm workspaces`, ensuring optimal code sharing and streamlined dependency management between the client and server.
 
-### ⚙️ Backend
-> A robust and scalable server handling AI operations, file parsing, and data scraping.
-- **Framework**: Node.js, Express 5.2
-- **AI Engine**: `@google/genai` (Google Gemini AI)
-- **Database ORM**: Drizzle ORM
-- **Utilities**: Puppeteer (Web Scraping), Multer (Uploads), PDF-parse & Mammoth (Doc parsing), Youtube-dl & Transcripts
+### 🎨 Frontend Engineering
+The user interface prioritizes a frictionless experience with high-performance rendering.
 
-### 🗄️ Database & Services
-- **Backend-as-a-Service**: Supabase (PostgreSQL, Auth, Storage)
+* **Core Framework**: React.js, Vite
+* **Styling & Animation**: Tailwind CSS, Radix UI Primitives, Framer Motion
+* **State Management**: React Query, Wouter (Routing), React Hook Form
+* **Rich Text & Code**: React Markdown, Highlight.js, Sandpack
 
----
+### ⚙️ Backend Architecture
+A high-throughput server built to handle intensive AI orchestration and data processing.
 
-## 🚀 Getting Started
+* **Runtime & Framework**: Node.js, Express 5.2
+* **AI Orchestration**: `@google/genai`
+* **Data Layer**: Supabase (PostgreSQL), Drizzle ORM
+* **Processing Engines**: Puppeteer (Scraping), Multer (Multipart), PDF-parse & Mammoth (Parsing)
 
-Follow these steps to run the project locally on your machine.
+<br />
+
+## 🚀 Quick Start
+
+Get the platform running on your local machine in under 5 minutes.
 
 ### Prerequisites
-Make sure you have [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/) installed.
 
-### 1. Clone & Install
+Ensure your development environment meets the following requirements:
+- **Node.js** (v18.x or higher)
+- **pnpm** (v10.x or higher)
+- Active credentials for **Supabase** and **Google Gemini AI**.
+
+### Installation Guide
+
+**1. Clone the repository**
 ```bash
-# Clone the repository
-git clone <your-repo-url>
+git clone <repository-url>
 cd Chat-bot
+```
 
-# Install dependencies (using pnpm workspace)
+**2. Install Monorepo Dependencies**
+```bash
 pnpm install
 ```
 
-### 2. Environment Variables
-Copy the `.env.example` file to `.env` and configure your API keys (Google Gemini, Supabase, etc.).
+**3. Configure Environment Variables**
+Duplicate the sample environment file and securely insert your API keys.
 ```bash
 cp .env.example .env
 ```
 
-### 3. Run the Development Server
-This single command will spin up both the frontend and backend servers simultaneously!
+**4. Initialize the Application**
+Launch both the frontend client and the backend API server concurrently.
 ```bash
 pnpm run dev
 ```
-* **Frontend**: Usually runs on `http://localhost:5173`
-* **Backend**: Connected and ready to handle API requests.
 
----
+> **Note**: The frontend client will be available at `http://localhost:5173`, seamlessly proxying requests to the backend API.
 
-## 📁 Project Structure
+<br />
 
-```bash
-📦 Chat-bot
- ┣ 📂 backend          # Express API server, Gemini AI integration, parsing logic
- ┣ 📂 frontend         # React/Vite UI application, components, API clients
- ┣ 📂 database         # Drizzle ORM schemas and Supabase setup
- ┣ 📂 shared           # Shared Typescript types/utilities
- ┗ 📜 pnpm-workspace.yaml
+## 📁 Repository Structure
+
+```text
+Chat-bot/
+├── backend/               # Core Express API, AI logic, and data ingestion services
+├── frontend/              # Vite/React client, UI components, and API integration
+├── database/              # Drizzle ORM schemas and Supabase migration files
+├── shared/                # Cross-boundary TypeScript types and utility functions
+├── .env.example           # Environment configuration template
+└── pnpm-workspace.yaml    # Monorepo workspace definitions
 ```
 
----
+<br />
+
+<hr />
 
 <div align="center">
-  <i>Built with ❤️ using the latest in Web & AI technologies.</i>
+  <p>Engineered for performance. Designed for humans.</p>
+  <p><strong>Released under the MIT License</strong></p>
 </div>
