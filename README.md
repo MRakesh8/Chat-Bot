@@ -374,7 +374,7 @@ Aria is pre-configured for a **Vercel + Render** deployment.
 
 <div align="center">
 
-**Built with ❤️ by [Rakesh](https://github.com/MRakesh8)**
+**(https://github.com/MRakesh8)**
 
 *If this project was helpful, please give it a ⭐ — it means a lot!*
 
