@@ -90,6 +90,12 @@ router.put("/settings", async (req: Request, res: Response) => {
       }
     });
 
+    // Server-side guard: reject non-CSS content from being saved to customCss
+    if (typeof safeUpdates.customCss === "string" && safeUpdates.customCss.trim() && looksLikeNonCSS(safeUpdates.customCss)) {
+      console.warn(`Blocked non-CSS content from being saved to customCss for project ${projectId}`);
+      safeUpdates.customCss = "";
+    }
+
     if (!existing) {
       const defaultSettings = {
         projectId,
@@ -389,6 +395,12 @@ Rules:
     // Clean up in case Gemini still outputs markdown code fences
     cssText = cssText.replace(/```css/g, "").replace(/```/g, "").trim();
 
+    // Validate that AI output looks like actual CSS and not error logs/stack traces
+    if (cssText && looksLikeNonCSS(cssText)) {
+      console.warn("AI CSS generation returned non-CSS content, discarding.");
+      return res.json({ css: "/* AI generation failed: invalid output. Please try again. */" });
+    }
+
     return res.json({ css: cssText });
   } catch (error: any) {
     console.error("AI CSS Generation failed:", error);
@@ -399,8 +411,32 @@ Rules:
         code: "AI_DISABLED" 
       });
     }
-    return res.status(500).json({ error: error.message || "Failed to generate CSS" });
+    // Never expose raw error.message to the client — it may contain stack traces, SQL, or internal paths
+    return res.status(500).json({ error: "Failed to generate CSS. Please try again later." });
   }
 });
+
+/**
+ * Detect if text is likely backend logs, stack traces, SQL, or JSON error payloads
+ * rather than valid CSS. Used as a server-side guard before returning AI output.
+ */
+function looksLikeNonCSS(text: string): boolean {
+  // JSON object/array
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try { JSON.parse(text); return true; } catch (_) {}
+  }
+  // Stack traces
+  if (/\bat\s+[a-zA-Z0-9_$<>#.-]+\s+\(/.test(text)) return true;
+  // SQL statements
+  if (/\b(SELECT\s+[\s\S]*?\s+FROM|INSERT\s+INTO|UPDATE\s+[\s\S]*?\s+SET|DELETE\s+FROM|CREATE\s+TABLE|ALTER\s+TABLE)\b/i.test(text)) return true;
+  // Node/server file paths
+  if (/(?:\s|^)\/(?:opt|usr|home|var|tmp|node_modules)\//.test(text)) return true;
+  if (/[a-zA-Z]:\\[a-zA-Z0-9_.-]+(?:\\[a-zA-Z0-9_.-]+)+/.test(text)) return true;
+  // Pino/Fastify/Express JSON log lines  
+  if (/"level":\s*\d+/.test(text) && /"time":\s*\d+/.test(text)) return true;
+  // Error: prefix followed by technical content
+  if (/^Error:.*\n\s+at\s+/m.test(text)) return true;
+  return false;
+}
 
 export default router;

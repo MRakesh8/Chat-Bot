@@ -391,16 +391,26 @@ export function WidgetStudio({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (settings) {
-      setFormData(settings);
       const initialCss = settings.customCss || "";
-      setEditorCss(initialCss);
-      setActivePreviewCss(initialCss);
       
+      // Guard: if the saved customCss contains non-CSS content (e.g. backend error logs
+      // that were previously saved due to a bug), discard it and start with empty CSS.
       const val = validateCSS(initialCss);
-      if (!val.valid) {
-        setValidationError(val.error || "Invalid CSS syntax");
-      } else {
+      if (initialCss && val.error === "This does not appear to be CSS") {
+        console.warn("Widget settings contained non-CSS content in customCss field. Discarding.");
+        setFormData({ ...settings, customCss: "" });
+        setEditorCss("");
+        setActivePreviewCss("");
         setValidationError(null);
+      } else {
+        setFormData(settings);
+        setEditorCss(initialCss);
+        setActivePreviewCss(initialCss);
+        if (!val.valid) {
+          setValidationError(val.error || "Invalid CSS syntax");
+        } else {
+          setValidationError(null);
+        }
       }
     }
   }, [settings]);
@@ -567,7 +577,13 @@ export function WidgetStudio({ projectId }: { projectId: string }) {
         setAiDisabled(true);
         setAiError(data.error || "AI Generator is unavailable");
       } else if (data.css) {
-        setAiCssResult(data.css);
+        // Validate AI output is actually CSS before presenting it to the user
+        const aiValidation = validateCSS(data.css);
+        if (aiValidation.error === "This does not appear to be CSS") {
+          setAiError("AI returned invalid output (not CSS). Please rephrase your prompt and try again.");
+        } else {
+          setAiCssResult(data.css);
+        }
       } else {
         throw new Error("Invalid response format");
       }
