@@ -17,8 +17,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const isRetryableError = (err: any) => {
   const status = err?.status || err?.response?.status;
-  return status === 429 || status === 404 || status === 503 || 
-         err?.message?.includes("429") || err?.message?.includes("404") || err?.message?.includes("503") || err?.message?.includes("timeout");
+  return status === 429 || status === 404 || status === 503 || status === 500 || status === 502 || status === 504 ||
+         err?.message?.includes("429") || err?.message?.includes("404") || err?.message?.includes("503") ||
+         err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("504") ||
+         err?.message?.includes("timeout");
 };
 
 import type { GenerateContentResponse, EmbedContentResponse } from "@google/genai";
@@ -51,29 +53,52 @@ class GeminiFailoverModels {
     }
     let systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     
-    if (systemKeys.length === 0) {
-      const fallbackKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-      if (fallbackKey) {
+    // Auto-provision system keys from environment if not already in the database
+    const envSystemKeys = Array.from(new Set([
+      process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+      process.env.GEMINI_API_KEY_1,
+      process.env.GEMINI_API_KEY_2,
+      process.env.GEMINI_API_KEY_3,
+      process.env.GEMINI_API_KEY
+    ].filter(Boolean) as string[]));
+
+    if (envSystemKeys.length > 0) {
+      let allSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
+      const decryptedAllSystemKeys = allSystemKeys.map(k => {
         try {
-          const encryptedKey = crypto.encrypt(fallbackKey);
-          const maskedKey = fallbackKey.substring(0, 4) + "..." + fallbackKey.slice(-4);
-          
-          const newSystemKeys = await db.insert(userApiKeys).values({
-            name: "Default System Key (Auto-Provisioned)",
-            provider: "gemini",
-            encryptedKey: encryptedKey,
-            maskedKey: maskedKey,
-            isPrimary: true,
-            isEnabled: true,
-            isSystem: true,
-            status: "HEALTHY",
-            dailyLimit: null
-          }).returning();
-          
-          systemKeys = [...systemKeys, ...newSystemKeys];
-          console.log("[Gemini Routing] Auto-provisioned default system key from environment.");
-        } catch (insertErr) {
-          console.error("[Gemini Routing] Failed to auto-provision system key:", insertErr);
+          return crypto.decrypt(k.encryptedKey) || k.encryptedKey;
+        } catch {
+          return k.encryptedKey;
+        }
+      });
+
+      const keysToInsert = envSystemKeys.filter(envKey => !decryptedAllSystemKeys.includes(envKey));
+
+      if (keysToInsert.length > 0) {
+        for (let i = 0; i < keysToInsert.length; i++) {
+          const key = keysToInsert[i];
+          try {
+            const encryptedKey = crypto.encrypt(key);
+            const maskedKey = key.substring(0, 4) + "..." + key.slice(-4);
+            
+            const [newKey] = await db.insert(userApiKeys).values({
+              name: `System Key ${allSystemKeys.length + 1} (Auto-Provisioned)`,
+              provider: "gemini",
+              encryptedKey: encryptedKey,
+              maskedKey: maskedKey,
+              isPrimary: allSystemKeys.length === 0 && i === 0,
+              isEnabled: true,
+              isSystem: true,
+              status: "HEALTHY",
+              dailyLimit: null
+            }).returning();
+            
+            systemKeys.push(newKey);
+            allSystemKeys.push(newKey);
+            console.log(`[Gemini Routing] Auto-provisioned system key from environment.`);
+          } catch (insertErr) {
+            console.error("[Gemini Routing] Failed to auto-provision system key:", insertErr);
+          }
         }
       }
     }
@@ -84,7 +109,11 @@ class GeminiFailoverModels {
     const now = new Date();
     for (const key of keys) {
        // Reset if it's a new day (simple UTC check for now)
-       if (key.lastResetAt.getUTCDate() !== now.getUTCDate() || key.lastResetAt.getUTCMonth() !== now.getUTCMonth()) {
+       if (
+         key.lastResetAt.getUTCDate() !== now.getUTCDate() ||
+         key.lastResetAt.getUTCMonth() !== now.getUTCMonth() ||
+         key.lastResetAt.getUTCFullYear() !== now.getUTCFullYear()
+       ) {
          await db.update(userApiKeys).set({
            dailyUsed: 0,
            status: "HEALTHY",
@@ -97,7 +126,11 @@ class GeminiFailoverModels {
          key.cooldownUntil = null;
          key.lastResetAt = now;
          key.failureReason = null;
-       } else if (key.status === "COOLDOWN" && key.cooldownUntil && now > key.cooldownUntil) {
+       } else if (
+         (key.status === "COOLDOWN" || key.status === "QUOTA_EXCEEDED" || key.status === "UNHEALTHY") &&
+         key.cooldownUntil &&
+         now > key.cooldownUntil
+       ) {
          await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
          key.status = "HEALTHY";
          key.cooldownUntil = null;
@@ -230,8 +263,12 @@ class GeminiFailoverModels {
             await this._updateKeyFailure(key, 'timeout', err.message);
             keyFailed = true;
             break; // Move to next key
-          } else if (status === 503 || status === 404 || err?.message?.includes("503") || err?.message?.includes("404")) {
-            console.warn(`[Gemini Routing] Model Unavailable (Status ${status}): Trying fallback model...\n${logOutput}`);
+          } else if (
+            status === 503 || status === 404 || status === 500 || status === 502 || status === 504 ||
+            err?.message?.includes("503") || err?.message?.includes("404") ||
+            err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("504")
+          ) {
+            console.warn(`[Gemini Routing] Model/Server Error (Status ${status}): Trying fallback model...\n${logOutput}`);
             continue; // Try next fallback model for the SAME key
           } else if (isRetryableError(err)) {
             console.warn(`[Gemini Routing] Retryable Error:\n${logOutput}`);
