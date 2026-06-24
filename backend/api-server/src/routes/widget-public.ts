@@ -13,8 +13,12 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
     httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
   });
   
-  const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-1.5-flash"];
-  const modelsToTry = Array.from(new Set([options.model, ...FALLBACK_MODELS]));
+  const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.0-flash"];
+  let requestedModel = options.model || "gemini-2.5-flash";
+  if (requestedModel === "gemini-1.5-flash") {
+    requestedModel = "gemini-2.5-flash";
+  }
+  const modelsToTry = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
   
   for (let i = 0; i < modelsToTry.length; i++) {
     const attemptModel = modelsToTry[i];
