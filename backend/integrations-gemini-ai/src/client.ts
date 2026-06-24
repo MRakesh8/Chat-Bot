@@ -11,14 +11,14 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash"];
+const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const isRetryableError = (err: any) => {
   const status = err?.status || err?.response?.status;
-  return status === 429 || status === 404 || status === 503 || status === 500 || status === 502 || status === 504 ||
-         err?.message?.includes("429") || err?.message?.includes("404") || err?.message?.includes("503") ||
+  return status === 429 || status === 503 || status === 500 || status === 502 || status === 504 ||
+         err?.message?.includes("429") || err?.message?.includes("503") ||
          err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("504") ||
          err?.message?.includes("timeout");
 };
@@ -249,7 +249,18 @@ class GeminiFailoverModels {
           if (status === 429) {
             console.warn(`[Gemini Routing] Rate Limit:\n${logOutput}`);
             const retryAfterHeader = err?.response?.headers?.get('retry-after');
-            const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
+            let retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
+
+            // Check if it's a daily limit quota failure (e.g. Free Tier 20 requests/day limit)
+            const errStr = String(err?.message || "").toLowerCase();
+            const isDailyLimit = errStr.includes("quota exceeded") && 
+                                 (errStr.includes("free_tier") || errStr.includes("limit: 20") || errStr.includes("day"));
+            if (isDailyLimit) {
+              // Bench this key for 12 hours so we do not repeatedly try it
+              retryAfter = 12 * 60 * 60;
+              console.warn(`[Gemini Routing] Key ${key.id.substring(0,4)} hit daily free tier quota limit. Cooldown set to 12 hours.`);
+            }
+
             await this._updateKeyFailure(key, '429', err.message, retryAfter);
             keyFailed = true;
             break; // Move to next key
