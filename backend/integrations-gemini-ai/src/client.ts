@@ -217,6 +217,8 @@ class GeminiFailoverModels {
     const originalModel = options.model || "gemini-2.5-flash";
     const modelsToTry = method === 'embedContent' ? [originalModel] : Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
     
+    let lastError: any = null;
+
     for (const key of keys) {
       const decryptedKey = crypto.decrypt(key.encryptedKey);
       
@@ -226,6 +228,8 @@ class GeminiFailoverModels {
       });
 
       let keyFailed = false;
+      let allFailuresWereTransient = true;
+
       for (const modelToUse of modelsToTry) {
         const attemptOptions = { ...options, model: modelToUse };
         
@@ -240,12 +244,21 @@ class GeminiFailoverModels {
           await this._updateKeySuccess(key);
           return result;
         } catch (err: any) {
+          lastError = err;
           const status = err?.status || err?.response?.status || 'unknown';
           const isTimeout = err?.message?.toLowerCase().includes("timeout");
           const keySlot = key.isSystem ? `System API ${key.id.substring(0,4)}` : `User API ${key.id.substring(0,4)}`;
           
           const logOutput = `Provider: ${key.provider}\nModel: ${modelToUse}\nKey Slot: ${keySlot}\nHTTP Status: ${status}\nError: ${err.message}\n----------------------------------------`;
           
+          const is5xx = status === 503 || status === 500 || status === 502 || status === 504 ||
+                        err?.message?.includes("503") || err?.message?.includes("500") ||
+                        err?.message?.includes("502") || err?.message?.includes("504");
+
+          if (!is5xx) {
+            allFailuresWereTransient = false;
+          }
+
           if (status === 429) {
             console.warn(`[Gemini Routing] Rate Limit:\n${logOutput}`);
             const retryAfterHeader = err?.response?.headers?.get('retry-after');
@@ -294,15 +307,29 @@ class GeminiFailoverModels {
       }
 
       if (!keyFailed) {
-        await this._updateKeyFailure(key, 'other', `All models failed to respond (including fallbacks)`);
+        if (allFailuresWereTransient) {
+          console.warn(`[Gemini Routing] Key ${key.id.substring(0,4)} failed all models due to transient server load/outage. Skipping database unhealthy lock.`);
+        } else {
+          await this._updateKeyFailure(key, 'other', `All models failed to respond (including fallbacks)`);
+        }
       }
     }
 
-    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning structured NO_HEALTHY_KEYS error.`);
+    console.error(`[Gemini Routing] All available keys failed or no keys available. Returning structured NO_HEALTHY_KEYS error. Last error:`, lastError?.message || lastError);
+    
+    const isLast5xx = lastError?.status === 503 || lastError?.status === 502 || lastError?.status === 504 ||
+                      lastError?.message?.includes("503") || lastError?.message?.includes("502") || lastError?.message?.includes("504");
+    const isLast429 = lastError?.status === 429 || lastError?.message?.includes("429");
+
     throw {
       success: false,
-      code: "NO_HEALTHY_KEYS",
-      message: "All AI API keys are unavailable. Please add a new API key or wait for quota reset."
+      code: isLast5xx ? "SERVICE_UNAVAILABLE" : (isLast429 ? "QUOTA_EXCEEDED" : "NO_HEALTHY_KEYS"),
+      status: isLast5xx ? 503 : (isLast429 ? 429 : 503),
+      message: isLast5xx 
+        ? "AI service is currently experiencing high demand. Please try again in a few seconds." 
+        : (isLast429 
+            ? "AI service quota exceeded. Please wait for quota reset." 
+            : "All AI API keys are unavailable. Please add a new API key or wait for quota reset.")
     };
   }
 }

@@ -28,6 +28,7 @@
       }
     } catch(e) {}
   }
+  apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
 
   const storageKeyOpen = `aria_widget_open_${widgetToken}`;
   const storageKeyHistory = `aria_widget_history_${widgetToken}`;

@@ -46,8 +46,9 @@ const router = Router();
 
 // Middleware to validate origin for widget routes
 router.use(async (req: Request, res: Response, next): Promise<any> => {
-  // Extract token from URL path if possible, since req.params isn't populated yet in top-level use()
-  const pathToken = req.path.split('/')[1]; 
+  // Extract token from URL path robustly, ignoring any empty segments caused by double slashes
+  const pathSegments = req.path.split('/').filter(Boolean);
+  const pathToken = pathSegments[0]; 
   const widgetToken = req.params?.widgetToken || req.body?.widgetToken || req.query?.widgetToken || pathToken;
   
   if (!widgetToken) {

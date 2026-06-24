@@ -52,7 +52,7 @@ export function Deployment({ projectId }: { projectId: string }) {
 
   const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://aria-ai.com";
   const widgetUrl = `${currentOrigin}/widget.js`;
-  const backendUrl = apiUrl(""); // Returns the current API base URL
+  const backendUrl = apiUrl("").replace(/\/+$/, ""); // Returns the current API base URL without trailing slash
   
   const embedCode = `<script\n  src="${widgetUrl}"\n  data-widget-token="${settings?.widgetToken}"\n  data-api-url="${backendUrl}">\n</script>`;
 
