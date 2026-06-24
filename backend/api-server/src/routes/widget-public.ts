@@ -411,7 +411,13 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
       ${contextString}
       
-      Answer user questions accurately and concisely.`;
+      CRITICAL INSTRUCTIONS:
+      1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
+      2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
+      3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
+      4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.
+      
+      Answer user questions accurately and clearly based ONLY on the provided context.`;
 
       const fullMessages = [
         { role: "system" as const, content: systemPrompt },
@@ -433,7 +439,13 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
 ${contextString}
 
-Answer user questions accurately and concisely.`;
+CRITICAL INSTRUCTIONS:
+1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
+2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
+3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
+4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.
+
+Answer user questions accurately and clearly based ONLY on the provided context.`;
 
     const chatMessages = [
       { role: "user", parts: [{ text: systemPrompt }] },

@@ -815,6 +815,14 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
        finalSystemPrompt += "\n\nCRITICAL DIRECTIVE: You must only answer questions based on the provided context.";
     }
 
+    finalSystemPrompt += `
+
+CRITICAL INSTRUCTIONS:
+1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
+2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
+3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
+4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.`;
+
     // Build full chat history for Gemini
     const chatMessages: { role: "user" | "model"; parts: GeminiPart[] }[] = [
       { role: "user", parts: [{ text: finalSystemPrompt }] },
