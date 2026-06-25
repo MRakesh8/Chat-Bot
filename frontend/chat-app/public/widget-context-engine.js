@@ -821,39 +821,105 @@
   var CARD_CLASS_RE = /\bcard\b|stat|metric|kpi|widget/i;
   var CARD_ROLES = ['group', 'region', 'listitem'];
 
+  /**
+   * Recursively extracts all leaf text blocks from an element in DOM order,
+   * skipping scripts, styles, widget container, SVGs, etc.
+   * @param {HTMLElement} el
+   * @returns {string[]}
+   */
+  function getTextBlocks(el) {
+    var blocks = [];
+    
+    function traverse(node) {
+      if (node.nodeType === 3) { // Text node
+        var txt = node.nodeValue.trim();
+        if (txt) blocks.push(txt);
+        return;
+      }
+      
+      if (node.nodeType === 1) { // Element node
+        var tagName = node.tagName.toLowerCase();
+        if (tagName === 'script' || tagName === 'style' || tagName === 'noscript' || tagName === 'svg' || tagName === 'canvas') return;
+        if (node.id === 'aria-ai-widget-root') return;
+        
+        // If it's a simple text container with no element children, we can grab its textContent directly
+        var hasElementChildren = false;
+        for (var i = 0; i < node.children.length; i++) {
+          if (node.children[i].nodeType === 1) {
+            hasElementChildren = true;
+            break;
+          }
+        }
+        
+        if (!hasElementChildren) {
+          var t = (node.textContent || '').trim();
+          if (t) blocks.push(t);
+          return;
+        }
+        
+        // Otherwise, traverse child nodes
+        var childNodes = node.childNodes;
+        for (var j = 0; j < childNodes.length; j++) {
+          traverse(childNodes[j]);
+        }
+      }
+    }
+    
+    traverse(el);
+    return blocks;
+  }
+
   function extractCards(root, scanner) {
     var results = [];
+    var extractedElements = [];
     try {
       // Find generic block elements that might be KPI cards
       var candidates = root.querySelectorAll('div, article, section, li');
       for (var i = 0; i < candidates.length; i++) {
         var el = candidates[i];
         
-        // A KPI card typically has few direct children (e.g. 2-5)
-        if (el.children.length < 2 || el.children.length > 5) continue;
+        // Prevent nesting: check if this element is inside an already extracted card element
+        var isSubCard = false;
+        for (var k = 0; k < extractedElements.length; k++) {
+          if (extractedElements[k].contains(el)) {
+            isSubCard = true;
+            break;
+          }
+        }
+        if (isSubCard) continue;
         
-        // Fast bounds check using safeText on children
-        var lines = [];
+        // Extract all text blocks in this element recursively
+        var lines = getTextBlocks(el);
+        
+        // A KPI card typically has 2 to 5 text blocks
+        if (lines.length < 2 || lines.length > 5) continue;
+        
         var totalLen = 0;
-        for(var c = 0; c < el.children.length; c++) {
-           var t = safeText(el.children[c], 100);
-           if (t) {
-             lines.push(t);
-             totalLen += t.length;
-           }
+        for (var c = 0; c < lines.length; c++) {
+          totalLen += lines[c].length;
         }
         
-        // A stat card usually has short total text
-        if (lines.length < 2 || totalLen > 150) continue;
+        // A stat card usually has short total text (less than 150 chars)
+        if (totalLen > 150) continue;
 
         // At least one line should look like a numeric value, currency, or count
         var valueIdx = -1;
         for (var j = 0; j < lines.length; j++) {
-          if (/^[\$\€\£\₹]?\s*[\d,]+(\.\d+)?([KMBkmb%])?$/.test(lines[j]) || /\d/.test(lines[j])) {
+          if (/^[\$\€\£\₹]?\s*[\d,]+(\.\d+)?([KMBkmb%])?$/.test(lines[j]) || /^\d+$/.test(lines[j])) {
             valueIdx = j;
             break;
           }
         }
+        // Fallback to checking if there is any digit
+        if (valueIdx === -1) {
+          for (var j = 0; j < lines.length; j++) {
+            if (/\d/.test(lines[j]) && lines[j].length <= 15) {
+              valueIdx = j;
+              break;
+            }
+          }
+        }
+        
         if (valueIdx === -1) continue;
 
         var vi = vInfo(scanner, el);
@@ -872,7 +938,7 @@
         // Skip generic noisy elements (e.g. timestamps, pagination)
         if (!card.title || !card.value || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(card.value)) continue;
 
-        // Prevent exact duplicates from nested containers
+        // Prevent exact duplicates
         var isDuplicate = false;
         for (var k = 0; k < results.length; k++) {
           if (results[k].item.title === card.title && results[k].item.value === card.value) {
@@ -883,11 +949,13 @@
         
         if (!isDuplicate) {
           results.push(prioritizedItem(card, 7, vi.inViewport, vi.distance, ['card']));
+          extractedElements.push(el);
         }
       }
     } catch (_e) { /* ignore */ }
     return results;
   }
+
 
   /* -- Table Extractor ------------------------------------------ */
   function extractTables(root, scanner) {
