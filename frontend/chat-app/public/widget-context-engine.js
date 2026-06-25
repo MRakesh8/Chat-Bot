@@ -902,9 +902,14 @@
         var headers = [];
         var headerEls = table.querySelectorAll('thead th, thead td, [role="columnheader"]');
         for (var h = 0; h < headerEls.length; h++) {
+          var headerText = safeText(headerEls[h], 60);
+          // Skip interactive or empty action headers
+          if (/^(actions|action|operations|op|manage|edit|view|delete|\s*)$/i.test(headerText.trim())) {
+            continue;
+          }
           var sortDir = headerEls[h].getAttribute('aria-sort') || '';
           headers.push({
-            text: safeText(headerEls[h], 60),
+            text: headerText,
             sorted: sortDir || undefined
           });
         }
@@ -929,7 +934,13 @@
             var cells = row.querySelectorAll('td,[role="cell"],[role="gridcell"]');
             var rowData = [];
             for (var c = 0; c < cells.length; c++) {
-              rowData.push(safeText(cells[c], 60));
+              var cellText = safeText(cells[c], 60);
+              // Clean up cell text: skip cells containing only interactive actions (e.g., View | Edit | Delete)
+              var isActionCell = /^\s*(view|edit|delete|remove|details|update|\s*\/\|\s*)*$/i.test(cellText) ||
+                                 cells[c].querySelector('button, a, [role="button"]') !== null &&
+                                 /^(view|edit|delete|remove|details|update)$/i.test(cellText.replace(/\s+/g, ''));
+              if (isActionCell) continue;
+              rowData.push(cellText);
             }
             rows.push(rowData);
           }
