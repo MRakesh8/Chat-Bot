@@ -450,7 +450,7 @@ router.get("/context-settings", async (req: any, res: Response): Promise<any> =>
 
     const defaultSettings = {
       projectId,
-      enabled: false,
+      enabled: true,
       dashboardAnalysis: true,
       formAssistant: true,
       tableAnalysis: true,

@@ -511,7 +511,7 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
         enabled: contextSettings.enabled,
         maxContextSizeBytes: contextSettings.maxContextSizeBytes,
         developerDebugMode: contextSettings.developerDebugMode
-      } : { enabled: false }
+      } : { enabled: true, maxContextSizeBytes: 6144, developerDebugMode: false }
     });
   } catch (error) {
     console.error("Failed to fetch widget config", error);
@@ -704,7 +704,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     // Default settings if not configured
     if (!contextSettings) {
       contextSettings = {
-        enabled: false,
+        enabled: true,
         dashboardAnalysis: true,
         formAssistant: true,
         tableAnalysis: true,
