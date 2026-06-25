@@ -33,6 +33,12 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
     const isLast = i === modelsToTry.length - 1;
     try {
       const attemptOptions = { ...options, model: attemptModel };
+      console.log("--- GEMINI INVOCATION DIAGNOSTICS ---");
+      console.log("Model:", attemptModel);
+      console.log("Contents array size:", attemptOptions.contents?.length || 0);
+      console.log("Config keys:", attemptOptions.config ? Object.keys(attemptOptions.config) : 'none');
+      console.log("Full request payload:", JSON.stringify(attemptOptions, null, 2).substring(0, 500) + '...');
+      
       if (method === 'generateContent') {
         return await directClient.models.generateContent(attemptOptions);
       } else {
@@ -295,12 +301,19 @@ async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'ge
     });
 
     if (method === 'generateContent') {
-      return { text: response.content };
+      const resVal = { text: response.content };
+      console.log("LOG: executeKeyRequest (UniversalProviderAdapter) returning (generateContent):", JSON.stringify(resVal).substring(0, 500));
+      return resVal;
     } else {
-      return [{ text: response.content }];
+      const resVal = [{ text: response.content }];
+      console.log("LOG: executeKeyRequest (UniversalProviderAdapter) returning (stream):", JSON.stringify(resVal).substring(0, 500));
+      return resVal;
     }
   } else {
-    return await executeWithFallback(key.decryptedKey, method, options);
+    console.log("LOG: executeKeyRequest delegating to executeWithFallback (Gemini native)");
+    const resVal = await executeWithFallback(key.decryptedKey, method, options);
+    console.log("LOG: executeKeyRequest (executeWithFallback) returned");
+    return resVal;
   }
 }
 
@@ -309,6 +322,7 @@ async function executeLlmWithFailover(
   method: 'generateContent' | 'generateContentStream', 
   options: any
 ): Promise<{ result: any; keyUsed: WidgetKey }> {
+  console.log("ENTER executeLlmWithFailover");
   let lastError: any = null;
   
   for (const key of keys) {
@@ -328,6 +342,7 @@ async function executeLlmWithFailover(
       const result = await executeKeyRequest(key, method, attemptOptions);
       
       updateKeySuccessWidget(key).catch(e => console.error("Key success update error:", e));
+      console.log("LOG: executeLlmWithFailover returning success from key:", key.provider);
       return { result, keyUsed: key };
     } catch (err: any) {
       lastError = err;
@@ -375,9 +390,11 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
       try {
         const requestHostname = new URL(origin).hostname;
         if (!allowedUrls.includes(requestHostname)) {
+          console.error("EARLY RETURN: Domain not authorized", origin);
           return res.status(403).json({ error: "Domain not authorized" });
         }
       } catch (e) {
+        console.error("EARLY RETURN: Invalid origin", origin);
         return res.status(403).json({ error: "Invalid origin" });
       }
     }
@@ -438,6 +455,7 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
 router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<any> => {
   const { messages, websiteContext, sessionId } = req.body;
   if (!messages || !Array.isArray(messages)) {
+    console.error("EARLY RETURN: Invalid messages format", req.body);
     return res.status(400).json({ error: "Invalid messages format" });
   }
 
@@ -508,6 +526,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     const keys = await fetchAndManageWidgetKeys(projectId, userId);
 
     if (keys.length === 0) {
+      console.error("EARLY RETURN: No AI API keys configured");
       res.write(`data: ${JSON.stringify({ content: "Sorry, no AI API keys are configured for this chatbot. Please configure an API key in your dashboard." })}\n\n`);
       res.end();
       return res;
@@ -634,9 +653,6 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     let finalWebsiteContext = null;
     let sessionMemory = null;
 
-    console.log("STEP C: Backend - req.body.websiteContext:");
-    console.log(JSON.stringify(websiteContext, null, 2));
-
     try {
       if (contextSettings.enabled && websiteContext && sessionId) {
         const validated = validateWebsiteContext(websiteContext, contextSettings.maxContextSizeBytes);
@@ -660,7 +676,8 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         websiteContext: finalWebsiteContext,
         projectId,
         userId,
-        settings: contextSettings as any
+        settings: contextSettings as any,
+        apiKeys: keys
       });
     } catch (err: any) {
       console.error("Failed contextFuser() step...", err.stack || err);
@@ -689,9 +706,6 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Error fetching widget settings for handoff:", err);
     }
 
-    console.log("STEP 6: Loaded knowledge documents. Count: ", fusedContext.knowledgeChunks?.length || 0);
-    console.log("STEP 7: Loaded conversation history. Count: " + messages.length);
-
     let systemPrompt;
     try {
       systemPrompt = buildContextAwarePrompt({
@@ -701,9 +715,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         settings: contextSettings as any,
         handoffInfo
       });
-      console.log("Built prompt length:", systemPrompt.length);
-      console.log("STEP D: Exact prompt sent to Gemini:");
-      console.log(systemPrompt);
+
     } catch (err: any) {
       console.error("Failed buildContextAwarePrompt()...", err.stack || err);
       throw err;
@@ -717,33 +729,25 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         parts: [{ text: m.content }]
       }))
     ];
-    
-    console.log("STEP 8: Constructed messages array:");
-    console.log(JSON.stringify(chatMessages, null, 2));
 
     try {
-      console.log("STEP 9: About to call executeLlmWithFailover()");
       const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
         contents: chatMessages as any
       });
-      console.log("STEP 11: Gemini raw response initialized");
       
       let fullResponseText = "";
       for await (const chunk of stream) {
         if (chunk.text) {
           fullResponseText += chunk.text;
-          console.log("STEP 11 Chunk:", chunk.text);
           res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
           if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       }
-      console.log("STEP 13: Returned text before post-processing: " + fullResponseText);
-      console.log("STEP 14: No post-processing modifications applied in this route.");
     } catch (err: any) {
-      console.log("STEP 12: executeLlmWithFailover threw an error.");
-      console.error("FULL STACK TRACE:", err.stack || err);
-      // Let it fall through, do NOT replace
-      throw err;
+      console.error("executeLlmWithFailover threw an error:", err);
+      res.write(`data: ${JSON.stringify({ content: "I'm sorry, I'm having trouble connecting to my backend systems right now. Please try again later." })}\n\n`);
+      res.end();
+      return res;
     }
     
     res.end();

@@ -336,6 +336,8 @@ export interface FusedContext {
   kbContextString: string;
   detectedMistakes: DetectedMistake[];
   pageType?: PageType;
+  knowledgeChunks?: any[];
+  userIntent?: UserIntent;
 }
 
 /** A potential mistake detected on the page (empty fields, validation, etc.). */
@@ -345,3 +347,19 @@ export interface DetectedMistake {
   message: string;
   severity: "error" | "warning" | "info";
 }
+
+// ---------------------------------------------------------------------------
+// Intent Classification
+// ---------------------------------------------------------------------------
+
+export type UserIntent =
+  | "Website Question"
+  | "Knowledge Question"
+  | "General Question"
+  | "Navigation Help"
+  | "Dashboard Analysis"
+  | "Form Assistance"
+  | "Table Analysis"
+  | "Greeting"
+  | "Pricing"
+  | "Contact";

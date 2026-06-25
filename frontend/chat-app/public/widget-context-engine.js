@@ -721,30 +721,66 @@
   function extractCards(root, scanner) {
     var results = [];
     try {
-      var candidates = root.querySelectorAll('[class*="card"],[class*="stat"],[class*="metric"],[class*="kpi"],[class*="widget"],[role="group"],[role="region"]');
+      // Find generic block elements that might be KPI cards
+      var candidates = root.querySelectorAll('div, article, section, li');
       for (var i = 0; i < candidates.length; i++) {
         var el = candidates[i];
-        if (!classMatches(el, CARD_CLASS_RE) && CARD_ROLES.indexOf(el.getAttribute('role')) === -1) continue;
+        
+        // A KPI card typically has few direct children (e.g. 2-5)
+        if (el.children.length < 2 || el.children.length > 5) continue;
+        
+        // Fast bounds check using safeText on children
+        var lines = [];
+        var totalLen = 0;
+        for(var c = 0; c < el.children.length; c++) {
+           var t = safeText(el.children[c], 100);
+           if (t) {
+             lines.push(t);
+             totalLen += t.length;
+           }
+        }
+        
+        // A stat card usually has short total text
+        if (lines.length < 2 || totalLen > 150) continue;
+
+        // At least one line should look like a numeric value, currency, or count
+        var valueIdx = -1;
+        for (var j = 0; j < lines.length; j++) {
+          if (/^[\$\€\£\₹]?\s*[\d,]+(\.\d+)?([KMBkmb%])?$/.test(lines[j]) || /\d/.test(lines[j])) {
+            valueIdx = j;
+            break;
+          }
+        }
+        if (valueIdx === -1) continue;
+
         var vi = vInfo(scanner, el);
         if (!vi.inViewport && vi.distance > 200) continue;
 
-        // Extract structured card data
-        var titleEl = el.querySelector('h1,h2,h3,h4,h5,h6,[class*="title"],[class*="heading"],[class*="label"]');
-        var valueEl = el.querySelector('[class*="value"],[class*="number"],[class*="count"],[class*="amount"]');
-        var subtitleEl = el.querySelector('[class*="subtitle"],[class*="description"],[class*="sub"]');
-        var trendEl = el.querySelector('[class*="trend"],[class*="change"],[class*="delta"],[class*="percent"]');
+        var value = lines[valueIdx];
+        var title = valueIdx > 0 ? lines[0] : (lines.length > 1 ? lines[1] : '');
+        var subtitle = lines.length > 2 ? lines.filter(function(_, idx) { return idx !== valueIdx && lines[idx] !== title; }).join(' ') : '';
 
         var card = {
-          title: safeText(titleEl, 100) || '',
-          value: safeText(valueEl, 50) || '',
-          subtitle: safeText(subtitleEl, 100) || '',
-          trend: safeText(trendEl, 50) || ''
+          title: title,
+          value: value,
+          description: subtitle
         };
 
-        // Skip empty cards
-        if (!card.title && !card.value) continue;
+        // Skip generic noisy elements (e.g. timestamps, pagination)
+        if (!card.title || !card.value || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(card.value)) continue;
 
-        results.push(prioritizedItem(card, 7, vi.inViewport, vi.distance, ['card']));
+        // Prevent exact duplicates from nested containers
+        var isDuplicate = false;
+        for (var k = 0; k < results.length; k++) {
+          if (results[k].item.title === card.title && results[k].item.value === card.value) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        
+        if (!isDuplicate) {
+          results.push(prioritizedItem(card, 7, vi.inViewport, vi.distance, ['card']));
+        }
       }
     } catch (_e) { /* ignore */ }
     return results;
@@ -776,14 +812,18 @@
         var selectedRow = null;
         var count = 0;
         for (var r = 0; r < bodyRows.length; r++) {
+          var row = bodyRows[r];
           // Skip header rows inside role="row"
-          if (bodyRows[r].querySelector('[role="columnheader"]')) continue;
+          if (row.querySelector('[role="columnheader"]')) continue;
+          
+          // Skip hidden rows
+          if (row.offsetHeight === 0 && row.offsetWidth === 0) continue;
 
-          var isSelected = /\b(selected|active)\b/.test(bodyRows[r].className || '');
+          var isSelected = /\b(selected|active)\b/.test(row.className || '');
           if (isSelected) selectedRow = count;
 
           if (count < 5) {
-            var cells = bodyRows[r].querySelectorAll('td,[role="cell"],[role="gridcell"]');
+            var cells = row.querySelectorAll('td,[role="cell"],[role="gridcell"]');
             var rowData = [];
             for (var c = 0; c < cells.length; c++) {
               rowData.push(safeText(cells[c], 60));
@@ -1474,9 +1514,30 @@
    * @returns {Promise<object>} Full WebsiteContext payload.
    */
   AriaContextEngine.prototype._extract = async function () {
+    var startTime = performance.now();
+
+    // --- Structured Context API (Highest Priority) ---
+    if (window.AriaContext) {
+      // Return structured data immediately, bypassing DOM scan
+      return {
+        version: "2.0",
+        timestamp: Date.now(),
+        extractionDurationMs: performance.now() - startTime,
+        transport: { mode: "full", sessionHash: "", segmentHashes: {}, changedSegments: [], unchangedSegments: [], sequenceNumber: 0 },
+        page: { url: window.location.href, title: document.title, type: window.AriaContext.page || "unknown", breadcrumbs: [], heading: "" },
+        navigation: { items: [] },
+        content: { headings: [], forms: window.AriaContext.forms || [], tables: window.AriaContext.tables || [], cards: [], stats: [], notifications: [], dialogs: [], charts: [] },
+        state: { currentCustomer: window.AriaContext.user?.name || undefined, selectedFilters: {}, openDialogs: [], recentActions: [], conversationTurns: 0, createdAt: Date.now(), lastActivityAt: Date.now() },
+        workflow: { currentWorkflow: "", completedSteps: [], activeStep: "", nextSteps: [] },
+        viewport: { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY, scrollDepthPercent: 0, visibleElementCount: 0, totalElementCount: 0, viewportCoveragePercent: 0 },
+        metadata: { engineVersion: "1.0.0", extractorsUsed: ["structured_api"], domNodeCount: 0, memoryUsageBytes: 0, isPartial: false },
+        ariaContext: window.AriaContext // Attach the raw payload
+      };
+    }
+
     var root = this._root;
     var scanner = this._scanner;
-    var startTime = performance.now();
+
 
     // --- Page-level info ---
     var pageUrl = SecuritySanitizer.sanitizeUrl(window.location.href);

@@ -684,7 +684,8 @@ export async function searchProjectKnowledge(params: {
 
   return {
     contextString: finalItems.join("\n\n---\n\n"),
-    retrievedIds: Array.from(retrievedIdsSet)
+    retrievedIds: Array.from(retrievedIdsSet),
+    candidates: topCandidates
   };
 }
 

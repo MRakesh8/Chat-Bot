@@ -19,6 +19,7 @@ import type {
   ChartContext,
 } from "./types";
 import { searchProjectKnowledge } from "../knowledge";
+import { intentClassifier } from "./intent-classifier";
 
 // ---------------------------------------------------------------------------
 // Context Fuser
@@ -40,11 +41,25 @@ export class ContextFuser {
     projectId: string;
     userId: string | null;
     settings: ContextSettings;
+    apiKeys?: any[];
   }): Promise<FusedContext> {
-    const { userMessage, websiteContext, projectId, userId, settings } = params;
+    const { userMessage, websiteContext, projectId, userId, settings, apiKeys } = params;
+
+    // ── 0. Intent Classification ──
+    let userIntent: any = "General Question";
+    if (apiKeys && apiKeys.length > 0) {
+      const activeKey = apiKeys[0].decryptedKey || apiKeys[0].encryptedKey;
+      userIntent = await intentClassifier.classify({
+        userMessage,
+        apiKey: activeKey
+      });
+    }
+
+    const needsWebsiteContext = ["Website Question", "Dashboard Analysis", "Form Assistance", "Table Analysis", "Navigation Help"].includes(userIntent);
+    const needsKbContext = ["Knowledge Question", "Website Question", "General Question", "Pricing"].includes(userIntent);
 
     // ── 1. Format website context ──
-    const websiteContextString = websiteContext
+    const websiteContextString = (websiteContext && needsWebsiteContext)
       ? this.formatWebsiteContext(websiteContext, settings)
       : "";
 
@@ -59,16 +74,20 @@ export class ContextFuser {
 
     // ── 4. Knowledge base search ──
     let kbContextString = "";
-    try {
-      const searchResult = await searchProjectKnowledge({
-        projectIds: [projectId],
-        userId,
-        query: augmentedQuery,
-        limit: 3,
-      });
-      kbContextString = searchResult.contextString;
-    } catch (err) {
-      console.error("Context fuser: KB search failed:", err);
+    let knowledgeChunks: any[] = [];
+    if (needsKbContext) {
+      try {
+        const searchResult = await searchProjectKnowledge({
+          projectIds: [projectId],
+          userId,
+          query: augmentedQuery,
+          limit: 3,
+        });
+        kbContextString = searchResult.contextString;
+        knowledgeChunks = searchResult.candidates || [];
+      } catch (err) {
+        console.error("Context fuser: KB search failed:", err);
+      }
     }
 
     return {
@@ -76,6 +95,8 @@ export class ContextFuser {
       kbContextString,
       detectedMistakes,
       pageType: websiteContext?.page?.type,
+      knowledgeChunks,
+      userIntent
     };
   }
 

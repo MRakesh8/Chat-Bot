@@ -559,29 +559,12 @@
               console.error("Failed to get website context", e);
             }
           }
-          
-          if (websiteContext) {
-            console.log("STEP A: Browser - websiteContext payload");
-            console.log({
-              pageTitle: websiteContext.meta?.title,
-              url: websiteContext.meta?.url,
-              extractedCards: websiteContext.content?.cards?.length || 0,
-              extractedTables: websiteContext.content?.tables?.length || 0,
-              extractedForms: websiteContext.content?.forms?.length || 0,
-              extractedMetrics: websiteContext.content?.metrics?.length || 0,
-              extractedNavigation: websiteContext.content?.navigation?.length || 0,
-              extractedTextLength: websiteContext.content?.mainText?.length || 0
-            });
-          } else {
-            console.log("STEP A: Browser - websiteContext is missing/empty");
-          }
 
           const requestBody = { 
             messages: chatHistory,
             websiteContext,
             sessionId: contextSessionId
           };
-          console.log("STEP B: Network Payload Size:", JSON.stringify(requestBody).length, "bytes");
 
           const res = await fetch(`${apiBaseUrl}/api/widget/${widgetToken}/chat`, {
             method: 'POST',

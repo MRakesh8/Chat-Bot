@@ -84,7 +84,7 @@ export class UniversalProviderAdapter {
     }
 
     const data = (await response.json()) as any;
-    return {
+    const resultObj = {
       content: data.choices[0]?.message?.content || "",
       usage: {
         promptTokens: data.usage?.prompt_tokens || 0,
@@ -92,6 +92,8 @@ export class UniversalProviderAdapter {
         totalTokens: data.usage?.total_tokens || 0,
       }
     };
+    console.log("LOG: OpenAI provider returning:", JSON.stringify(resultObj).substring(0, 500));
+    return resultObj;
   }
 
   private async handleGemini(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
@@ -142,10 +144,12 @@ export class UniversalProviderAdapter {
     const completionTokens = data.usageMetadata?.candidatesTokenCount || 0;
     const totalTokens = data.usageMetadata?.totalTokenCount || 0;
 
-    return {
+    const resultObj = {
       content,
       usage: { promptTokens, completionTokens, totalTokens }
     };
+    console.log("LOG: Gemini provider returning:", JSON.stringify(resultObj).substring(0, 500));
+    return resultObj;
   }
 
   private async handleClaude(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
@@ -175,7 +179,7 @@ export class UniversalProviderAdapter {
     }
 
     const data = (await response.json()) as any;
-    return {
+    const resultObj = {
       content: data.content?.[0]?.text || "",
       usage: {
         promptTokens: data.usage?.input_tokens || 0,
@@ -183,5 +187,7 @@ export class UniversalProviderAdapter {
         totalTokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
       }
     };
+    console.log("LOG: Anthropic provider returning:", JSON.stringify(resultObj).substring(0, 500));
+    return resultObj;
   }
 }
