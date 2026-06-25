@@ -554,7 +554,8 @@
           let websiteContext = null;
           if (contextEngine) {
             try {
-              websiteContext = await contextEngine.getContext();
+              // Retrieve new context if changed, otherwise fallback to the cached context from the previous turn
+              websiteContext = await contextEngine.getContext() || contextEngine.getCachedContext();
             } catch (e) {
               console.error("Failed to get website context", e);
             }
