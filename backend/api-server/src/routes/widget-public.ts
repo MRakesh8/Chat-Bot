@@ -655,12 +655,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
     try {
       if (contextSettings.enabled && websiteContext && sessionId) {
-        const validated = validateWebsiteContext(websiteContext, contextSettings.maxContextSizeBytes);
-        if (validated) {
-          finalWebsiteContext = deltaReconstructor.reconstruct(sessionId, validated);
-          if (finalWebsiteContext && contextSettings.contextMemory) {
-            sessionMemory = sessionMemoryStore.update(sessionId, finalWebsiteContext);
-          }
+        // Reconstruct first (handles delta merging and validates the final full context internally)
+        finalWebsiteContext = deltaReconstructor.reconstruct(sessionId, websiteContext);
+        if (finalWebsiteContext && contextSettings.contextMemory) {
+          sessionMemory = sessionMemoryStore.update(sessionId, finalWebsiteContext);
         }
       }
     } catch (err: any) {

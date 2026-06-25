@@ -1674,7 +1674,6 @@
     var root = this._root;
     var scanner = this._scanner;
 
-
     // --- Page-level info ---
     var pageUrl = SecuritySanitizer.sanitizeUrl(window.location.href);
     var pageType = classifyPage(document);
@@ -1687,12 +1686,8 @@
       framework: framework
     };
 
-    // Record in memory
-    this._memory.recordPage(page);
-
     // --- Run extractors (budget-aware) ---
-    var segments = { page: page };
-
+    var flatSegments = {};
     var extractors = [
       { key: 'headings',         fn: extractHeadings },
       { key: 'cards',            fn: extractCards },
@@ -1725,32 +1720,145 @@
             if (a.inViewport !== b.inViewport) return a.inViewport ? -1 : 1;
             return b.priority - a.priority;
           });
-          segments[extractors[i].key] = items;
+          flatSegments[extractors[i].key] = items;
         }
       } catch (_e) {
         console.warn('AriaContextEngine: extractor "' + extractors[i].key + '" failed', _e);
       }
     }
 
-    // Memory
-    segments.memory = this._memory.getMemory();
+    // Memory / Action History
+    var memory = this._memory.getMemory();
+
+    // 1. Page Segment
+    var pageH1 = document.querySelector('h1');
+    var pageObj = {
+      url: pageUrl,
+      path: window.location.pathname,
+      title: document.title || '',
+      type: pageType,
+      breadcrumbs: (flatSegments.workflows || []).filter(function(w) { return w.data && w.data.type === 'breadcrumb'; }).map(function(w) { return w.data.items; })[0] || [],
+      heading: pageH1 ? (pageH1.textContent || '').trim().slice(0, 100) : ''
+    };
+
+    // Record in memory
+    this._memory.recordPage(page);
+
+    // 2. Navigation Segment
+    var navObj = {
+      items: (flatSegments.navigation || []).map(function(n) { 
+        return (n.data.items || []).map(function(i) { return { label: i.label, active: i.active }; });
+      })[0] || []
+    };
+
+    // Helper to unwrap prioritized items
+    var unwrapItems = function(arr) {
+      if (!arr) return [];
+      return arr.map(function(item) { return item.data || item; });
+    };
+
+    // 3. Content Segment
+    var contentObj = {
+      headings: unwrapItems(flatSegments.headings),
+      cards: unwrapItems(flatSegments.cards),
+      tables: unwrapItems(flatSegments.tables),
+      forms: unwrapItems(flatSegments.forms),
+      charts: unwrapItems(flatSegments.charts),
+      lists: unwrapItems(flatSegments.lists),
+      notifications: unwrapItems(flatSegments.notifications),
+      dialogs: unwrapItems(flatSegments.dialogs),
+      buttons: unwrapItems(flatSegments.buttons),
+      stats: unwrapItems(flatSegments.stats),
+      canvasElements: unwrapItems(flatSegments.canvasSvg)
+    };
+
+    // 4. State Segment
+    var stateObj = {
+      activeFilters: [],
+      openDialogs: (flatSegments.dialogs || []).filter(function(d) { return d.inViewport; }).map(function(d) { return d.data.title || ''; }),
+      visibleErrors: (flatSegments.notifications || []).filter(function(n) { return n.data && n.data.type === 'error'; }).map(function(n) { return n.data.message; }),
+      visibleWarnings: (flatSegments.notifications || []).filter(function(n) { return n.data && n.data.type === 'warning'; }).map(function(n) { return n.data.message; }),
+      scrollPosition: window.scrollX + ',' + window.scrollY,
+      idleTimeMs: 0
+    };
+
+    // 5. Workflow Segment
+    var workflowObj = {
+      currentWorkflow: (flatSegments.workflows || []).filter(function(w) { return w.data && w.data.type === 'wizard'; }).map(function(w) { return w.data.steps.join(' -> '); })[0] || '',
+      completedSteps: [],
+      activeStep: (flatSegments.workflows || []).filter(function(w) { return w.data && w.data.type === 'wizard'; }).map(function(w) { return w.data.currentStep + ''; })[0] || '',
+      nextSteps: []
+    };
+
+    // 6. Viewport Segment
+    var viewportObj = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      scrollDepthPercent: Math.round((window.scrollY / (Math.max(1, document.documentElement.scrollHeight - window.innerHeight))) * 100) || 0,
+      visibleElementCount: scanner.getVisible().size,
+      totalElementCount: document.getElementsByTagName('*').length,
+      viewportCoveragePercent: 0
+    };
+
+    // 7. Metadata Segment
+    var metadataObj = {
+      framework: framework,
+      spaDetected: framework !== 'static',
+      domNodeCount: document.getElementsByTagName('*').length,
+      viewportNodeCount: scanner.getVisible().size,
+      extractedElementCount: 0,
+      cacheHit: false,
+      mutationsSinceLastExtraction: 0,
+      compressionRatio: 1
+    };
+
+    // Group into v2.0 segments
+    var v2Segments = {
+      page: pageObj,
+      navigation: navObj,
+      content: contentObj,
+      state: stateObj,
+      workflow: workflowObj,
+      viewport: viewportObj,
+      metadata: metadataObj
+    };
 
     // --- Compute delta ---
-    var delta = await this._hasher.computeDelta(segments);
+    var delta = await this._hasher.computeDelta(v2Segments);
 
     var elapsed = Math.round(performance.now() - startTime);
 
-    return {
-      version: '1.0.0',
+    var changedList = Object.keys(delta.changed);
+    var unchangedList = Object.keys(v2Segments).filter(function(k) { return !delta.changed[k]; });
+
+    var payload = {
+      version: '2.0',
       timestamp: Date.now(),
-      extractionTimeMs: elapsed,
+      extractionDurationMs: elapsed,
       transport: {
         mode: delta.mode,
-        sequenceNumber: delta.sequenceNumber,
-        segmentHashes: delta.hashes
-      },
-      segments: delta.changed
+        sessionHash: '',
+        segmentHashes: delta.hashes,
+        changedSegments: changedList,
+        unchangedSegments: unchangedList,
+        sequenceNumber: delta.sequenceNumber
+      }
     };
+
+    // Merge segments into payload. For full mode, send all segments. For delta mode, send only changed ones.
+    if (delta.mode === 'full') {
+      for (var k in v2Segments) {
+        payload[k] = v2Segments[k];
+      }
+    } else {
+      for (var k in delta.changed) {
+        payload[k] = delta.changed[k];
+      }
+    }
+
+    return payload;
   };
 
   /* ================================================================
