@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { apiUrl } from "@/lib/api-url";
 
 interface KeyMetrics {
   totalRequests: number;
@@ -89,7 +90,7 @@ export default function AdminClarityPage() {
 
     try {
       const token = session?.access_token;
-      const res = await fetch("/api/system/admin/keys-report", {
+      const res = await fetch(apiUrl("/api/system/admin/keys-report"), {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {})
