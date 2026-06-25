@@ -35,6 +35,42 @@ app.use((req, res, next) => {
   }
 });
 
+// ============================================================
+// CORS CONFIGURATION
+// Must be registered before rate limiters and auth so OPTIONS 
+// preflights are handled immediately without consuming limits.
+// ============================================================
+const envOrigins = (process.env.FRONTEND_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = [
+  "https://chatbot-rakesh.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  ...envOrigins,
+];
+
+// 1. Widget CORS (Open to all domains so it can be embedded anywhere)
+app.use("/api/widget", cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+}));
+
+// 2. Global CORS (Strict whitelist for admin dashboard / app)
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+  }),
+);
+
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -42,6 +78,7 @@ const limiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skip: (req) => {
+    if (req.method === "OPTIONS") return true; // Always bypass OPTIONS preflights
     const p = req.originalUrl.split('?')[0]; // Ignore query params
     return p === '/api/healthz' || 
            p.startsWith('/api/webhooks/') || 
@@ -77,43 +114,10 @@ app.use(
   }),
 );
 
-const envOrigins = (process.env.FRONTEND_ORIGIN ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-const allowedOrigins = [
-  "https://chatbot-rakesh.vercel.app",
-  "http://localhost:3000",
-  "http://localhost:5173",
-  ...envOrigins,
-];
-
 // ============================================================
-// WIDGET PUBLIC ROUTES (registered FIRST, before global CORS)
-// These routes must be accessible from ANY website embedding the widget.
-// If registered after the global CORS, the global CORS handles the
-// preflight OPTIONS request and rejects unknown origins before the
-// widget-specific CORS middleware ever runs.
+// ROUTES
 // ============================================================
-app.use("/api/widget", cors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-}), widgetPublicRouter);
-
-// Global CORS for all other routes (strict origin whitelist)
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
-  }),
-);
-
+app.use("/api/widget", widgetPublicRouter);
 
 app.use("/api", healthRouter);
 
