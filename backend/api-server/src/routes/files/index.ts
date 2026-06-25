@@ -50,10 +50,24 @@ const upload = multer({
       "application/javascript",
       "application/typescript",
     ];
-    if (allowedPrefixes.some(p => file.mimetype.startsWith(p)) || allowedMimeTypes.includes(file.mimetype)) {
+    const allowedExtensions = new Set([
+      "pdf", "docx", "doc", "txt", "md", "csv", "pptx", "ppt", "xls", "xlsx",
+      "zip", "rar", "7z", "tar", "gz",
+      "png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "heic",
+      "mp3", "wav", "ogg", "m4a", "aac",
+      "mp4", "webm", "mov", "avi", "mkv",
+      "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql", "yaml", "yml", "toml", "ini", "conf", "env", "tsv", "rtf"
+    ]);
+    const ext = path.extname(file.originalname).slice(1).toLowerCase();
+    
+    if (
+      allowedExtensions.has(ext) ||
+      allowedPrefixes.some(p => file.mimetype.startsWith(p)) || 
+      allowedMimeTypes.includes(file.mimetype)
+    ) {
       cb(null, true);
     } else {
-      cb(new Error("Invalid file type"));
+      cb(new Error(`Invalid file type: .${ext || 'unknown'}`));
     }
   },
 });

@@ -15,9 +15,9 @@ const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000, 720 * 60_000];
 const MAX_RETRY_COUNT = RETRY_DELAYS_MS.length;
 const SUPPORTED_FILE_EXTENSIONS = new Set([
   // Documents
-  "pdf", "docx", "doc", "txt", "md", "csv", "pptx", "ppt", "xls", "xlsx",
+  "pdf", "docx", "doc", "txt", "md", "csv", "pptx", "ppt", "xls", "xlsx", "rtf", "tsv",
   // Archives
-  "zip",
+  "zip", "rar", "7z", "tar", "gz",
   // Images
   "png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "heic",
   // Audio
@@ -25,7 +25,7 @@ const SUPPORTED_FILE_EXTENSIONS = new Set([
   // Video
   "mp4", "webm", "mov", "avi", "mkv",
   // Code & Structured
-  "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql",
+  "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql", "yaml", "yml", "toml", "ini", "conf", "env",
 ]);
 
 type LinkBuckets = {
@@ -806,7 +806,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     } else if (lowerFilename.endsWith(".docx")) {
       const parsed = await mammoth.extractRawText({ buffer: fileBuffer });
       extractedText = parsed.value;
-    } else if (lowerFilename.match(/\.(txt|md|js|ts|jsx|tsx|py|html|css|json|xml|sh|c|cpp|java|go|rs|php|sql)$/)) {
+    } else if (lowerFilename.match(/\.(txt|md|js|ts|jsx|tsx|py|html|css|json|xml|sh|c|cpp|java|go|rs|php|sql|yaml|yml|toml|ini|conf|env|tsv|rtf)$/)) {
       extractedText = fileBuffer.toString("utf-8");
     } else if (lowerFilename.endsWith(".csv")) {
       extractedText = fileBuffer
@@ -867,24 +867,40 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       let combinedText = "";
       for (const zipEntry of zipEntries) {
         if (!zipEntry.isDirectory) {
-          const ext = zipEntry.name.split('.').pop()?.toLowerCase();
-          if (ext && SUPPORTED_FILE_EXTENSIONS.has(ext) && ext !== "zip") {
+          const entryName = zipEntry.entryName;
+          // Skip macOS specific hidden files
+          if (entryName.includes("__MACOSX") || entryName.endsWith(".DS_Store")) continue;
+          
+          const ext = entryName.split('.').pop()?.toLowerCase() || "";
+          
+          // To keep zip extraction fast and avoid AI rate limits, we only recursively extract text/document files.
+          // We list other media/files to indicate their presence.
+          const isTextOrDoc = ["pdf", "docx", "doc", "txt", "md", "csv", "pptx", "ppt", "xls", "xlsx", "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql", "yaml", "yml", "toml", "ini", "conf", "env", "tsv", "rtf"].includes(ext);
+          
+          if (isTextOrDoc) {
             try {
               const nestedText = await extractSourceContent({
                 sourceType: "file",
                 fileBuffer: zipEntry.getData(),
-                filename: zipEntry.entryName,
+                filename: entryName,
                 userId: params.userId || null,
               });
-              combinedText += `\n\n--- File: ${zipEntry.entryName} ---\n${nestedText}`;
+              combinedText += `\n\n--- File: ${entryName} ---\n${nestedText}`;
             } catch (err) {
-              logger.warn({ err }, `Skipping unsupported or unreadable ZIP entry ${zipEntry.entryName}`);
+              logger.warn({ err }, `Skipping unsupported or unreadable ZIP entry ${entryName}`);
+              combinedText += `\n\n--- File: ${entryName} [Extraction Failed] ---`;
             }
+          } else {
+            combinedText += `\n\n--- File: ${entryName} [Format: ${ext?.toUpperCase() || "Unknown"} - content extraction skipped inside zip] ---`;
           }
         }
       }
       extractedText = combinedText;
-      if (!extractedText) throw new Error("No supported text files found in ZIP");
+      if (!extractedText.trim()) {
+        extractedText = `[ZIP Archive: ${filename} - No extractable contents found]`;
+      }
+    } else if (lowerFilename.match(/\.(rar|7z|tar|gz)$/)) {
+      extractedText = `[Archive File: ${filename} - Content extraction not supported for this archive format. Please use .zip instead.]`;
     } else {
       throw new Error(`Unsupported file type: ${filename}`);
     }
