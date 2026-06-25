@@ -141,6 +141,14 @@ class GeminiFailoverModels {
     // Filter available
     let availableKeys = keys.filter(k => k.status === "HEALTHY");
 
+    // Fallback: If no fully HEALTHY keys are available, fall back to trying all enabled keys
+    // that are not explicitly marked as INVALID (which means they have a physical bad key / 403 error).
+    // This allows temporary/cooldown/quota keys to self-heal and be retried, avoiding full outages.
+    if (availableKeys.length === 0) {
+      console.warn("[Gemini Routing] No HEALTHY keys available. Falling back to trying all enabled keys in cooldown/quota status.");
+      availableKeys = keys.filter(k => k.isEnabled && k.status !== "INVALID");
+    }
+
     // 4. Sort based on mode and primary status
     availableKeys.sort((a, b) => {
       // Primary keys first
