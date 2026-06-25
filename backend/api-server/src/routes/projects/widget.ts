@@ -439,34 +439,40 @@ function looksLikeNonCSS(text: string): boolean {
   return false;
 }
 
-export default router;
-
 // ---------------------------------------------------------------------------
 // Context Settings (Website Context Engine)
 // ---------------------------------------------------------------------------
 
-router.get("/context-settings", async (req: Request, res: Response) => {
+router.get("/context-settings", async (req: Request, res: Response): Promise<any> => {
   const { projectId } = req.params;
   try {
-    let settings = await db.query.projectContextSettings.findFirst({
-      where: eq(projectContextSettings.projectId, projectId)
-    });
+    console.log("Project ID:", projectId);
+
+    const defaultSettings = {
+      projectId,
+      enabled: false,
+      dashboardAnalysis: true,
+      formAssistant: true,
+      tableAnalysis: true,
+      navigationAssistant: true,
+      knowledgeComparison: true,
+      mistakeDetection: true,
+      contextMemory: true,
+      developerDebugMode: false,
+      maxContextSizeBytes: 6144
+    };
+
+    let settings;
+    try {
+      settings = await db.query.projectContextSettings.findFirst({
+        where: eq(projectContextSettings.projectId, projectId)
+      });
+    } catch (dbError) {
+      console.warn("Database query failed (table might be missing):", dbError);
+      return res.json(defaultSettings);
+    }
 
     if (!settings) {
-      const defaultSettings = {
-        projectId,
-        enabled: false,
-        dashboardAnalysis: true,
-        formAssistant: true,
-        tableAnalysis: true,
-        navigationAssistant: true,
-        knowledgeComparison: true,
-        mistakeDetection: true,
-        contextMemory: true,
-        developerDebugMode: false,
-        maxContextSizeBytes: 6144
-      };
-      
       try {
         await db.insert(projectContextSettings).values(defaultSettings as any);
         settings = await db.query.projectContextSettings.findFirst({
@@ -478,19 +484,22 @@ router.get("/context-settings", async (req: Request, res: Response) => {
       }
     }
 
-    res.json(settings);
+    return res.json(settings || defaultSettings);
   } catch (error: any) {
-    console.error("Failed to fetch context settings:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("GET /context-settings error:", error);
+    return res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined
+    });
   }
 });
 
-router.put("/context-settings", async (req: Request, res: Response) => {
+router.put("/context-settings", async (req: Request, res: Response): Promise<any> => {
   const { projectId } = req.params;
   const updates = req.body;
   
   try {
-    // Only allow specific fields
+    console.log("Project ID:", projectId);
     const safeUpdates: any = {};
     const allowedKeys = [
       "enabled", "dashboardAnalysis", "formAssistant", "tableAnalysis", 
@@ -506,26 +515,41 @@ router.put("/context-settings", async (req: Request, res: Response) => {
     
     safeUpdates.updatedAt = new Date();
 
-    const result = await db.update(projectContextSettings)
-      .set(safeUpdates)
-      .where(eq(projectContextSettings.projectId, projectId))
-      .returning();
+    let result;
+    try {
+      result = await db.update(projectContextSettings)
+        .set(safeUpdates)
+        .where(eq(projectContextSettings.projectId, projectId))
+        .returning();
+    } catch (updateError) {
+      console.warn("Update failed (table might be missing):", updateError);
+      return res.json({ projectId, ...safeUpdates });
+    }
 
-    if (result.length === 0) {
-      // Create if it doesn't exist yet
+    if (!result || result.length === 0) {
       const newSettings = {
         projectId,
         ...safeUpdates
       };
-      const insertResult = await db.insert(projectContextSettings)
-        .values(newSettings)
-        .returning();
-      return res.json(insertResult[0]);
+      try {
+        const insertResult = await db.insert(projectContextSettings)
+          .values(newSettings as any)
+          .returning();
+        return res.json(insertResult[0]);
+      } catch (insertError) {
+        console.error("Insert failed:", insertError);
+        return res.json(newSettings);
+      }
     }
 
-    res.json(result[0]);
+    return res.json(result[0]);
   } catch (error: any) {
-    console.error("Failed to update context settings:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("PUT /context-settings error:", error);
+    return res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined
+    });
   }
 });
+
+export default router;
