@@ -498,22 +498,15 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[240px] bg-popover backdrop-blur-xl border-border text-popover-foreground mb-2 rounded-xl shadow-2xl p-1">
-            {user?.email === "rakesh837m@gmail.com" && (
+            {(user?.email === "rakesh837m@gmail.com" || dbUser?.role === "super_admin") && (
               <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
                 <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
-                  <BarChart3 className="w-4 h-4 text-primary" />
-                  Admin Analytics
+                  <Shield className="w-4 h-4 text-primary" />
+                  Admin Console
                 </Link>
               </DropdownMenuItem>
             )}
-            {dbUser?.role === "super_admin" && (
-              <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-                <Link href="/super-admin/dashboard" className="flex items-center gap-3 w-full py-2">
-                  <Shield className="w-4 h-4 text-purple-400" />
-                  Super Admin
-                </Link>
-              </DropdownMenuItem>
-            )}
+
             <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
               <Link href="/admin/projects" className="flex items-center gap-3 w-full py-2">
                 <FolderKanban className="w-4 h-4 text-blue-400" />
