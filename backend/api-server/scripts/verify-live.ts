@@ -37,8 +37,38 @@ async function runLiveTest() {
     }
   });
 
-  console.log("Navigating to https://crm-website01.vercel.app ...");
-  await page.goto('https://crm-website01.vercel.app', { waitUntil: 'networkidle2' });
+  console.log("Navigating to https://crm-website01.vercel.app/invoices ...");
+  await page.goto('https://crm-website01.vercel.app/invoices', { waitUntil: 'load' });
+  console.log("-> Landed on URL:", page.url());
+  console.log("-> Page title:", await page.title());
+
+  // Log in if redirected to login page
+  if (page.url().includes('/login')) {
+    console.log("-> Detected Login Page. Logging in with Demo Admin credentials...");
+    
+    // Type email
+    await page.waitForSelector('input[type="email"]');
+    await page.type('input[type="email"]', 'admin@crm.com');
+    
+    // Type password
+    await page.waitForSelector('input[type="password"]');
+    await page.type('input[type="password"]', 'demo1234');
+    
+    // Click Sign in button
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('Sign in'));
+      if (btn) btn.click();
+    });
+    
+    // Wait for navigation back to invoices page
+    console.log("Waiting for navigation back to /invoices...");
+    await page.waitForNavigation({ waitUntil: 'load' });
+    console.log("-> Successfully logged in! Landed on URL:", page.url());
+  }
+
+  // Wait a few seconds for the widget script to fetch its config and inject the context engine script
+  console.log("Waiting 6 seconds for the widget and context engine to initialize...");
+  await new Promise(r => setTimeout(r, 6000));
 
   console.log("\n=== STAGE 1: BROWSER CONTEXT EXTRACTION (Live) ===");
   // We can manually trigger window.AriaContextEngine to see what it extracts on the live page
@@ -55,35 +85,39 @@ async function runLiveTest() {
   console.log(JSON.stringify(websiteContext, null, 2));
 
   console.log("\nWaiting for widget button to appear...");
-  // NexusCRM widget uses an iframe or a shadow DOM. We need to find the chat input and send a message.
-  // The user says "The deployed NexusCRM website and the deployed widget only."
-  // Wait for network idle to ensure the widget script has loaded.
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 5000));
   
   const hasWidget = await page.evaluate(() => {
-    // Try to find the widget button and click it
-    const btn = document.querySelector('.widget-button, #chat-widget-button') || document.querySelector('iframe');
+    const root = document.querySelector('#aria-ai-widget-root');
+    const btn = root ? root.shadowRoot?.querySelector('.floating-button') : null;
     if (btn) {
-      if (btn.tagName === 'IFRAME') {
-         // It's an iframe, we need to interact with it
-         return 'iframe';
-      } else {
-         (btn as HTMLElement).click();
-         return 'button';
-      }
+      (btn as HTMLElement).click();
+      return 'shadow-button';
     }
     return null;
   });
 
   console.log("Widget found in DOM:", hasWidget);
 
-  if (hasWidget) {
+  if (hasWidget === 'shadow-button') {
+    console.log("Clicking widget button and typing query...");
     await new Promise(r => setTimeout(r, 2000));
-    // Let's just simulate the API call directly from the browser context to guarantee we capture the payload!
-    // The widget sends a POST to /api/widget/:token/chat. We can intercept the token from the /config request!
+    
+    // Simulate user typing a message in the shadow DOM input and submitting
+    await page.evaluate(() => {
+      const root = document.querySelector('#aria-ai-widget-root');
+      const input = root?.shadowRoot?.querySelector('.chat-input textarea') as HTMLTextAreaElement;
+      const sendBtn = root?.shadowRoot?.querySelector('.chat-input button') as HTMLButtonElement;
+      if (input && sendBtn) {
+        input.value = "How many invoices are on this page?";
+        // Dispatch input event so React/Widget state updates
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        sendBtn.click();
+      }
+    });
   }
 
-  // To guarantee we get the POST /chat request, let's wait a bit.
+  // Wait for the stream request to be sent and completed.
   await new Promise(r => setTimeout(r, 10000));
   await browser.close();
 }

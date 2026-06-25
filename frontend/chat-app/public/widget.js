@@ -560,6 +560,18 @@
             }
           }
 
+          // Merge manually injected context if present
+          if (window.AriaHiddenContext) {
+            if (!websiteContext) {
+              websiteContext = { version: "1.0.0", segments: {} };
+            }
+            if (!websiteContext.segments) websiteContext.segments = {};
+            websiteContext.segments.injectedContext = window.AriaHiddenContext;
+            
+            // Clear after consumption
+            window.AriaHiddenContext = null;
+          }
+
           const requestBody = { 
             messages: chatHistory,
             websiteContext,
@@ -665,6 +677,13 @@
   window.addEventListener('resize', () => {
     isMobile = window.innerWidth <= 768;
   });
+
+  // Expose AriaAI globally for manual context injection
+  window.AriaAI = {
+    sendHiddenContext: function(text) {
+      window.AriaHiddenContext = text;
+    }
+  };
 
   // Init
   loadConfig();

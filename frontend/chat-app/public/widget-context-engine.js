@@ -693,6 +693,109 @@
     return info || { inViewport: false, distance: 9999 };
   }
 
+  /**
+   * Fallback check for element visibility and viewport relevance.
+   * If the IntersectionObserver hasn't fired yet, it uses getBoundingClientRect.
+   * @param {HTMLElement} el
+   * @param {object} vi
+   * @returns {boolean}
+   */
+  function isElementRelevantFallback(el, vi) {
+    if (vi.inViewport) return true;
+    if (vi.distance !== 9999) return vi.distance < 200;
+    
+    try {
+      var rect = el.getBoundingClientRect();
+      var vpH = window.innerHeight;
+      var inViewport = rect.top >= 0 && rect.bottom <= vpH;
+      if (inViewport) return true;
+      var dist = Math.min(Math.abs(rect.top), Math.abs(rect.bottom - vpH));
+      return dist < 200;
+    } catch(e) {
+      return false;
+    }
+  }
+
+  /**
+   * Extracts text content of an element cleanly, ignoring specified selectors.
+   * @param {HTMLElement} el
+   * @param {string[]} ignoreSelectors
+   * @returns {string}
+   */
+  function getCleanTextOfElement(el, ignoreSelectors) {
+    var clone = el.cloneNode(true);
+    var widget = clone.querySelector('#aria-ai-widget-root');
+    if (widget) widget.remove();
+    
+    ignoreSelectors.forEach(function (ign) {
+      try {
+        clone.querySelectorAll(ign).forEach(function (e) { e.remove(); });
+      } catch (err) {}
+    });
+    
+    var text = (clone.textContent || '').trim();
+    text = text.replace(/\s+/g, ' ');
+    return text.length > 1000 ? text.slice(0, 1000) + '…' : text;
+  }
+
+  /**
+   * Custom Container Extractor.
+   * Extracts text content of selectors defined in window.AriaConfig.contextSelectors.
+   * @param {HTMLElement} root
+   * @param {ViewportScanner} scanner
+   * @returns {object[]}
+   */
+  function extractCustomContainers(root, scanner) {
+    var results = [];
+    try {
+      var config = window.AriaConfig || {};
+      var selectors = config.contextSelectors || [];
+      if (!Array.isArray(selectors)) selectors = [selectors];
+      
+      var ignoreSelectors = config.ignoreSelectors || [];
+      if (!Array.isArray(ignoreSelectors)) ignoreSelectors = [ignoreSelectors];
+      
+      selectors.forEach(function (sel) {
+        if (typeof sel !== 'string') return;
+        var els = root.querySelectorAll(sel);
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          
+          var isIgnored = ignoreSelectors.some(function (ign) {
+            try {
+              return el.closest(ign) !== null;
+            } catch (e) {
+              return false;
+            }
+          });
+          if (isIgnored) continue;
+          
+          var vi = vInfo(scanner, el);
+          var inViewport = vi.inViewport;
+          var distance = vi.distance;
+          
+          if (!inViewport && distance === 9999) {
+            var rect = el.getBoundingClientRect();
+            var vpH = window.innerHeight;
+            inViewport = rect.top >= 0 && rect.bottom <= vpH;
+            distance = inViewport ? 0 : Math.min(Math.abs(rect.top), Math.abs(rect.bottom - vpH));
+          }
+          
+          if (!inViewport && distance > 300) continue;
+          
+          var text = getCleanTextOfElement(el, ignoreSelectors);
+          if (!text) continue;
+          
+          results.push(prioritizedItem({
+            selector: sel,
+            text: text
+          }, 6, inViewport, distance, ['custom-container']));
+        }
+      });
+    } catch (_e) { /* ignore */ }
+    return results;
+  }
+
   /* -- Heading Extractor ---------------------------------------- */
   function extractHeadings(root, scanner) {
     var results = [];
@@ -701,7 +804,7 @@
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         var vi = vInfo(scanner, el);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(el, vi)) continue;
         var text = safeText(el, 150);
         if (!text) continue;
         results.push(prioritizedItem(
@@ -754,7 +857,7 @@
         if (valueIdx === -1) continue;
 
         var vi = vInfo(scanner, el);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(el, vi)) continue;
 
         var value = lines[valueIdx];
         var title = valueIdx > 0 ? lines[0] : (lines.length > 1 ? lines[1] : '');
@@ -794,7 +897,7 @@
       for (var t = 0; t < tables.length; t++) {
         var table = tables[t];
         var vi = vInfo(scanner, table);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(table, vi)) continue;
 
         var headers = [];
         var headerEls = table.querySelectorAll('thead th, thead td, [role="columnheader"]');
@@ -864,7 +967,7 @@
       for (var f = 0; f < forms.length; f++) {
         var form = forms[f];
         var vi = vInfo(scanner, form);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(form, vi)) continue;
 
         var fields = [];
         var inputs = form.querySelectorAll('input,select,textarea');
@@ -928,7 +1031,7 @@
       for (var n = 0; n < navs.length; n++) {
         var nav = navs[n];
         var vi = vInfo(scanner, nav);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(nav, vi)) continue;
 
         var items = [];
         var links = nav.querySelectorAll('a,button,[role="tab"],[role="menuitem"]');
@@ -965,7 +1068,7 @@
       for (var i = 0; i < els.length; i++) {
         var el = els[i];
         var vi = vInfo(scanner, el);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(el, vi)) continue;
 
         var library = 'unknown';
         var cls = (el.className || '').toLowerCase();
@@ -1062,7 +1165,7 @@
       for (var i = 0; i < btns.length; i++) {
         var el = btns[i];
         var vi = vInfo(scanner, el);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(el, vi)) continue;
 
         var label = safeText(el, 60) || el.getAttribute('aria-label') || el.getAttribute('value') || '';
         if (!label) continue;
@@ -1098,7 +1201,7 @@
         var el = els[i];
         if (!STAT_CLASS_RE.test(el.className || '')) continue;
         var vi = vInfo(scanner, el);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(el, vi)) continue;
 
         var labelEl = el.querySelector('[class*="label"],[class*="title"],[class*="name"],dt,th');
         var valueEl = el.querySelector('[class*="value"],[class*="number"],[class*="count"],dd,td');
@@ -1128,7 +1231,7 @@
         // Skip lists inside navs (handled by nav extractor)
         if (el.closest('nav,[role="navigation"]')) continue;
         var vi = vInfo(scanner, el);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(el, vi)) continue;
 
         var items = [];
         var listItems = el.querySelectorAll(':scope > li, :scope > [role="listitem"]');
@@ -1158,7 +1261,7 @@
       for (var p = 0; p < progressBars.length; p++) {
         var pb = progressBars[p];
         var vi = vInfo(scanner, pb);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(pb, vi)) continue;
 
         var now = pb.getAttribute('aria-valuenow');
         var max = pb.getAttribute('aria-valuemax') || '100';
@@ -1179,7 +1282,7 @@
       for (var s = 0; s < stepContainers.length; s++) {
         var container = stepContainers[s];
         var vi2 = vInfo(scanner, container);
-        if (!vi2.inViewport && vi2.distance > 200) continue;
+        if (!isElementRelevantFallback(container, vi2)) continue;
 
         var steps = container.querySelectorAll('[class*="step"],li');
         if (steps.length < 2) continue;
@@ -1207,7 +1310,7 @@
       for (var b = 0; b < breadcrumbs.length; b++) {
         var bc = breadcrumbs[b];
         var vi3 = vInfo(scanner, bc);
-        if (!vi3.inViewport && vi3.distance > 200) continue;
+        if (!isElementRelevantFallback(bc, vi3)) continue;
 
         var crumbs = bc.querySelectorAll('a,span,li');
         var crumbLabels = [];
@@ -1235,7 +1338,7 @@
       for (var i = 0; i < canvases.length; i++) {
         var cvs = canvases[i];
         var vi = vInfo(scanner, cvs);
-        if (!vi.inViewport && vi.distance > 200) continue;
+        if (!isElementRelevantFallback(cvs, vi)) continue;
 
         var label = cvs.getAttribute('aria-label') || '';
         var parent = cvs.closest('figure,[class*="chart"],[class*="graph"]');
@@ -1449,9 +1552,9 @@
       return null;
     }
 
-    // If URL changed, update state
-    if (urlChanged) {
-      this._lastUrl = window.location.href;
+    // If URL changed or mutations detected, refresh the scanner to observe new elements
+    if (urlChanged || mutationsDetected) {
+      if (urlChanged) this._lastUrl = window.location.href;
       if (this._scanner) this._scanner.refresh(this._root);
     }
 
@@ -1558,19 +1661,20 @@
     var segments = { page: page };
 
     var extractors = [
-      { key: 'headings',      fn: extractHeadings },
-      { key: 'cards',         fn: extractCards },
-      { key: 'tables',        fn: extractTables },
-      { key: 'forms',         fn: extractForms },
-      { key: 'navigation',    fn: extractNavigation },
-      { key: 'charts',        fn: extractCharts },
-      { key: 'dialogs',       fn: extractDialogs },
-      { key: 'notifications', fn: extractNotifications },
-      { key: 'buttons',       fn: extractButtons },
-      { key: 'stats',         fn: extractStats },
-      { key: 'lists',         fn: extractLists },
-      { key: 'workflows',     fn: extractWorkflows },
-      { key: 'canvasSvg',     fn: extractCanvasSvg }
+      { key: 'headings',         fn: extractHeadings },
+      { key: 'cards',            fn: extractCards },
+      { key: 'tables',           fn: extractTables },
+      { key: 'forms',            fn: extractForms },
+      { key: 'navigation',       fn: extractNavigation },
+      { key: 'charts',           fn: extractCharts },
+      { key: 'dialogs',          fn: extractDialogs },
+      { key: 'notifications',    fn: extractNotifications },
+      { key: 'buttons',          fn: extractButtons },
+      { key: 'stats',            fn: extractStats },
+      { key: 'lists',            fn: extractLists },
+      { key: 'workflows',        fn: extractWorkflows },
+      { key: 'canvasSvg',        fn: extractCanvasSvg },
+      { key: 'customContainers', fn: extractCustomContainers }
     ];
 
     for (var i = 0; i < extractors.length; i++) {

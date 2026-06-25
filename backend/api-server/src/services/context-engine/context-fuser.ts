@@ -340,6 +340,19 @@ export class ContextFuser {
       sections.push(stateNotes.join("\n"));
     }
 
+    // ── Custom Containers ──
+    const customContainers = this.unwrap<any>(content.customContainers);
+    if (customContainers.length) {
+      const lines = customContainers.map((c: any) => `  • [${c.selector}]: ${c.text}`);
+      sections.push(`Custom Scraped Elements:\n${lines.join("\n")}`);
+    }
+
+    // ── Injected Context ──
+    const injected = ctx.injectedContext || ctx.segments?.injectedContext;
+    if (injected) {
+      sections.push(`Manually Injected App Context:\n${injected}`);
+    }
+
     if (!sections.length) {
       return "No structured website context available.";
     }
