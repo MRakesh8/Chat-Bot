@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { users, projects } from "@workspace/db";
+import { users, projects, globalSettings } from "@workspace/db";
 import { z } from "zod";
 
 const router = Router();
@@ -29,11 +29,7 @@ router.get("/users", async (req, res) => {
 
 const updateUserSchema = z.object({
   role: z.string().optional(),
-  features: z.object({
-    canCreateProject: z.boolean(),
-    canUseWidgetStudio: z.boolean(),
-    canUseContextEngine: z.boolean(),
-  }).optional(),
+  features: z.any().optional(),
 });
 
 // PATCH /api/super-admin/users/:id
@@ -75,6 +71,49 @@ router.get("/projects", async (req, res) => {
     res.json(allProjects);
   } catch (err: any) {
     req.log.error({ err }, "Error listing projects for super-admin");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/super-admin/global-settings
+router.get("/global-settings", async (req, res) => {
+  try {
+    const settings = await db.select().from(globalSettings);
+    const result = settings.reduce((acc, s) => {
+      acc[s.id] = s.value;
+      return acc;
+    }, {} as Record<string, string>);
+    res.json(result);
+  } catch (err: any) {
+    req.log.error({ err }, "Error fetching global settings");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+const updateGlobalSettingsSchema = z.object({
+  NORMAL_AI_PROMPT: z.string().optional(),
+});
+
+// PATCH /api/super-admin/global-settings
+router.patch("/global-settings", async (req, res) => {
+  const parsed = updateGlobalSettingsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0].message });
+    return;
+  }
+  
+  try {
+    if (parsed.data.NORMAL_AI_PROMPT !== undefined) {
+      await db.insert(globalSettings)
+        .values({ id: "NORMAL_AI_PROMPT", value: parsed.data.NORMAL_AI_PROMPT })
+        .onConflictDoUpdate({
+          target: globalSettings.id,
+          set: { value: parsed.data.NORMAL_AI_PROMPT, updatedAt: new Date() }
+        });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    req.log.error({ err }, "Error updating global settings");
     res.status(500).json({ error: "Internal server error" });
   }
 });

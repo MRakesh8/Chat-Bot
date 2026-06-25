@@ -13,7 +13,7 @@ import {
   extractSourceContent,
 } from "../../services/knowledge";
 import { db } from "@workspace/db";
-import { chatSessions, messages, projects, knowledgeRetrievalCache } from "@workspace/db";
+import { chatSessions, messages, projects, knowledgeRetrievalCache, globalSettings } from "@workspace/db";
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
@@ -900,9 +900,21 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 `;
 
     let finalSystemPrompt = SYSTEM_PROMPT;
+    let enableSearchGrounding = false;
+    
+    // Fetch global normal AI prompt if available
+    const [normalAiPromptRow] = await db
+      .select()
+      .from(globalSettings)
+      .where(eq(globalSettings.id, "NORMAL_AI_PROMPT"));
+    const customNormalAiPrompt = normalAiPromptRow ? normalAiPromptRow.value : "";
+
     if (useNormalAi) {
-      // Normal AI mode: Behave as a general assistant. Ignore selected projects and do not restrict to project knowledge or append RAG directives.
-      finalSystemPrompt = SYSTEM_PROMPT;
+      // Normal AI mode: Behave as a general assistant.
+      finalSystemPrompt = customNormalAiPrompt 
+        ? `${SYSTEM_PROMPT}\n\nGlobal Knowledge & Instructions:\n${customNormalAiPrompt}` 
+        : SYSTEM_PROMPT;
+      enableSearchGrounding = true;
     } else if (validProjectIds.length > 0) {
       // Project Chatbot mode: Restrict to selected project(s) knowledge & instructions.
       const projectPrompts = dbProjectsList.map((p: any) => `Project: ${p.name}\nKnowledge & Instructions:\n${p.systemPrompt}`).join("\n\n---\n\n");
@@ -917,8 +929,10 @@ CRITICAL INSTRUCTIONS:
 4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.`;
     } else {
       // No projects selected, and useNormalAi is false (e.g. general chat or fallback).
-      // Since no projects are selected, it's a normal chat! Treat it as a general assistant.
-      finalSystemPrompt = SYSTEM_PROMPT;
+      finalSystemPrompt = customNormalAiPrompt 
+        ? `${SYSTEM_PROMPT}\n\nGlobal Knowledge & Instructions:\n${customNormalAiPrompt}` 
+        : SYSTEM_PROMPT;
+      enableSearchGrounding = true;
     }
 
     // Build full chat history for Gemini
@@ -955,10 +969,15 @@ CRITICAL INSTRUCTIONS:
     
     while (retries < 4 && !streamStarted) {
       try {
+        const genConfig: any = { maxOutputTokens: 8192 };
+        if (enableSearchGrounding) {
+           genConfig.tools = [{ googleSearch: {} }];
+        }
+
         stream = await ai.models.generateContentStream(userId, {
           model: "gemini-2.5-flash",
           contents: chatMessages,
-          config: { maxOutputTokens: 8192 },
+          config: genConfig,
         });
 
         let chunkCount = 0;

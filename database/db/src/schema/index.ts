@@ -15,6 +15,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
+export const globalSettings = pgTable("global_settings", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Enums and Custom Types (represented as text for simplicity or pgEnum)
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),

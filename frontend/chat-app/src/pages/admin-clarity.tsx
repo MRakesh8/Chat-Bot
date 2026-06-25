@@ -92,7 +92,11 @@ export default function AdminConsolePage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings">("users");
+  
+  // System Settings state
+  const [globalAiPrompt, setGlobalAiPrompt] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
   
   // System Keys state
   const [loadingKeys, setLoadingKeys] = useState(true);
@@ -120,6 +124,40 @@ export default function AdminConsolePage() {
     },
     enabled: isAdmin && activeTab === "users",
   });
+
+  // Fetch Global Settings
+  const { data: globalSettings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["super-admin-global-settings"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/super-admin/global-settings"));
+      if (!res.ok) throw new Error("Failed to load global settings");
+      return res.json() as Promise<Record<string, string>>;
+    },
+    enabled: isAdmin && activeTab === "settings",
+  });
+
+  useEffect(() => {
+    if (globalSettings?.NORMAL_AI_PROMPT !== undefined) {
+      setGlobalAiPrompt(globalSettings.NORMAL_AI_PROMPT);
+    }
+  }, [globalSettings]);
+
+  const updateGlobalSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const res = await authFetch(apiUrl("/api/super-admin/global-settings"), {
+        method: "PATCH",
+        body: JSON.stringify({ NORMAL_AI_PROMPT: globalAiPrompt }),
+      });
+      if (!res.ok) throw new Error("Failed to update settings");
+      toast({ title: "Settings saved successfully" });
+      queryClient.invalidateQueries({ queryKey: ["super-admin-global-settings"] });
+    } catch (err: any) {
+      toast({ title: "Failed to save settings", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   // Fetch Projects
   const { data: projects, isLoading: projectsLoading } = useQuery({
@@ -235,6 +273,7 @@ export default function AdminConsolePage() {
           {[
             { id: "users", label: "Users & Roles", icon: Users },
             { id: "projects", label: "Global Projects", icon: LayoutDashboard },
+            { id: "settings", label: "System Settings", icon: Settings2 },
             { id: "keys", label: "System Keys Health", icon: Key },
             { id: "clarity", label: "Microsoft Clarity", icon: Activity },
           ].map((tab) => (
@@ -442,6 +481,37 @@ export default function AdminConsolePage() {
                 </div>
               </>
             ) : null}
+          </div>
+        )}
+        {/* SETTINGS TAB */}
+        {activeTab === "settings" && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <h2 className="text-2xl font-bold">System Settings</h2>
+            
+            {settingsLoading ? (
+               <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-1">Normal AI Knowledge Base</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Provide instructions, chatbot details, or admin information for the default "Normal AI" (Gemini). The AI will refer to this knowledge base for relevant questions. Google Search Grounding is automatically enabled for live information.
+                  </p>
+                  <Textarea 
+                    value={globalAiPrompt}
+                    onChange={(e) => setGlobalAiPrompt(e.target.value)}
+                    className="min-h-[300px] font-mono text-sm bg-background border-border"
+                    placeholder="Enter global system instructions..."
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={updateGlobalSettings} disabled={savingSettings} className="gap-2">
+                    {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Settings
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
