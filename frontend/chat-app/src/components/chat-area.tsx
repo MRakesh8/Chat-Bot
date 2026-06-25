@@ -68,7 +68,6 @@ type FileMeta = { id: string; name: string; type: string };
 
 function FileAttachmentChip({ file }: { file: FileMeta }) {
   const isImage = file.type.startsWith("image/");
-  const isPdf = file.type === "application/pdf";
   const ext = file.name.split(".").pop()?.toUpperCase() || "FILE";
   return (
     <div className="flex items-center gap-1.5 rounded-lg bg-foreground/5 border border-foreground/10 px-2.5 py-1.5 text-xs text-foreground/80 max-w-[220px]">
