@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { users, projects, globalSettings } from "@workspace/db";
+import { users, projects, globalSettings, systemErrors } from "@workspace/db";
 import { z } from "zod";
+import { ai } from "@workspace/integrations-gemini-ai";
 
 const router = Router();
 
@@ -115,6 +116,49 @@ router.patch("/global-settings", async (req, res) => {
   } catch (err: any) {
     req.log.error({ err }, "Error updating global settings");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /super-admin/errors
+router.get("/errors", async (req, res) => {
+  try {
+    const errorsList = await db.select().from(systemErrors).orderBy(desc(systemErrors.createdAt)).limit(100);
+    res.json(errorsList);
+  } catch (err: any) {
+    req.log.error({ err }, "Error fetching system errors");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /super-admin/errors/:id/fix
+router.post("/errors/:id/fix", async (req, res) => {
+  const id = req.params.id;
+  try {
+    const [sysErr] = await db.select().from(systemErrors).where(eq(systemErrors.id, id));
+    if (!sysErr) {
+      res.status(404).json({ error: "Error not found" });
+      return;
+    }
+
+    const prompt = `You are a Senior Full-Stack Engineer debugging a system error.
+Analyze the following error and provide a concise, step-by-step fix.
+
+Source: ${sysErr.source}
+Message: ${sysErr.message}
+Stack Trace: ${sysErr.stack || "N/A"}
+Context: ${JSON.stringify(sysErr.context || {})}
+
+Provide the likely root cause and how to fix it in 2-3 short paragraphs or bullet points.`;
+
+    const { text } = await ai.generateText({
+      model: ai.models.gemini25Flash,
+      prompt,
+    });
+
+    res.json({ fixSuggestion: text });
+  } catch (err: any) {
+    req.log.error({ err }, "Error generating fix for system error");
+    res.status(500).json({ error: "Internal server error generating fix" });
   }
 });
 

@@ -92,7 +92,7 @@ export default function AdminConsolePage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings" | "errors">("users");
   
   // System Settings state
   const [globalAiPrompt, setGlobalAiPrompt] = useState("");
@@ -140,7 +140,37 @@ export default function AdminConsolePage() {
     if (globalSettings?.NORMAL_AI_PROMPT !== undefined) {
       setGlobalAiPrompt(globalSettings.NORMAL_AI_PROMPT);
     }
-  }, [globalSettings]);
+  }, [globalSettings, activeTab]);
+
+  // System Errors Fetch
+  const { data: systemErrors, isLoading: errorsLoading } = useQuery({
+    queryKey: ["super-admin-errors"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/super-admin/errors"));
+      if (!res.ok) throw new Error("Failed to load system errors");
+      return res.json() as Promise<any[]>;
+    },
+    enabled: isAdmin && activeTab === "errors",
+    refetchInterval: activeTab === "errors" ? 5000 : false,
+  });
+
+  const [fixingErrorId, setFixingErrorId] = useState<string | null>(null);
+  const [fixSuggestion, setFixSuggestion] = useState<string | null>(null);
+
+  const getErrorFix = async (id: string) => {
+    setFixingErrorId(id);
+    setFixSuggestion(null);
+    try {
+      const res = await authFetch(apiUrl(`/api/super-admin/errors/${id}/fix`), { method: "POST" });
+      if (!res.ok) throw new Error("Failed to generate fix");
+      const data = await res.json();
+      setFixSuggestion(data.fixSuggestion);
+    } catch (err: any) {
+      toast({ title: "Failed to generate fix", description: err.message, variant: "destructive" });
+    } finally {
+      setFixingErrorId(null);
+    }
+  };
 
   const updateGlobalSettings = async () => {
     setSavingSettings(true);
@@ -297,6 +327,7 @@ export default function AdminConsolePage() {
             { id: "projects", label: "Global Projects", icon: LayoutDashboard },
             { id: "settings", label: "System Settings", icon: Settings2 },
             { id: "keys", label: "System Keys Health", icon: Key },
+            { id: "errors", label: "System Errors", icon: AlertCircle },
             { id: "clarity", label: "Microsoft Clarity", icon: Activity },
           ].map((tab) => (
             <button
@@ -640,6 +671,72 @@ export default function AdminConsolePage() {
             ) : null}
           </div>
         )}
+        {/* SYSTEM ERRORS TAB */}
+        {activeTab === "errors" && (
+          <div className="flex-1 p-6 overflow-y-auto">
+            <h2 className="text-2xl font-black tracking-tight mb-6">System Errors & Diagnostics</h2>
+            
+            {errorsLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+            ) : systemErrors?.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground bg-card border border-border rounded-xl">
+                <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-foreground">All Systems Operational</h3>
+                <p>No system errors have been logged recently.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {systemErrors?.map((err) => (
+                  <div key={err.id} className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg">
+                          <AlertCircle className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-foreground">{err.source.toUpperCase()} Error</h3>
+                            <span className="text-xs font-mono text-muted-foreground">{new Date(err.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm font-medium text-rose-500 mt-1">{err.message}</p>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary gap-2"
+                        onClick={() => getErrorFix(err.id)}
+                        disabled={fixingErrorId === err.id}
+                      >
+                        {fixingErrorId === err.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                        Suggest Fix with AI
+                      </Button>
+                    </div>
+
+                    {err.stack && (
+                      <div className="bg-muted p-3 rounded-lg overflow-x-auto mb-4">
+                        <pre className="text-[10px] font-mono text-muted-foreground">{err.stack}</pre>
+                      </div>
+                    )}
+                    
+                    {fixSuggestion && fixingErrorId !== err.id && (
+                      <div className="mt-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                        <div className="flex items-center gap-2 mb-2 font-bold text-blue-500">
+                          <Zap className="w-4 h-4" />
+                          AI Suggested Fix
+                        </div>
+                        <div className="text-sm prose prose-sm dark:prose-invert max-w-none text-foreground/90 whitespace-pre-wrap">
+                          {fixSuggestion}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* SETTINGS TAB */}
         {activeTab === "settings" && (
           <div className="max-w-4xl mx-auto space-y-6">

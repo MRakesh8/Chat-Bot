@@ -21,6 +21,16 @@ export const globalSettings = pgTable("global_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const systemErrors = pgTable("system_errors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  source: varchar("source", { length: 100 }).notNull(), // 'chatbot', 'system', 'render'
+  message: text("message").notNull(),
+  stack: text("stack"),
+  context: jsonb("context"),
+  isResolved: boolean("is_resolved").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Enums and Custom Types (represented as text for simplicity or pgEnum)
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),

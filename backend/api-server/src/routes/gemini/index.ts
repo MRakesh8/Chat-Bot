@@ -17,7 +17,7 @@ import { chatSessions, messages, projects, knowledgeRetrievalCache, globalSettin
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
-import { logger } from "../../lib/logger";
+import { logger, logSystemError } from "../../lib/logger";
 import {
   CreateGeminiConversationBody,
   UpdateGeminiConversationBody,
@@ -1056,6 +1056,7 @@ CRITICAL INSTRUCTIONS:
     res.end();
   } catch (err: any) {
     req.log.error({ err, currentStep }, `Error in streaming message at step: ${currentStep}`);
+    logSystemError("chatbot", err, { currentStep, conversationId, text });
     
     const isQuotaError = err?.type === "quota_exceeded";
     const status = err?.status || err?.response?.status;

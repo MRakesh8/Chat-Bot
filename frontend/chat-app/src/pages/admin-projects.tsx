@@ -92,7 +92,10 @@ export default function AdminProjectsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   
   const authFetch = useAuthFetch();
-  const { dbUser } = useAuth();
+  const { dbUser, user } = useAuth();
+
+  const isUnrestricted = user?.email === "rakesh837m@gmail.com" || user?.email === "rakesh0837m@gmail.com";
+  const canCreate = dbUser?.features?.canCreateProject !== false || isUnrestricted;
 
   const { data: projectList, isLoading, isError, isFetching } = useQuery({
     queryKey: ["admin-projects"],
@@ -224,8 +227,8 @@ export default function AdminProjectsPage() {
           </div>
           <Button
             onClick={() => setLocation("/admin/projects/new")}
-            disabled={dbUser?.features?.canCreateProject === false}
-            title={dbUser?.features?.canCreateProject === false ? "Contact Admin to enable project creation" : ""}
+            disabled={!canCreate}
+            title={!canCreate ? "Contact Admin to enable project creation" : ""}
             className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 gap-2 shrink-0 h-11 px-6 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" />
@@ -290,10 +293,10 @@ export default function AdminProjectsPage() {
                 Create your first AI assistant.
               </p>
             </div>
-            <Button
+            <Button 
               onClick={() => setLocation("/admin/projects/new")}
-              disabled={dbUser?.features?.canCreateProject === false}
-              title={dbUser?.features?.canCreateProject === false ? "Contact Admin to enable project creation" : ""}
+              disabled={!canCreate}
+              title={!canCreate ? "Contact Admin to enable project creation" : ""}
               className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-primary-foreground border-0 gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
