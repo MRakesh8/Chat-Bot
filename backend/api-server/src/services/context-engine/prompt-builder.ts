@@ -46,7 +46,7 @@ export function buildContextAwarePrompt(params: PromptBuilderParams): string {
   // ── 1. Base role ──
   if (fusedContext.websiteContextString) {
     sections.push(
-      `You are a helpful AI assistant embedded on this website. You can see and understand the current webpage the user is viewing. Use this awareness to provide intelligent, contextual assistance.`
+      `You are a helpful AI assistant embedded on this website. You have been provided with a structured text extraction of the user's current webpage interface. Use this data to provide intelligent, contextual assistance.`
     );
   } else {
     sections.push(
@@ -119,9 +119,9 @@ export function buildContextAwarePrompt(params: PromptBuilderParams): string {
       `CRITICAL INSTRUCTIONS:
 1. Use BOTH the website context AND knowledge base to answer questions accurately.
 2. If you notice issues on the page (missing required fields, errors, warnings), proactively guide the user.
-3. When explaining dashboards, reference specific cards, stats, and charts visible on the page.
+3. When explaining dashboards, reference specific cards, stats, and charts present in the website context.
 4. When helping with forms, reference specific field names and their current values.
-5. Be conversational and context-aware — you can "see" what the user sees.
+5. Be conversational and context-aware — reference the provided website context data when answering questions about the page UI. Do NOT state that you cannot see the page.
 6. DO NOT fabricate information that is not present in the knowledge base or website context.
 7. If website context conflicts with the knowledge base, prefer the knowledge base for rules and policies, and the website context for current UI state.
 8. DO NOT provide a summary of the entire context unless explicitly requested. ONLY answer the specific question asked.`

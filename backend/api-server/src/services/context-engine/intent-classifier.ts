@@ -46,7 +46,8 @@ Intent:`;
         }
       });
 
-      const intentText = response.text?.trim() as UserIntent;
+      let intentText = (response.text?.trim() || "") as string;
+      intentText = intentText.replace(/^["']|["']$/g, '');
       
       const validIntents: UserIntent[] = [
         "Website Question", "Knowledge Question", "General Question", 
@@ -54,8 +55,8 @@ Intent:`;
         "Table Analysis", "Greeting", "Pricing", "Contact"
       ];
 
-      if (validIntents.includes(intentText)) {
-        return intentText;
+      if (validIntents.includes(intentText as UserIntent)) {
+        return intentText as UserIntent;
       }
       
       return "General Question"; // Fallback

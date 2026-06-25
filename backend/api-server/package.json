@@ -13,6 +13,7 @@
   "dependencies": {
     "@google/genai": "^1.44.0",
     "@supabase/supabase-js": "^2.43.0",
+    "@types/jsdom": "^28.0.3",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/integrations-gemini-ai": "workspace:*",
@@ -27,6 +28,7 @@
     "highlight.js": "^11.11.1",
     "http-proxy-middleware": "^4.0.0",
     "instagram-url-direct": "^2.0.7",
+    "jsdom": "^29.1.1",
     "mammoth": "^1.12.0",
     "md-to-pdf": "^5.2.5",
     "multer": "^2.1.1",

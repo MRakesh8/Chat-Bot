@@ -55,7 +55,7 @@ export class ContextFuser {
       });
     }
 
-    const needsWebsiteContext = ["Website Question", "Dashboard Analysis", "Form Assistance", "Table Analysis", "Navigation Help"].includes(userIntent);
+    const needsWebsiteContext = ["Website Question", "Dashboard Analysis", "Form Assistance", "Table Analysis", "Navigation Help", "General Question"].includes(userIntent);
     const needsKbContext = ["Knowledge Question", "Website Question", "General Question", "Pricing"].includes(userIntent);
 
     // ── 1. Format website context ──
@@ -105,19 +105,24 @@ export class ContextFuser {
   // =========================================================================
 
   private formatWebsiteContext(
-    ctx: WebsiteContext,
+    ctx: any,
     settings: ContextSettings
   ): string {
     const sections: string[] = [];
 
+    // Normalize v1 (segments) and v2 (content) payloads
+    const page = ctx.page || ctx.segments?.page;
+    const content = ctx.content || ctx.segments;
+    const navigation = ctx.navigation || ctx.segments?.navigation;
+
     // ── Page info ──
-    if (ctx.page) {
+    if (page) {
       sections.push(
         [
-          `Current Page: ${ctx.page.heading || ctx.page.title || "Unknown"} (${ctx.page.url || ctx.page.path || ""})`,
-          `Page Type: ${ctx.page.type}`,
-          ctx.page.breadcrumbs?.length
-            ? `Breadcrumbs: ${ctx.page.breadcrumbs.join(" > ")}`
+          `Current Page: ${page.heading || page.title || "Unknown"} (${page.url || page.path || ""})`,
+          `Page Type: ${page.pageType || page.type || "Unknown"}`,
+          page.breadcrumbs?.length
+            ? `Breadcrumbs: ${page.breadcrumbs.join(" > ")}`
             : null,
         ]
           .filter(Boolean)
@@ -126,8 +131,8 @@ export class ContextFuser {
     }
 
     // ── Navigation ──
-    if (settings.navigationAssistant && ctx.navigation) {
-      const navItems = ctx.navigation.items || [];
+    if (settings.navigationAssistant && navigation) {
+      const navItems = navigation.items || navigation || [];
       if (navItems.length) {
         const formatted = navItems
           .map((i: any) => {
@@ -137,7 +142,7 @@ export class ContextFuser {
           .join(" | ");
         sections.push(`Navigation: ${formatted}`);
       }
-      const tabs = ctx.navigation.tabs || [];
+      const tabs = navigation.tabs || [];
       if (tabs.length) {
         const formatted = tabs
           .map((t: any) => {
@@ -150,10 +155,10 @@ export class ContextFuser {
     }
 
     // ── Cards / Stats ──
-    if (settings.dashboardAnalysis && ctx.content) {
-      const cards = this.unwrap<CardContext>(ctx.content.cards);
-      const stats = this.unwrap<StatContext>(ctx.content.stats);
-      const combined = [...cards, ...stats].filter((c) => c.title || c.label || c.value);
+    if (settings.dashboardAnalysis && content) {
+      const cards = this.unwrap<CardContext>(content.cards);
+      const stats = this.unwrap<StatContext>(content.stats);
+      const combined = [...cards, ...stats].filter((c: any) => c.title || c.label || c.value);
       if (combined.length) {
         const lines = combined.map((c: any) => {
           const label = c.title || c.label || "—";
@@ -172,8 +177,8 @@ export class ContextFuser {
     }
 
     // ── Tables ──
-    if (settings.tableAnalysis && ctx.content?.tables?.length) {
-      const tables = this.unwrap<TableContext>(ctx.content.tables);
+    if (settings.tableAnalysis && content?.tables?.length) {
+      const tables = this.unwrap<TableContext>(content.tables);
       for (const t of tables.slice(0, 2)) {
         const header = t.headers?.join(" | ") || "";
         const rowInfo = t.rowCount != null ? `${t.rowCount} rows` : "";
@@ -197,8 +202,8 @@ export class ContextFuser {
     }
 
     // ── Forms ──
-    if (settings.formAssistant && ctx.content?.forms?.length) {
-      const forms = this.unwrap<FormContext>(ctx.content.forms);
+    if (settings.formAssistant && content?.forms?.length) {
+      const forms = this.unwrap<FormContext>(content.forms);
       for (const f of forms.slice(0, 2)) {
         const title = f.title || f.id || "Form";
         const fieldLines = (f.fields || [])
@@ -281,24 +286,44 @@ export class ContextFuser {
       );
     }
 
+    // ── Memory ──
+    const memory = ctx.state?.memory || ctx.memory || ctx.segments?.memory || ctx.state || {};
+    if (settings.contextMemory && memory) {
+      const memSections: string[] = [];
+
+      if (memory.recentActions?.length) {
+        memSections.push(`Recent actions: ${memory.recentActions.join(" -> ")}`);
+      }
+      if (memory.selectedFilters && Object.keys(memory.selectedFilters).length) {
+        memSections.push(`Filters applied: ${JSON.stringify(memory.selectedFilters)}`);
+      }
+      if (memory.currentCustomer) {
+        memSections.push(`Viewing customer: ${memory.currentCustomer}`);
+      }
+
+      if (memSections.length) {
+        sections.push(`Context Memory:\n  ` + memSections.join("\n  "));
+      }
+    }
+
     // ── Interaction state summary ──
     const stateNotes: string[] = [];
-    if (ctx.state?.visibleErrors?.length) {
+    if (memory.visibleErrors?.length) {
       stateNotes.push(
-        `Visible errors: ${ctx.state.visibleErrors.join("; ")}`
+        `Visible errors: ${memory.visibleErrors.join("; ")}`
       );
     }
-    if (ctx.state?.visibleWarnings?.length) {
+    if (memory.visibleWarnings?.length) {
       stateNotes.push(
-        `Visible warnings: ${ctx.state.visibleWarnings.join("; ")}`
+        `Visible warnings: ${memory.visibleWarnings.join("; ")}`
       );
     }
-    if (ctx.state?.selectedTab) {
-      stateNotes.push(`Selected tab: ${ctx.state.selectedTab}`);
+    if (memory.selectedTab) {
+      stateNotes.push(`Selected tab: ${memory.selectedTab}`);
     }
-    if (ctx.state?.activeFilters?.length) {
+    if (memory.activeFilters?.length) {
       stateNotes.push(
-        `Active filters: ${ctx.state.activeFilters.map((f: any) => `${f.field}=${f.value}`).join(", ")}`
+        `Active filters: ${memory.activeFilters.map((f: any) => `${f.field}=${f.value}`).join(", ")}`
       );
     }
     if (stateNotes.length) {
