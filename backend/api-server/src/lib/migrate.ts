@@ -56,7 +56,7 @@ export async function runMigrations() {
              for (const entry of journal.entries) {
                const filePath = path.join(migrationsFolder, `${entry.tag}.sql`);
                if (fs.existsSync(filePath)) {
-                 const content = fs.readFileSync(filePath, "utf8");
+                 const content = fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
                  const hash = crypto.createHash("sha256").update(content).digest("hex");
                  
                  // check if exists
