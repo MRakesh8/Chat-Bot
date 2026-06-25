@@ -249,11 +249,11 @@ export function ChatArea() {
   const atBottomRef = useRef(true);
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const { data: conversation, isLoading: isConvLoading, error: convError } = useGetGeminiConversation(conversationId!, {
+  const { data: conversation, isPending: isConvPending, error: convError } = useGetGeminiConversation(conversationId!, {
     query: { enabled: !!conversationId, queryKey: getGetGeminiConversationQueryKey(conversationId!) },
   });
 
-  const { data: messages, isLoading: isMessagesLoading, error: messagesError } = useListGeminiMessages(conversationId!, {
+  const { data: messages, isPending: isMessagesPending, error: messagesError } = useListGeminiMessages(conversationId!, {
     query: {
       enabled: !!conversationId,
       queryKey: getListGeminiMessagesQueryKey(conversationId!),
@@ -286,7 +286,7 @@ export function ChatArea() {
     console.log("Component mounted");
   }, []);
 
-  const isLoading = !!conversationId && (isConvLoading || isMessagesLoading);
+  const isLoading = !!conversationId && (isConvPending || isMessagesPending);
 
   useEffect(() => {
     console.log("Loading state:", isLoading);
@@ -681,17 +681,25 @@ export function ChatArea() {
 
 
 
-  if (convError || messagesError) {
+  const isNotFoundError = (error: any): boolean => {
+    if (!error) return false;
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
-        <h2 className="mb-4 text-2xl font-bold text-red-500">Failed to load chat</h2>
-        <div className="rounded-md bg-red-50 p-4 text-left text-sm text-red-900 dark:bg-red-900/10 dark:text-red-200">
-          <pre className="whitespace-pre-wrap">{convError?.message || messagesError?.message}</pre>
-        </div>
-        <Button className="mt-4" onClick={() => window.location.reload()}>Retry</Button>
-      </div>
+      error.status === 404 ||
+      error.statusCode === 404 ||
+      (error.response && error.response.status === 404) ||
+      error.message?.includes("404") ||
+      error.message?.toLowerCase().includes("not found")
     );
-  }
+  };
+
+  const isNotFound =
+    (convError && isNotFoundError(convError)) ||
+    (messagesError && isNotFoundError(messagesError)) ||
+    (conversationId && !isLoading && !conversation && !convError && !messagesError);
+
+  const hasOtherError =
+    (convError && !isNotFoundError(convError)) ||
+    (messagesError && !isNotFoundError(messagesError));
 
   if (isLoading) {
     return (
@@ -702,12 +710,25 @@ export function ChatArea() {
     );
   }
 
-  if (conversationId && !conversation) {
+  if (isNotFound) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
         <h2 className="mb-4 text-2xl font-bold text-destructive">Chat not found</h2>
         <p className="text-muted-foreground mb-6">The requested conversation could not be found.</p>
         <Button onClick={() => setLocation("/chat")}>Start a new chat</Button>
+      </div>
+    );
+  }
+
+  if (hasOtherError) {
+    const displayError = convError && !isNotFoundError(convError) ? convError : messagesError;
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
+        <h2 className="mb-4 text-2xl font-bold text-red-500">Failed to load chat</h2>
+        <div className="rounded-md bg-red-50 p-4 text-left text-sm text-red-900 dark:bg-red-900/10 dark:text-red-200">
+          <pre className="whitespace-pre-wrap">{displayError?.message || "An unexpected error occurred."}</pre>
+        </div>
+        <Button className="mt-4" onClick={() => window.location.reload()}>Retry</Button>
       </div>
     );
   }
