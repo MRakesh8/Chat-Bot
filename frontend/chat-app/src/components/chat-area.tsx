@@ -693,6 +693,15 @@ export function ChatArea() {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-sm text-muted-foreground font-medium">Loading conversation...</p>
+      </div>
+    );
+  }
+
   if (conversationId && !conversation) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-background">
