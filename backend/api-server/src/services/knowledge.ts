@@ -475,7 +475,7 @@ export async function searchProjectKnowledge(params: {
   userId: string | null;
   query: string;
   limit?: number;
-}): Promise<{ contextString: string, retrievedIds: string[] }> {
+}): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
   if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
 
   // 1. Candidate Generation

@@ -178,26 +178,71 @@ export class ContextFuser {
 
     // ── Tables ──
     if (settings.tableAnalysis && content?.tables?.length) {
-      const tables = this.unwrap<TableContext>(content.tables);
-      for (const t of tables.slice(0, 2)) {
-        const header = t.headers?.join(" | ") || "";
-        const rowInfo = t.rowCount != null ? `${t.rowCount} rows` : "";
+      const rawTables = this.unwrap<any>(content.tables);
+      for (const t of rawTables.slice(0, 2)) {
+        // Robust header normalization
+        const headers: string[] = [];
+        let sortColumn = t.sortColumn || "";
+        let sortDirection = t.sortDirection || "";
+
+        if (Array.isArray(t.headers)) {
+          t.headers.forEach((h: any) => {
+            if (typeof h === "string") {
+              headers.push(h);
+            } else if (h && typeof h === "object") {
+              const text = h.text || "";
+              headers.push(text);
+              if (h.sorted && h.sorted !== "none") {
+                sortColumn = text;
+                sortDirection = h.sorted;
+              }
+            }
+          });
+        }
+
+        const header = headers.join(" | ") || "";
+        const visibleRows: string[][] = t.visibleRows || t.rows || [];
+        const rowCount = t.rowCount ?? visibleRows.length;
+        const rowInfo = rowCount != null ? `${rowCount} rows` : "";
+        
         const sortInfo =
-          t.sortColumn
-            ? `sorted by ${t.sortColumn} ${t.sortDirection || ""}`
+          sortColumn
+            ? `sorted by ${sortColumn} ${sortDirection || ""}`
             : "";
-        const pageInfo =
-          t.pagination
-            ? `page ${t.pagination.currentPage}/${t.pagination.totalPages}`
-            : "";
-        const selected = t.selectedRow
-          ? `\n  Selected row: ${t.selectedRow.join(" | ")}`
-          : "";
+
+        // Robust pagination normalization
+        let pageInfo = "";
+        if (t.pagination) {
+          if (typeof t.pagination === "object") {
+            const cp = t.pagination.currentPage;
+            const tp = t.pagination.totalPages;
+            const txt = t.pagination.text;
+            if (cp && tp) {
+              pageInfo = `page ${cp}/${tp}`;
+            } else if (txt) {
+              pageInfo = txt;
+            } else if (cp) {
+              pageInfo = `page ${cp}`;
+            }
+          } else if (typeof t.pagination === "string") {
+            pageInfo = t.pagination;
+          }
+        }
+
+        // Robust crash-proof selectedRow formatting
+        let selected = "";
+        if (t.selectedRow) {
+          if (Array.isArray(t.selectedRow)) {
+            selected = `\n  Selected row: ${t.selectedRow.join(" | ")}`;
+          } else {
+            selected = `\n  Selected row index: ${t.selectedRow}`;
+          }
+        }
         
         // Format visible rows so the LLM has access to the actual table records
         let rowsFormatted = "";
-        if (t.visibleRows && t.visibleRows.length > 0) {
-          const rowLines = t.visibleRows.map((r: string[], idx: number) => `    Row ${idx + 1}: ${r.join(" | ")}`);
+        if (visibleRows && visibleRows.length > 0) {
+          const rowLines = visibleRows.map((r: string[], idx: number) => `    Row ${idx + 1}: ${r.join(" | ")}`);
           rowsFormatted = `\n  Visible Rows:\n${rowLines.join("\n")}`;
         } else {
           rowsFormatted = "\n  No visible rows extracted.";

@@ -928,20 +928,23 @@
           if (row.offsetHeight === 0 && row.offsetWidth === 0) continue;
 
           var isSelected = /\b(selected|active)\b/.test(row.className || '');
-          if (isSelected) selectedRow = count;
+          var cells = row.querySelectorAll('td,[role="cell"],[role="gridcell"]');
+          var rowData = [];
+          for (var c = 0; c < cells.length; c++) {
+            var cellText = safeText(cells[c], 60);
+            // Clean up cell text: skip cells containing only interactive actions (e.g., View | Edit | Delete)
+            var isActionCell = /^\s*(view|edit|delete|remove|details|update|\s*\/\|\s*)*$/i.test(cellText) ||
+                               cells[c].querySelector('button, a, [role="button"]') !== null &&
+                               /^(view|edit|delete|remove|details|update)$/i.test(cellText.replace(/\s+/g, ''));
+            if (isActionCell) continue;
+            rowData.push(cellText);
+          }
+
+          if (isSelected) {
+            selectedRow = rowData;
+          }
 
           if (count < 5) {
-            var cells = row.querySelectorAll('td,[role="cell"],[role="gridcell"]');
-            var rowData = [];
-            for (var c = 0; c < cells.length; c++) {
-              var cellText = safeText(cells[c], 60);
-              // Clean up cell text: skip cells containing only interactive actions (e.g., View | Edit | Delete)
-              var isActionCell = /^\s*(view|edit|delete|remove|details|update|\s*\/\|\s*)*$/i.test(cellText) ||
-                                 cells[c].querySelector('button, a, [role="button"]') !== null &&
-                                 /^(view|edit|delete|remove|details|update)$/i.test(cellText.replace(/\s+/g, ''));
-              if (isActionCell) continue;
-              rowData.push(cellText);
-            }
             rows.push(rowData);
           }
           count++;
@@ -958,12 +961,31 @@
           };
         }
 
+        // Prepare format-compliant headers and sort info
+        var headersText = headers.map(function (h) { return h.text; });
+        var sortCol = undefined;
+        var sortDirVal = undefined;
+        for (var idx = 0; idx < headers.length; idx++) {
+          if (headers[idx].sorted && headers[idx].sorted !== 'none') {
+            sortCol = headers[idx].text;
+            sortDirVal = headers[idx].sorted;
+          }
+        }
+
         results.push(prioritizedItem({
-          headers: headers,
-          rows: rows,
+          headers: headersText, // Conforming string[]
+          rawHeaders: headers, // Legacy compatibility
+          rows: rows, // Legacy compatibility
+          visibleRows: rows, // Conforming string[][]
           rowCount: count,
-          selectedRow: selectedRow,
-          pagination: pagination
+          selectedRow: selectedRow, // Now string[] instead of number index
+          sortColumn: sortCol,
+          sortDirection: sortDirVal,
+          pagination: pagination ? {
+            currentPage: parseInt(pagination.currentPage, 10) || 1,
+            totalPages: 1,
+            text: pagination.text
+          } : undefined
         }, 8, vi.inViewport, vi.distance, ['table']));
       }
     } catch (_e) { /* ignore */ }

@@ -11,7 +11,7 @@ function generateWidgetToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
-router.get("/settings", async (req: Request, res: Response) => {
+router.get("/settings", async (req: any, res: Response) => {
   const { projectId } = req.params;
   const defaultSettings = {
     projectId,
@@ -46,7 +46,7 @@ router.get("/settings", async (req: Request, res: Response) => {
       }
     }
 
-    res.json(settings || defaultSettings);
+    return res.json(settings || defaultSettings);
   } catch (error: any) {
     // If table doesn't exist or DB is down
     const queryError = error.message;
@@ -55,11 +55,11 @@ router.get("/settings", async (req: Request, res: Response) => {
     console.error(`Failed to fetch widget settings for project ${projectId}:`, error.message);
     console.error(error.stack);
     // Never return 500 for first-time projects. Use safe defaults.
-    res.json(defaultSettings);
+    return res.json(defaultSettings);
   }
 });
 
-router.put("/settings", async (req: Request, res: Response) => {
+router.put("/settings", async (req: any, res: Response) => {
   const { projectId } = req.params;
   const updates = req.body;
 
@@ -134,7 +134,7 @@ router.put("/settings", async (req: Request, res: Response) => {
 });
 
 // API Keys routes for project
-router.get("/api-keys", async (req: Request, res: Response) => {
+router.get("/api-keys", async (req: any, res: Response) => {
   const { projectId } = req.params;
   try {
     const keys = await db.query.projectApiKeys.findMany({
@@ -168,7 +168,7 @@ router.get("/api-keys", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/api-keys", async (req: Request, res: Response) => {
+router.post("/api-keys", async (req: any, res: Response) => {
   const { projectId } = req.params;
   const { provider, apiKey, model, name } = req.body;
 
@@ -200,14 +200,14 @@ router.post("/api-keys", async (req: Request, res: Response) => {
       lastSuccess: new Date(),
     } as any);
 
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (error) {
     console.error("Failed to add project API key:", error);
-    res.status(500).json({ error: "Failed to add project key" });
+    return res.status(500).json({ error: "Failed to add project key" });
   }
 });
 
-router.delete("/api-keys/:keyId", async (req: Request, res: Response) => {
+router.delete("/api-keys/:keyId", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
   try {
     await db.delete(projectApiKeys).where(and(
@@ -233,7 +233,7 @@ async function testGeminiKey(apiKey: string): Promise<{ success: boolean; messag
   }
 }
 
-router.post("/api-keys/:keyId/test", async (req: Request, res: Response) => {
+router.post("/api-keys/:keyId/test", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
   try {
     const existing = await db.query.projectApiKeys.findFirst({
@@ -246,22 +246,22 @@ router.post("/api-keys/:keyId/test", async (req: Request, res: Response) => {
 
     if (testRes.success) {
       await db.update(projectApiKeys).set({ status: "HEALTHY", isEnabled: true, lastSuccess: new Date(), failureReason: null }).where(eq(projectApiKeys.id, keyId as any));
-      res.json({ status: "Healthy" });
+      return res.json({ status: "Healthy" });
     } else {
       if (testRes.message === "Quota Exceeded") {
         await db.update(projectApiKeys).set({ status: "QUOTA_EXCEEDED", failureReason: testRes.message }).where(eq(projectApiKeys.id, keyId as any));
-        res.json({ status: "Quota Exceeded" });
+        return res.json({ status: "Quota Exceeded" });
       } else {
         await db.update(projectApiKeys).set({ status: "INVALID", isEnabled: false, failureReason: testRes.message }).where(eq(projectApiKeys.id, keyId as any));
-        res.json({ status: "Invalid" });
+        return res.json({ status: "Invalid" });
       }
     }
   } catch (err: any) {
-    res.status(500).json({ error: "Failed to test API key" });
+    return res.status(500).json({ error: "Failed to test API key" });
   }
 });
 
-router.patch("/api-keys/:keyId/enable", async (req: Request, res: Response) => {
+router.patch("/api-keys/:keyId/enable", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
   try {
     await db.update(projectApiKeys).set({ isEnabled: true, status: "HEALTHY", failureReason: null }).where(and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId)));
@@ -271,7 +271,7 @@ router.patch("/api-keys/:keyId/enable", async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/api-keys/:keyId/disable", async (req: Request, res: Response) => {
+router.patch("/api-keys/:keyId/disable", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
   try {
     await db.update(projectApiKeys).set({ isEnabled: false, status: "DISABLED" }).where(and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId)));
@@ -281,7 +281,7 @@ router.patch("/api-keys/:keyId/disable", async (req: Request, res: Response) => 
   }
 });
 
-router.patch("/api-keys/:keyId/primary", async (req: Request, res: Response) => {
+router.patch("/api-keys/:keyId/primary", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
   try {
     // Set all others to false
@@ -296,7 +296,7 @@ router.patch("/api-keys/:keyId/primary", async (req: Request, res: Response) => 
 });
 
 // Analytics
-router.get("/analytics", async (req: Request, res: Response) => {
+router.get("/analytics", async (req: any, res: Response) => {
   const { projectId } = req.params;
   try {
     const analytics = await db.select({
@@ -323,7 +323,7 @@ router.get("/analytics", async (req: Request, res: Response) => {
 });
 
 // Leads
-router.get("/leads", async (req: Request, res: Response) => {
+router.get("/leads", async (req: any, res: Response) => {
   const { projectId } = req.params;
   try {
     const leads = await db.query.widgetLeads.findMany({
@@ -338,7 +338,7 @@ router.get("/leads", async (req: Request, res: Response) => {
 });
 
 // AI CSS Generator (Optional)
-router.post("/generate-css", async (req: Request, res: Response) => {
+router.post("/generate-css", async (req: any, res: Response) => {
   const { projectId } = req.params;
   const userId = (req as any).auth?.userId ?? null;
   const { prompt } = req.body;
@@ -443,8 +443,8 @@ function looksLikeNonCSS(text: string): boolean {
 // Context Settings (Website Context Engine)
 // ---------------------------------------------------------------------------
 
-router.get("/context-settings", async (req: Request, res: Response): Promise<any> => {
-  const { projectId } = req.params;
+router.get("/context-settings", async (req: any, res: Response): Promise<any> => {
+  const projectId = (req.params.projectId || req.query.projectId || "") as string;
   try {
     console.log("Project ID:", projectId);
 
@@ -494,8 +494,8 @@ router.get("/context-settings", async (req: Request, res: Response): Promise<any
   }
 });
 
-router.put("/context-settings", async (req: Request, res: Response): Promise<any> => {
-  const { projectId } = req.params;
+router.put("/context-settings", async (req: any, res: Response): Promise<any> => {
+  const projectId = (req.params.projectId || req.query.projectId || "") as string;
   const updates = req.body;
   
   try {

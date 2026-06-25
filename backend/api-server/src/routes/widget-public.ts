@@ -709,7 +709,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     let systemPrompt;
     try {
       systemPrompt = buildContextAwarePrompt({
-        project,
+        project: project as any,
         fusedContext,
         sessionMemory,
         settings: contextSettings as any,
