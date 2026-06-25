@@ -37,6 +37,62 @@
   let isOpen = sessionStorage.getItem(storageKeyOpen) === 'true';
   let isMobile = window.innerWidth <= 768;
 
+  let contextEngine = null;
+  let contextSessionId = null;
+
+  async function initContextEngine() {
+    if (!config.contextEngine || !config.contextEngine.enabled) return;
+    
+    try {
+      const engineUrl = scriptTag && scriptTag.src ? scriptTag.src.replace('widget.js', 'widget-context-engine.js') : `${apiBaseUrl}/widget-context-engine.js`;
+      
+      const script = document.createElement('script');
+      script.src = engineUrl;
+      script.onload = () => {
+        if (window.AriaContextEngine) {
+          contextEngine = new window.AriaContextEngine({
+            maxPayloadBytes: config.contextEngine.maxContextSizeBytes || 6144
+          });
+          contextEngine.start(document.body);
+          
+          contextSessionId = sessionStorage.getItem(`aria_ctx_session_${widgetToken}`);
+          if (!contextSessionId) {
+            contextSessionId = Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem(`aria_ctx_session_${widgetToken}`, contextSessionId);
+          }
+          
+          if (config.contextEngine.developerDebugMode) {
+            setInterval(async () => {
+              try {
+                const debugStatus = shadow.querySelector('#debug-status');
+                const debugStats = shadow.querySelector('#debug-stats');
+                if (debugStatus && debugStats) {
+                  const ctx = await contextEngine.getContext();
+                  const size = new Blob([JSON.stringify(ctx)]).size;
+                  
+                  debugStatus.innerHTML = \`<span style="color:#0f0;">Status: Active</span><br/>Time: \${ctx.extractionDurationMs || 0}ms | Size: \${(size / 1024).toFixed(2)} KB\`;
+                  
+                  debugStats.innerHTML = \`
+                    <div style="margin-top:4px;">Forms: \${ctx.content?.forms?.length || 0}</div>
+                    <div>Tables: \${ctx.content?.tables?.length || 0}</div>
+                    <div>Cards: \${ctx.content?.cards?.length || 0}</div>
+                    <div>Errors: \${ctx.state?.visibleErrors?.length || 0}</div>
+                  \`;
+                }
+              } catch(err) {
+                 const debugStatus = shadow.querySelector('#debug-status');
+                 if(debugStatus) debugStatus.innerText = "Status: Error extracting context";
+              }
+            }, 2000);
+          }
+        }
+      };
+      document.head.appendChild(script);
+    } catch (e) {
+      console.error("Failed to init context engine", e);
+    }
+  }
+
   const container = document.createElement('div');
   container.id = 'aria-ai-widget-root';
   
@@ -49,6 +105,7 @@
       if (!res.ok) throw new Error("Failed to load config");
       config = await res.json();
       render();
+      initContextEngine();
     } catch (err) {
       console.error("Aria AI Widget Initialization failed:", err);
     }
@@ -396,6 +453,13 @@
             </button>
           </div>
           <div class="messages" id="messages-container"></div>
+          ${config.contextEngine?.developerDebugMode ? `
+          <div class="debug-panel" id="debug-panel" style="font-size: 11px; background: #000; color: #0f0; padding: 8px; border-top: 1px solid #27272a; max-height: 120px; overflow-y: auto; font-family: monospace;">
+            <div style="font-weight:bold; margin-bottom: 4px;">🛠️ Context Engine Debug</div>
+            <div id="debug-status">Status: Waiting for engine...</div>
+            <div id="debug-stats"></div>
+          </div>
+          ` : ''}
           <div class="input-area">
             <form id="chat-form" class="input-wrapper">
               <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
@@ -419,6 +483,13 @@
               </div>
             </div>
             <div class="messages" id="messages-container"></div>
+            ${config.contextEngine?.developerDebugMode ? `
+            <div class="debug-panel" id="debug-panel" style="font-size: 11px; background: #000; color: #0f0; padding: 8px; border-top: 1px solid #27272a; max-height: 120px; overflow-y: auto; font-family: monospace;">
+              <div style="font-weight:bold; margin-bottom: 4px;">🛠️ Context Engine Debug</div>
+              <div id="debug-status">Status: Waiting for engine...</div>
+              <div id="debug-stats"></div>
+            </div>
+            ` : ''}
             <div class="input-area">
               <form id="chat-form" class="input-wrapper">
                 <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
@@ -480,10 +551,23 @@
         scrollToBottom();
 
         try {
+          let websiteContext = null;
+          if (contextEngine) {
+            try {
+              websiteContext = await contextEngine.getContext();
+            } catch (e) {
+              console.error("Failed to get website context", e);
+            }
+          }
+
           const res = await fetch(`${apiBaseUrl}/api/widget/${widgetToken}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: chatHistory })
+            body: JSON.stringify({ 
+              messages: chatHistory,
+              websiteContext,
+              sessionId: contextSessionId
+            })
           });
           
           if (!res.ok) throw new Error("API Error");

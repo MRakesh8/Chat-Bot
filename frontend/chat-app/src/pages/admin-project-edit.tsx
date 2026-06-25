@@ -12,6 +12,7 @@ import { WidgetStudio } from "../components/project/widget-studio";
 import { Deployment } from "../components/project/deployment";
 import { ApiKeys } from "../components/project/api-keys";
 import { Analytics } from "../components/project/analytics";
+import { ContextSettings } from "../components/project/context-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiUrl } from "@/lib/api-url";
@@ -261,7 +262,12 @@ export default function AdminProjectEditPage() {
                 <FileText className="w-4 h-4 mr-2" /> Reports
               </TabsTrigger>
               <TabsTrigger value="settings" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-                <Settings className="w-4 h-4 mr-2" /> Settings
+                <Settings className="w-4 h-4 mr-2" />
+                Settings
+              </TabsTrigger>
+              <TabsTrigger value="context-engine" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <Brain className="w-4 h-4 mr-2" />
+                Context Engine
               </TabsTrigger>
               <TabsTrigger value="widget-studio" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Paintbrush className="w-4 h-4 mr-2" /> Widget Studio
@@ -422,15 +428,23 @@ export default function AdminProjectEditPage() {
             </TabsContent>
 
             <TabsContent value="widget-studio">
-              {isNew ? (
-                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
-                  <Paintbrush className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
-                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can customize the widget.</p>
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-medium mb-1">Widget Studio</h3>
+                  <p className="text-white/60 text-sm">Customize the appearance and behavior of your chatbot widget.</p>
                 </div>
-              ) : (
-                <WidgetStudio projectId={projectId!} />
-              )}
+                {projectId && <WidgetStudio projectId={projectId} />}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="context-engine">
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-medium mb-1">Context Engine</h3>
+                  <p className="text-white/60 text-sm">Configure how the AI understands and interacts with your website.</p>
+                </div>
+                {projectId && <ContextSettings projectId={projectId} />}
+              </div>
             </TabsContent>
 
             <TabsContent value="deployment">

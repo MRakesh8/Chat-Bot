@@ -1,11 +1,19 @@
 import { Router, Request, Response } from "express";
 import { db, crypto } from "@workspace/db";
 import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
 import { GoogleGenAI } from "@google/genai";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { searchProjectKnowledge, saveAutoKnowledgeItem } from "../services/knowledge";
+import { projectContextSettings } from "@workspace/db/schema";
+import {
+  validateWebsiteContext,
+  deltaReconstructor,
+  contextFuser,
+  buildContextAwarePrompt,
+  sessionMemoryStore
+} from "../services/context-engine";
 
 async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
   const directClient = new GoogleGenAI({
@@ -44,6 +52,287 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
   }
   
   throw new Error("No healthy models available to execute");
+}
+
+interface WidgetKey {
+  id?: string;
+  type: 'project' | 'user' | 'system' | 'env';
+  provider: string;
+  model?: string;
+  decryptedKey: string;
+  rawDbKey?: any;
+}
+
+async function fetchAndManageWidgetKeys(projectId: string, userId: string | null): Promise<WidgetKey[]> {
+  const now = new Date();
+  const widgetKeys: WidgetKey[] = [];
+
+  try {
+    // 1. Project Keys
+    const projectKeysList = await db.query.projectApiKeys.findMany({
+      where: eq(projectApiKeys.projectId, projectId)
+    });
+
+    for (const key of projectKeysList) {
+      if (!key.isEnabled) continue;
+      
+      let status = key.status;
+      if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
+        status = "HEALTHY";
+        await db.update(projectApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(projectApiKeys.id, key.id));
+      }
+
+      if (status === "HEALTHY") {
+        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+        if (decrypted) {
+          widgetKeys.push({
+            id: key.id,
+            type: 'project',
+            provider: key.provider,
+            model: key.model || undefined,
+            decryptedKey: decrypted,
+            rawDbKey: key
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Widget public router: failed to load project keys:", err);
+  }
+
+  try {
+    // 2. User Keys (Project Owner)
+    if (userId) {
+      const userKeysList = await db.query.userApiKeys.findMany({
+        where: and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
+      });
+
+      for (const key of userKeysList) {
+        let status = key.status;
+        if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
+          status = "HEALTHY";
+          await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
+        }
+
+        if (status === "HEALTHY") {
+          const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+          if (decrypted) {
+            widgetKeys.push({
+              id: key.id,
+              type: 'user',
+              provider: key.provider,
+              decryptedKey: decrypted,
+              rawDbKey: key
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Widget public router: failed to load user keys:", err);
+  }
+
+  try {
+    // 3. System Keys
+    const systemKeysList = await db.query.userApiKeys.findMany({
+      where: and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true))
+    });
+
+    for (const key of systemKeysList) {
+      let status = key.status;
+      if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
+        status = "HEALTHY";
+        await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
+      }
+
+      if (status === "HEALTHY") {
+        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+        if (decrypted) {
+          widgetKeys.push({
+            id: key.id,
+            type: 'system',
+            provider: key.provider,
+            decryptedKey: decrypted,
+            rawDbKey: key
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Widget public router: failed to load system keys:", err);
+  }
+
+  // 4. Env fallback keys
+  const envKeys = Array.from(new Set([
+    process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_1,
+    process.env.GEMINI_API_KEY_2,
+    process.env.GEMINI_API_KEY_3,
+    process.env.GEMINI_API_KEY
+  ].filter(Boolean) as string[]));
+
+  envKeys.forEach((envKey) => {
+    widgetKeys.push({
+      type: 'env',
+      provider: 'gemini',
+      decryptedKey: envKey
+    });
+  });
+
+  // Sort: Project Keys (primary first) -> User Keys -> System Keys -> Env Keys
+  return widgetKeys.sort((a, b) => {
+    const priority = { project: 1, user: 2, system: 3, env: 4 };
+    if (priority[a.type] !== priority[b.type]) {
+      return priority[a.type] - priority[b.type];
+    }
+    if (a.type === 'project' && b.type === 'project') {
+      const ap = a.rawDbKey?.isPrimary ? 1 : 0;
+      const bp = b.rawDbKey?.isPrimary ? 1 : 0;
+      return bp - ap;
+    }
+    return 0;
+  });
+}
+
+async function updateKeySuccessWidget(key: WidgetKey) {
+  if (key.type === 'env') return;
+  const now = new Date();
+  
+  try {
+    if (key.type === 'project') {
+      await db.update(projectApiKeys).set({
+        lastSuccess: now,
+        status: "HEALTHY",
+        failureReason: null
+      }).where(eq(projectApiKeys.id, key.id!));
+    } else {
+      const newUsed = (key.rawDbKey?.dailyUsed || 0) + 1;
+      let status = "HEALTHY";
+      if (key.rawDbKey?.dailyLimit !== null && newUsed >= (key.rawDbKey?.dailyLimit || 20)) {
+        status = "QUOTA_EXCEEDED";
+      }
+      await db.update(userApiKeys).set({
+        dailyUsed: newUsed,
+        lastSuccess: now,
+        totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
+        status,
+        failureReason: null
+      }).where(eq(userApiKeys.id, key.id!));
+    }
+  } catch (err) {
+    console.error("Failed to update widget key success stats:", err);
+  }
+}
+
+async function updateKeyFailureWidget(key: WidgetKey, error: any) {
+  if (key.type === 'env') return;
+  const now = new Date();
+  
+  const statusStr = error?.status || error?.response?.status || error?.code || 'unknown';
+  const errMessage = error?.message || String(error);
+  
+  let cooldownMinutes = 0;
+  let status = "COOLDOWN";
+  
+  if (statusStr === '403' || statusStr === 403 || errMessage.includes('403')) {
+    status = "INVALID";
+  } else if (statusStr === '429' || statusStr === 429 || errMessage.includes('429')) {
+    status = "QUOTA_EXCEEDED";
+    cooldownMinutes = 15;
+  } else if (errMessage.toLowerCase().includes('timeout')) {
+    cooldownMinutes = 2;
+  } else {
+    status = "UNHEALTHY";
+    cooldownMinutes = 5;
+  }
+
+  const cooldownUntil = cooldownMinutes > 0 ? new Date(now.getTime() + cooldownMinutes * 60000) : null;
+
+  try {
+    if (key.type === 'project') {
+      await db.update(projectApiKeys).set({
+        status,
+        cooldownUntil,
+        failureReason: errMessage,
+        lastFailure: now,
+      }).where(eq(projectApiKeys.id, key.id!));
+    } else {
+      await db.update(userApiKeys).set({
+        status,
+        cooldownUntil,
+        failureReason: errMessage,
+        lastFailure: now,
+        totalFailures: (key.rawDbKey?.totalFailures || 0) + 1,
+        totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
+      }).where(eq(userApiKeys.id, key.id!));
+    }
+  } catch (err) {
+    console.error("Failed to update widget key failure stats:", err);
+  }
+}
+
+async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
+  if (key.provider !== 'gemini') {
+    const adapter = new UniversalProviderAdapter({
+      provider: key.provider,
+      apiKey: key.decryptedKey,
+      model: options.model || key.model || "gpt-4o"
+    });
+    
+    let messages: any[] = [];
+    if (options.contents && Array.isArray(options.contents)) {
+      messages = options.contents.map((c: any) => ({
+        role: c.role === 'model' ? 'assistant' as const : 'user' as const,
+        content: c.parts?.[0]?.text || ""
+      }));
+    } else if (typeof options.contents === 'string') {
+      messages = [{ role: 'user' as const, content: options.contents }];
+    }
+
+    const response = await adapter.generateChat({
+      messages,
+      temperature: 0.7
+    });
+
+    if (method === 'generateContent') {
+      return { text: response.content };
+    } else {
+      return [{ text: response.content }];
+    }
+  } else {
+    return await executeWithFallback(key.decryptedKey, method, options);
+  }
+}
+
+async function executeLlmWithFailover(
+  keys: WidgetKey[], 
+  method: 'generateContent' | 'generateContentStream', 
+  options: any
+): Promise<{ result: any; keyUsed: WidgetKey }> {
+  let lastError: any = null;
+  
+  for (const key of keys) {
+    try {
+      const attemptOptions = { ...options };
+      if (key.model && !attemptOptions.model) {
+        attemptOptions.model = key.model;
+      }
+      
+      console.log(`[Widget API Failover] Trying key: ${key.id || 'env'} (${key.type}) | Provider: ${key.provider} | Model: ${attemptOptions.model || 'default'}`);
+      
+      const result = await executeKeyRequest(key, method, attemptOptions);
+      
+      updateKeySuccessWidget(key).catch(e => console.error("Key success update error:", e));
+      return { result, keyUsed: key };
+    } catch (err: any) {
+      lastError = err;
+      console.error(`[Widget API Failover] Key failed: ${key.id || 'env'} (${key.type}). Error: ${err.message || err}`);
+      
+      updateKeyFailureWidget(key, err).catch(e => console.error("Key failure update error:", e));
+    }
+  }
+  
+  throw lastError || new Error("No healthy API keys available to execute the request");
 }
 
 const router = Router();
@@ -109,6 +398,10 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
       where: eq(projectWidgetSettings.projectId, projectId)
     });
 
+    const contextSettings = await db.query.projectContextSettings.findFirst({
+      where: eq(projectContextSettings.projectId, projectId)
+    });
+
     if (!settings) {
       return res.status(404).json({ error: "Widget config not found" });
     }
@@ -124,7 +417,12 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
       customCss: settings.customCss,
       customContainerId: settings.customContainerId,
       humanHandoffLinks: settings.humanHandoffLinks,
-      leadsEnabled: settings.leadsEnabled
+      leadsEnabled: settings.leadsEnabled,
+      contextEngine: contextSettings ? {
+        enabled: contextSettings.enabled,
+        maxContextSizeBytes: contextSettings.maxContextSizeBytes,
+        developerDebugMode: contextSettings.developerDebugMode
+      } : { enabled: false }
     });
   } catch (error) {
     console.error("Failed to fetch widget config", error);
@@ -133,7 +431,7 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
 });
 
 router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<any> => {
-  const { messages } = req.body;
+  const { messages, websiteContext, sessionId } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "Invalid messages format" });
   }
@@ -190,60 +488,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Failed to track analytics:", e);
     }
 
-    // Resolve Key (Project -> User -> System -> Env)
-    const projectKey = await db.query.projectApiKeys.findFirst({
-      where: and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
-    });
+    // Resolve & Manage Keys with Failover
+    const keys = await fetchAndManageWidgetKeys(projectId, userId);
 
-    let activeKey = null;
-    let providerName = "gemini";
-    let modelName = "gemini-2.5-flash"; // default fallback
-
-    if (projectKey) {
-      activeKey = crypto.decrypt(projectKey.encryptedKey); // Decrypted here
-      if (activeKey) {
-        providerName = projectKey.provider;
-        modelName = projectKey.model || modelName;
-      }
-    }
-    
-    if (!activeKey) {
-      // Fallback logic to User (project owner)
-      let userKey = null;
-      if (userId) {
-        userKey = await db.query.userApiKeys.findFirst({
-          where: and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
-        });
-      }
-      
-      if (userKey) {
-        activeKey = crypto.decrypt(userKey.encryptedKey);
-        if (activeKey) {
-          providerName = userKey.provider;
-        }
-      }
-    }
-    
-    if (!activeKey) {
-      // Fallback to System keys or Env
-      const systemKeys = await db.query.userApiKeys.findMany({
-        where: and(eq(userApiKeys.isSystem, true), eq(userApiKeys.isEnabled, true))
-      });
-      if (systemKeys.length > 0) {
-        activeKey = crypto.decrypt(systemKeys[0].encryptedKey);
-        if (activeKey) {
-          providerName = systemKeys[0].provider;
-        }
-      }
-      
-      if (!activeKey && (process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
-        activeKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        providerName = "gemini";
-        modelName = "gemini-2.5-flash";
-      }
-    }
-
-    if (!activeKey) {
+    if (keys.length === 0) {
       res.write(`data: ${JSON.stringify({ content: "Sorry, no AI API keys are configured for this chatbot. Please configure an API key in your dashboard." })}\n\n`);
       res.end();
       return res;
@@ -264,18 +512,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         
         Respond with only "YES" or "NO".`;
         
-        let confirmRes;
-        if (providerName === "gemini") {
-          confirmRes = await executeWithFallback(activeKey as string, 'generateContent', {
-            model: modelName,
-            contents: confirmPrompt
-          });
-        } else {
-          confirmRes = await ai.models.generateContent(userId, {
-            model: "gemini-2.5-flash",
-            contents: confirmPrompt
-          });
-        }
+        const { result: confirmRes } = await executeLlmWithFailover(keys, 'generateContent', {
+          model: "gemini-2.5-flash",
+          contents: confirmPrompt
+        });
         
         if (confirmRes.text?.trim().toUpperCase() === "YES") {
           userIsPointingOutMistake = true;
@@ -298,22 +538,13 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
       let verifiedText = "";
       try {
-        let searchRes;
-        if (providerName === "gemini") {
-          searchRes = await executeWithFallback(activeKey as string, 'generateContent', {
-            model: modelName,
-            contents: verifyPrompt,
-            config: {
-              tools: [{ googleSearch: {} }]
-            }
-          });
-        } else {
-          searchRes = await ai.models.generateContent(userId, {
-            model: "gemini-2.5-flash",
-            contents: verifyPrompt,
+        const { result: searchRes } = await executeLlmWithFailover(keys, 'generateContent', {
+          model: "gemini-2.5-flash",
+          contents: verifyPrompt,
+          config: {
             tools: [{ googleSearch: {} }]
-          });
-        }
+          }
+        });
 
         verifiedText = searchRes.text || "";
 
@@ -337,27 +568,15 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         
         ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
 
-        if (providerName === "gemini") {
-          const stream = await executeWithFallback(activeKey as string, 'generateContentStream', {
-            model: modelName,
-            contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
-          }) as any;
-          for await (const chunk of stream) {
-            if (chunk.text) {
-              res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
-              if (typeof (res as any).flush === 'function') (res as any).flush();
-            }
-          }
-        } else {
-          const stream = await ai.models.generateContentStream(userId, {
-            model: "gemini-2.5-flash",
-            contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
-          });
-          for await (const chunk of stream) {
-            if (chunk.text) {
-              res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
-              if (typeof (res as any).flush === 'function') (res as any).flush();
-            }
+        const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
+          model: "gemini-2.5-flash",
+          contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
+        });
+
+        for await (const chunk of stream) {
+          if (chunk.text) {
+            res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
           }
         }
       } catch (err) {
@@ -368,19 +587,48 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       return res;
     }
 
-    // 3. Normal flow with Knowledge Base retrieval
-    let contextString = "";
-    try {
-      const searchResult = await searchProjectKnowledge({
-        projectIds: [projectId],
-        userId,
-        query: lastUserMessage,
-        limit: 3
-      });
-      contextString = searchResult.contextString;
-    } catch (err) {
-      console.error("Error retrieving knowledge for widget chat:", err);
+    // 3. Normal flow with Context Engine & Knowledge Base retrieval
+    let contextSettings = await db.query.projectContextSettings.findFirst({
+      where: eq(projectContextSettings.projectId, projectId)
+    });
+    
+    // Default settings if not configured
+    if (!contextSettings) {
+      contextSettings = {
+        enabled: false,
+        dashboardAnalysis: true,
+        formAssistant: true,
+        tableAnalysis: true,
+        navigationAssistant: true,
+        knowledgeComparison: true,
+        mistakeDetection: true,
+        contextMemory: true,
+        developerDebugMode: false,
+        maxContextSizeBytes: 6144
+      } as any;
     }
+
+    let finalWebsiteContext = null;
+    let sessionMemory = null;
+
+    if (contextSettings.enabled && websiteContext && sessionId) {
+      const validated = validateWebsiteContext(websiteContext, contextSettings.maxContextSizeBytes);
+      if (validated) {
+        finalWebsiteContext = deltaReconstructor.reconstruct(sessionId, validated);
+        if (finalWebsiteContext && contextSettings.contextMemory) {
+          sessionMemory = sessionMemoryStore.update(sessionId, finalWebsiteContext);
+        }
+      }
+    }
+
+    // Fuse context & KB
+    const fusedContext = await contextFuser.fuse({
+      userMessage: lastUserMessage,
+      websiteContext: finalWebsiteContext,
+      projectId,
+      userId,
+      settings: contextSettings as any
+    });
 
     let handoffInfo = "";
     try {
@@ -403,54 +651,13 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Error fetching widget settings for handoff:", err);
     }
 
-    // Non-Gemini Fallback: returns whole content in single chunk
-    if (providerName !== "gemini") {
-      const adapter = new UniversalProviderAdapter({
-        provider: providerName,
-        apiKey: activeKey as string,
-        model: modelName
-      });
-      
-      const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions.${handoffInfo}
-      
-      ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
-      ${contextString}
-      
-      CRITICAL INSTRUCTIONS:
-      1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
-      2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
-      3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
-      4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.
-      
-      Answer user questions accurately and clearly based ONLY on the provided context.`;
-
-      const fullMessages = [
-        { role: "system" as const, content: systemPrompt },
-        ...messages
-      ];
-
-      const response = await adapter.generateChat({
-        messages: fullMessages as any,
-        temperature: 0.7
-      });
-
-      res.write(`data: ${JSON.stringify({ content: response.content })}\n\n`);
-      res.end();
-      return res;
-    }
-
-    const systemPrompt = `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions. If the user tells you that you made a mistake or gave a wrong answer, check your sources, search the web if needed, and correct your answer.${handoffInfo}
-
-${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Knowledge Base Context:
-${contextString}
-
-CRITICAL INSTRUCTIONS:
-1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
-2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
-3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
-4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.
-
-Answer user questions accurately and clearly based ONLY on the provided context.`;
+    const systemPrompt = buildContextAwarePrompt({
+      project,
+      fusedContext,
+      sessionMemory,
+      settings: contextSettings as any,
+      handoffInfo
+    });
 
     const chatMessages = [
       { role: "user", parts: [{ text: systemPrompt }] },
@@ -462,10 +669,10 @@ Answer user questions accurately and clearly based ONLY on the provided context.
     ];
 
     try {
-      const stream = await executeWithFallback(activeKey as string, 'generateContentStream', {
-        model: modelName,
+      const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
         contents: chatMessages as any
-      }) as any;
+      });
+      
       for await (const chunk of stream) {
         if (chunk.text) {
           res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);

@@ -223,6 +223,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
   settings: one(projectSettings, { fields: [projects.id], references: [projectSettings.projectId] }),
+  projectContextSettings: one(projectContextSettings, { fields: [projects.id], references: [projectContextSettings.projectId] }),
   modes: many(projectModes),
   categories: many(knowledgeCategories),
   sources: many(knowledgeSources),
@@ -262,6 +263,23 @@ export const projectWidgetSettings = pgTable("project_widget_settings", {
   widgetToken: varchar("widget_token", { length: 255 }).notNull().unique(), // Unique token to embed in public HTML
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Website Context Engine Settings
+export const projectContextSettings = pgTable("project_context_settings", {
+  projectId: uuid("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  dashboardAnalysis: boolean("dashboard_analysis").notNull().default(true),
+  formAssistant: boolean("form_assistant").notNull().default(true),
+  tableAnalysis: boolean("table_analysis").notNull().default(true),
+  navigationAssistant: boolean("navigation_assistant").notNull().default(true),
+  knowledgeComparison: boolean("knowledge_comparison").notNull().default(true),
+  mistakeDetection: boolean("mistake_detection").notNull().default(true),
+  contextMemory: boolean("context_memory").notNull().default(true),
+  developerDebugMode: boolean("developer_debug_mode").notNull().default(false),
+  maxContextSizeBytes: integer("max_context_size_bytes").notNull().default(6144),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const projectApiKeys = pgTable("project_api_keys", {
@@ -321,3 +339,6 @@ export const widgetLeadsRelations = relations(widgetLeads, ({ one }) => ({
   project: one(projects, { fields: [widgetLeads.projectId], references: [projects.id] }),
 }));
 
+export const contextSettingsRelations = relations(projectContextSettings, ({ one }) => ({
+  project: one(projects, { fields: [projectContextSettings.projectId], references: [projects.id] }),
+}));

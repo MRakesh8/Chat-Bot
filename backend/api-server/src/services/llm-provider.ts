@@ -83,7 +83,7 @@ export class UniversalProviderAdapter {
       throw new Error(`${this.config.provider} API error: ${response.status} ${err}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     return {
       content: data.choices[0]?.message?.content || "",
       usage: {
@@ -135,7 +135,7 @@ export class UniversalProviderAdapter {
       throw new Error(`Gemini API error: ${response.status} ${err}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const promptTokens = data.usageMetadata?.promptTokenCount || 0;
@@ -174,7 +174,7 @@ export class UniversalProviderAdapter {
       throw new Error(`Claude API error: ${response.status} ${err}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     return {
       content: data.content?.[0]?.text || "",
       usage: {

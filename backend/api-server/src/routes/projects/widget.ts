@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, crypto as dbCrypto } from "@workspace/db";
-import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads } from "@workspace/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings } from "@workspace/db/schema";
+import { eq, and, sql, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 
@@ -440,3 +440,92 @@ function looksLikeNonCSS(text: string): boolean {
 }
 
 export default router;
+
+// ---------------------------------------------------------------------------
+// Context Settings (Website Context Engine)
+// ---------------------------------------------------------------------------
+
+router.get("/context-settings", async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  try {
+    let settings = await db.query.projectContextSettings.findFirst({
+      where: eq(projectContextSettings.projectId, projectId)
+    });
+
+    if (!settings) {
+      const defaultSettings = {
+        projectId,
+        enabled: false,
+        dashboardAnalysis: true,
+        formAssistant: true,
+        tableAnalysis: true,
+        navigationAssistant: true,
+        knowledgeComparison: true,
+        mistakeDetection: true,
+        contextMemory: true,
+        developerDebugMode: false,
+        maxContextSizeBytes: 6144
+      };
+      
+      try {
+        await db.insert(projectContextSettings).values(defaultSettings as any);
+        settings = await db.query.projectContextSettings.findFirst({
+          where: eq(projectContextSettings.projectId, projectId)
+        });
+      } catch (insertError: any) {
+        console.error(`Failed to insert default context settings for project ${projectId}:`, insertError);
+        return res.json(defaultSettings);
+      }
+    }
+
+    res.json(settings);
+  } catch (error: any) {
+    console.error("Failed to fetch context settings:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/context-settings", async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const updates = req.body;
+  
+  try {
+    // Only allow specific fields
+    const safeUpdates: any = {};
+    const allowedKeys = [
+      "enabled", "dashboardAnalysis", "formAssistant", "tableAnalysis", 
+      "navigationAssistant", "knowledgeComparison", "mistakeDetection", 
+      "contextMemory", "developerDebugMode", "maxContextSizeBytes"
+    ];
+    
+    for (const key of allowedKeys) {
+      if (updates[key] !== undefined) {
+        safeUpdates[key] = updates[key];
+      }
+    }
+    
+    safeUpdates.updatedAt = new Date();
+
+    const result = await db.update(projectContextSettings)
+      .set(safeUpdates)
+      .where(eq(projectContextSettings.projectId, projectId))
+      .returning();
+
+    if (result.length === 0) {
+      // Create if it doesn't exist yet
+      const newSettings = {
+        projectId,
+        ...safeUpdates
+      };
+      const insertResult = await db.insert(projectContextSettings)
+        .values(newSettings)
+        .returning();
+      return res.json(insertResult[0]);
+    }
+
+    res.json(result[0]);
+  } catch (error: any) {
+    console.error("Failed to update context settings:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
