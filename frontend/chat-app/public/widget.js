@@ -70,14 +70,14 @@
                   const ctx = await contextEngine.getContext();
                   const size = new Blob([JSON.stringify(ctx)]).size;
                   
-                  debugStatus.innerHTML = \`<span style="color:#0f0;">Status: Active</span><br/>Time: \${ctx.extractionDurationMs || 0}ms | Size: \${(size / 1024).toFixed(2)} KB\`;
+                  debugStatus.innerHTML = `<span style="color:#0f0;">Status: Active</span><br/>Time: ${ctx.extractionDurationMs || 0}ms | Size: ${(size / 1024).toFixed(2)} KB`;
                   
-                  debugStats.innerHTML = \`
-                    <div style="margin-top:4px;">Forms: \${ctx.content?.forms?.length || 0}</div>
-                    <div>Tables: \${ctx.content?.tables?.length || 0}</div>
-                    <div>Cards: \${ctx.content?.cards?.length || 0}</div>
-                    <div>Errors: \${ctx.state?.visibleErrors?.length || 0}</div>
-                  \`;
+                  debugStats.innerHTML = `
+                    <div style="margin-top:4px;">Forms: ${ctx.content?.forms?.length || 0}</div>
+                    <div>Tables: ${ctx.content?.tables?.length || 0}</div>
+                    <div>Cards: ${ctx.content?.cards?.length || 0}</div>
+                    <div>Errors: ${ctx.state?.visibleErrors?.length || 0}</div>
+                  `;
                 }
               } catch(err) {
                  const debugStatus = shadow.querySelector('#debug-status');
