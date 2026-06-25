@@ -157,23 +157,90 @@ class GeminiFailoverModels {
     return availableKeys;
   }
 
-  private async _updateKeyFailure(key: any, errorType: 'timeout' | '429' | '403' | 'other', errMessage: string, retryAfter?: number) {
+  private _checkIsDailyLimit(error: any): boolean {
+    if (!error) return false;
+    const parts: string[] = [];
+    if (error.message) parts.push(String(error.message));
+    if (error.stack) parts.push(String(error.stack));
+    if (typeof error === 'string') parts.push(error);
+    try {
+      if (error.response) {
+        parts.push(typeof error.response === 'string' ? error.response : JSON.stringify(error.response));
+      }
+      if (error.details) {
+        parts.push(typeof error.details === 'string' ? error.details : JSON.stringify(error.details));
+      }
+      parts.push(JSON.stringify(error));
+    } catch (e) {}
+    
+    const fullErrorText = parts.join(" ").toLowerCase();
+    const hasQuotaExceeded = fullErrorText.includes("quota exceeded") || fullErrorText.includes("quota_exceeded") || fullErrorText.includes("exceeded your current quota");
+    const isDailyOrFreeLimit = 
+      fullErrorText.includes("generaterequestsperday") || 
+      fullErrorText.includes("requestsperday") || 
+      fullErrorText.includes("daily") || 
+      (fullErrorText.includes("free_tier") && fullErrorText.includes("limit: 0")) ||
+      (fullErrorText.includes("free-tier") && fullErrorText.includes("limit: 0")) ||
+      fullErrorText.includes("check your plan and billing details");
+      
+    return hasQuotaExceeded && isDailyOrFreeLimit;
+  }
+
+  private _calculateCooldown(error: any): number {
+    if (this._checkIsDailyLimit(error)) {
+      return 720; // 12 hours
+    }
+    
+    const errText = String(error?.message || error).toLowerCase();
+    
+    // Try to parse retry delay from error message (e.g. "Please retry in 57.061310034s.")
+    const match = errText.match(/retry\s+in\s+(\d+(?:\.\d+)?)s/i);
+    if (match) {
+      const seconds = parseFloat(match[1]);
+      return Math.max(1, Math.ceil(seconds / 60));
+    }
+    
+    // Check retry-after header if present (commonly returned by proxies/gateways)
+    const retryAfterHeader = error?.response?.headers?.get?.('retry-after');
+    if (retryAfterHeader) {
+      const seconds = parseInt(retryAfterHeader, 10);
+      if (!isNaN(seconds)) {
+        // Cap RPM rate limit cooldown at 2 minutes to prevent starving the key rotation pool
+        return Math.min(2, Math.max(1, Math.ceil(seconds / 60)));
+      }
+    }
+    
+    return 1; // default 1 minute for other 429 rate limits
+  }
+
+  private async _updateKeyFailure(key: any, error: any) {
     const now = new Date();
+    
+    const errMessage = error?.message || String(error);
+    const statusStr = error?.status || error?.response?.status || error?.code || 'unknown';
+    const errStr = errMessage.toLowerCase();
+    
     let cooldownMinutes = 0;
     let status = "COOLDOWN";
     let isEnabled = key.isEnabled;
-
-    if (errorType === '403') {
+    
+    const is403 = statusStr === '403' || statusStr === 403 || errStr.includes('403') || errStr.includes('permission denied') || errStr.includes('api key not valid');
+    const isTimeout = errStr.includes('timeout') || errStr.includes('deadline exceeded');
+    const is429 = statusStr === '429' || statusStr === 429 || errStr.includes('429') || errStr.includes('too many requests') || errStr.includes('resource_exhausted') || errStr.includes('quota');
+    
+    if (is403) {
       status = "INVALID";
+      cooldownMinutes = 0;
       isEnabled = false;
-    } else if (errorType === 'timeout') {
-      cooldownMinutes = 2;
-    } else if (errorType === '429') {
+    } else if (is429) {
       status = "QUOTA_EXCEEDED";
-      cooldownMinutes = retryAfter ? Math.ceil(retryAfter / 60) : 15;
+      cooldownMinutes = this._calculateCooldown(error);
+    } else if (isTimeout) {
+      status = "COOLDOWN";
+      cooldownMinutes = 2;
     } else {
-      cooldownMinutes = 1;
       status = "UNHEALTHY";
+      cooldownMinutes = 5;
     }
 
     const cooldownUntil = cooldownMinutes > 0 ? new Date(now.getTime() + cooldownMinutes * 60000) : null;
@@ -261,30 +328,17 @@ class GeminiFailoverModels {
 
           if (status === 429) {
             console.warn(`[Gemini Routing] Rate Limit:\n${logOutput}`);
-            const retryAfterHeader = err?.response?.headers?.get('retry-after');
-            let retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
-
-            // Check if it's a daily limit quota failure (e.g. Free Tier 20 requests/day limit)
-            const errStr = String(err?.message || "").toLowerCase();
-            const isDailyLimit = errStr.includes("quota exceeded") && 
-                                 (errStr.includes("free_tier") || errStr.includes("limit: 20") || errStr.includes("day"));
-            if (isDailyLimit) {
-              // Bench this key for 12 hours so we do not repeatedly try it
-              retryAfter = 12 * 60 * 60;
-              console.warn(`[Gemini Routing] Key ${key.id.substring(0,4)} hit daily free tier quota limit. Cooldown set to 12 hours.`);
-            }
-
-            await this._updateKeyFailure(key, '429', err.message, retryAfter);
+            await this._updateKeyFailure(key, err);
             keyFailed = true;
             break; // Move to next key
           } else if (status === 403) {
             console.error(`[Gemini Routing] Permission Denied:\n${logOutput}`);
-            await this._updateKeyFailure(key, '403', err.message);
+            await this._updateKeyFailure(key, err);
             keyFailed = true;
             break; // Move to next key
           } else if (isTimeout) {
             console.warn(`[Gemini Routing] Timeout:\n${logOutput}`);
-            await this._updateKeyFailure(key, 'timeout', err.message);
+            await this._updateKeyFailure(key, err);
             keyFailed = true;
             break; // Move to next key
           } else if (
@@ -296,7 +350,7 @@ class GeminiFailoverModels {
             continue; // Try next fallback model for the SAME key
           } else if (isRetryableError(err)) {
             console.warn(`[Gemini Routing] Retryable Error:\n${logOutput}`);
-            await this._updateKeyFailure(key, 'other', err.message);
+            await this._updateKeyFailure(key, err);
             keyFailed = true;
             break; // Move to next key
           } else {
@@ -310,7 +364,7 @@ class GeminiFailoverModels {
         if (allFailuresWereTransient) {
           console.warn(`[Gemini Routing] Key ${key.id.substring(0,4)} failed all models due to transient server load/outage. Skipping database unhealthy lock.`);
         } else {
-          await this._updateKeyFailure(key, 'other', `All models failed to respond (including fallbacks)`);
+          await this._updateKeyFailure(key, new Error("All models failed to respond (including fallbacks)"));
         }
       }
     }

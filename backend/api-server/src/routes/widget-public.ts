@@ -230,22 +230,87 @@ async function updateKeySuccessWidget(key: WidgetKey) {
   }
 }
 
+function checkIsDailyLimit(error: any): boolean {
+  if (!error) return false;
+  const parts: string[] = [];
+  if (error.message) parts.push(String(error.message));
+  if (error.stack) parts.push(String(error.stack));
+  if (typeof error === 'string') parts.push(error);
+  try {
+    if (error.response) {
+      parts.push(typeof error.response === 'string' ? error.response : JSON.stringify(error.response));
+    }
+    if (error.details) {
+      parts.push(typeof error.details === 'string' ? error.details : JSON.stringify(error.details));
+    }
+    parts.push(JSON.stringify(error));
+  } catch (e) {}
+  
+  const fullErrorText = parts.join(" ").toLowerCase();
+  const hasQuotaExceeded = fullErrorText.includes("quota exceeded") || fullErrorText.includes("quota_exceeded") || fullErrorText.includes("exceeded your current quota");
+  const isDailyOrFreeLimit = 
+    fullErrorText.includes("generaterequestsperday") || 
+    fullErrorText.includes("requestsperday") || 
+    fullErrorText.includes("daily") || 
+    (fullErrorText.includes("free_tier") && fullErrorText.includes("limit: 0")) ||
+    (fullErrorText.includes("free-tier") && fullErrorText.includes("limit: 0")) ||
+    fullErrorText.includes("check your plan and billing details");
+    
+  return hasQuotaExceeded && isDailyOrFreeLimit;
+}
+
+function calculateCooldown(error: any): number {
+  if (checkIsDailyLimit(error)) {
+    return 720; // 12 hours
+  }
+  
+  const errText = String(error?.message || error).toLowerCase();
+  
+  // Try to parse retry delay from error message (e.g. "Please retry in 57.061310034s.")
+  const match = errText.match(/retry\s+in\s+(\d+(?:\.\d+)?)s/i);
+  if (match) {
+    const seconds = parseFloat(match[1]);
+    return Math.max(1, Math.ceil(seconds / 60));
+  }
+  
+  // Check retry-after header if present (commonly returned by proxies/gateways)
+  const retryAfterHeader = error?.response?.headers?.get?.('retry-after');
+  if (retryAfterHeader) {
+    const seconds = parseInt(retryAfterHeader, 10);
+    if (!isNaN(seconds)) {
+      // Cap RPM rate limit cooldown at 2 minutes to prevent starving the key rotation pool
+      return Math.min(2, Math.max(1, Math.ceil(seconds / 60)));
+    }
+  }
+  
+  return 1; // default 1 minute for other 429 rate limits
+}
+
 async function updateKeyFailureWidget(key: WidgetKey, error: any) {
   if (key.type === 'env') return;
   const now = new Date();
   
   const statusStr = error?.status || error?.response?.status || error?.code || 'unknown';
   const errMessage = error?.message || String(error);
+  const errStr = errMessage.toLowerCase();
   
   let cooldownMinutes = 0;
   let status = "COOLDOWN";
+  let isEnabled = true;
   
-  if (statusStr === '403' || statusStr === 403 || errMessage.includes('403')) {
+  const is403 = statusStr === '403' || statusStr === 403 || errStr.includes('403') || errStr.includes('permission denied') || errStr.includes('api key not valid');
+  const isTimeout = errStr.includes('timeout') || errStr.includes('deadline exceeded');
+  const is429 = statusStr === '429' || statusStr === 429 || errStr.includes('429') || errStr.includes('too many requests') || errStr.includes('resource_exhausted') || errStr.includes('quota');
+  
+  if (is403) {
     status = "INVALID";
-  } else if (statusStr === '429' || statusStr === 429 || errMessage.includes('429')) {
+    cooldownMinutes = 0;
+    isEnabled = false;
+  } else if (is429) {
     status = "QUOTA_EXCEEDED";
-    cooldownMinutes = 15;
-  } else if (errMessage.toLowerCase().includes('timeout')) {
+    cooldownMinutes = calculateCooldown(error);
+  } else if (isTimeout) {
+    status = "COOLDOWN";
     cooldownMinutes = 2;
   } else {
     status = "UNHEALTHY";
@@ -261,6 +326,7 @@ async function updateKeyFailureWidget(key: WidgetKey, error: any) {
         cooldownUntil,
         failureReason: errMessage,
         lastFailure: now,
+        isEnabled: isEnabled ? undefined : false
       }).where(eq(projectApiKeys.id, key.id!));
     } else {
       await db.update(userApiKeys).set({
@@ -270,6 +336,7 @@ async function updateKeyFailureWidget(key: WidgetKey, error: any) {
         lastFailure: now,
         totalFailures: (key.rawDbKey?.totalFailures || 0) + 1,
         totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
+        isEnabled: isEnabled ? undefined : false
       }).where(eq(userApiKeys.id, key.id!));
     }
   } catch (err) {

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startCleanupTask } from "./lib/cleanup";
+import { startApiKeyHealthCheckTask } from "./lib/apiKeyHealthCheck";
 import { runMigrations } from "./lib/migrate";
 import { validateDatabaseSchema } from "./middlewares/databaseHealth";
 import puppeteer from "puppeteer";
@@ -39,6 +40,7 @@ async function start() {
     logger.info({ port }, "[STARTUP] Server listening on port " + port);
     logger.info("[STARTUP] HEALTH_ENDPOINT_READY");
     startCleanupTask();
+    startApiKeyHealthCheckTask();
     
     // Background validation
     validateDatabaseSchema().catch((err) => {

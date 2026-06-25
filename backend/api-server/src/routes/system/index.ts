@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { userApiKeys } from "@workspace/db";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 const router = Router();
 
@@ -54,6 +55,121 @@ router.get("/ai-status", async (req, res) => {
   } catch (err: any) {
     req.log.error({ err }, "Error fetching ai-status");
     res.status(500).json({ success: false, error: err.message || "Internal server error" });
+  }
+});
+
+// GET /api/system/admin/keys-report
+// Highly restricted route for admin rakesh837m@gmail.com only
+router.get("/admin/keys-report", async (req, res): Promise<any> => {
+  try {
+    const auth = (req as any).auth;
+    const userEmail = auth?.user?.email;
+    const isDemoMode = process.env.LOCAL_DEMO_MODE === "true";
+    
+    // Strict admin email check, allowing local demo mode for testing
+    const isAdmin = userEmail === "rakesh837m@gmail.com" || (isDemoMode && (!auth?.user || auth?.user?.email === "local-demo@example.com"));
+    
+    if (!isAdmin) {
+      req.log.warn({ userEmail }, "Unauthorized admin keys-report access attempt");
+      return res.status(403).json({ error: "Access denied. This report is restricted to administrators." });
+    }
+
+    const allSystemKeys = await db
+      .select()
+      .from(userApiKeys)
+      .where(
+        or(
+          isNull(userApiKeys.userId),
+          eq(userApiKeys.isSystem, true)
+        )
+      );
+
+    const now = new Date();
+    
+    // Format detailed metrics for each key
+    const keysReport = allSystemKeys.map(k => {
+      const totalRequests = k.totalRequests || 0;
+      const totalFailures = k.totalFailures || 0;
+      const totalSuccesses = Math.max(0, totalRequests - totalFailures);
+      
+      const successRate = totalRequests > 0 ? Number(((totalSuccesses / totalRequests) * 100).toFixed(2)) : 100;
+      const failureRate = totalRequests > 0 ? Number(((totalFailures / totalRequests) * 100).toFixed(2)) : 0;
+      
+      const cooldownRemainingMinutes = k.cooldownUntil && k.cooldownUntil.getTime() > now.getTime()
+        ? Math.ceil((k.cooldownUntil.getTime() - now.getTime()) / 60000)
+        : 0;
+
+      return {
+        id: k.id,
+        name: k.name,
+        provider: k.provider,
+        maskedKey: k.maskedKey,
+        status: k.status,
+        isEnabled: k.isEnabled,
+        isPrimary: k.isPrimary,
+        lastSuccess: k.lastSuccess,
+        lastFailure: k.lastFailure,
+        failureReason: k.failureReason,
+        cooldownUntil: k.cooldownUntil,
+        cooldownRemainingMinutes,
+        metrics: {
+          totalRequests,
+          totalFailures,
+          totalSuccesses,
+          successRatePercent: successRate,
+          failureRatePercent: failureRate,
+          dailyLimit: k.dailyLimit,
+          dailyUsed: k.dailyUsed,
+          remainingDailyQuota: k.dailyLimit !== null && k.dailyLimit !== undefined ? Math.max(0, k.dailyLimit - k.dailyUsed) : null,
+          lastResetAt: k.lastResetAt
+        },
+        timestamps: {
+          createdAt: k.createdAt,
+          updatedAt: k.updatedAt
+        }
+      };
+    });
+
+    // Calculate aggregate metrics across all system keys
+    const totalKeys = allSystemKeys.length;
+    const healthyCount = allSystemKeys.filter(k => k.status === "HEALTHY").length;
+    const quotaExceededCount = allSystemKeys.filter(k => k.status === "QUOTA_EXCEEDED").length;
+    const invalidCount = allSystemKeys.filter(k => k.status === "INVALID").length;
+    const unhealthyCount = allSystemKeys.filter(k => k.status === "UNHEALTHY" || k.status === "COOLDOWN").length;
+    
+    let aggregateRequests = 0;
+    let aggregateFailures = 0;
+    let aggregateDailyUsed = 0;
+    
+    allSystemKeys.forEach(k => {
+      aggregateRequests += k.totalRequests || 0;
+      aggregateFailures += k.totalFailures || 0;
+      aggregateDailyUsed += k.dailyUsed || 0;
+    });
+    
+    const aggregateSuccessRate = aggregateRequests > 0
+      ? Number((((aggregateRequests - aggregateFailures) / aggregateRequests) * 100).toFixed(2))
+      : 100;
+
+    res.json({
+      success: true,
+      generatedAt: now,
+      summary: {
+        totalSystemKeys: totalKeys,
+        healthyKeys: healthyCount,
+        quotaExceededKeys: quotaExceededCount,
+        invalidKeys: invalidCount,
+        unhealthyKeys: unhealthyCount,
+        aggregateRequests,
+        aggregateFailures,
+        aggregateDailyUsed,
+        overallSuccessRatePercent: aggregateSuccessRate
+      },
+      keys: keysReport
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to generate admin keys report");
+    res.status(500).json({ error: "Internal server error generating system API key report" });
   }
 });
 
