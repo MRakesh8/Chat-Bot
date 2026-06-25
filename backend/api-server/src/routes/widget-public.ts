@@ -318,7 +318,12 @@ async function executeLlmWithFailover(
         attemptOptions.model = key.model;
       }
       
-      console.log(`[Widget API Failover] Trying key: ${key.id || 'env'} (${key.type}) | Provider: ${key.provider} | Model: ${attemptOptions.model || 'default'}`);
+      console.log("STEP 10: Inside executeLlmWithFailover()");
+      console.log("  - selected provider:", key.provider);
+      console.log("  - selected model:", attemptOptions.model || 'default');
+      console.log("  - api key exists:", !!key.decryptedKey);
+      console.log("  - request payload keys:", Object.keys(attemptOptions));
+      console.log("  - request size bytes:", JSON.stringify(attemptOptions).length);
       
       const result = await executeKeyRequest(key, method, attemptOptions);
       
@@ -444,11 +449,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
   try {
     const projectId = (req as any).projectId;
-    console.log("=== INCOMING CHAT REQUEST ===");
-    console.log("Request body:", JSON.stringify({ messages: messages?.length, websiteContext: !!websiteContext, sessionId }));
-    console.log("Project ID:", projectId);
-    console.log("Widget Token:", req.params.widgetToken);
-    console.log("Website Context:", websiteContext ? "Present" : "Missing");
+    console.log("\n=============================================");
+    console.log("STEP 1: Incoming request body:", JSON.stringify(req.body).substring(0, 500));
+    console.log("STEP 2: Resolved widget token:", req.params.widgetToken);
+    console.log("STEP 3: Resolved project id:", projectId);
 
     // Get project details to know the owner's userId for key failover/rotation
     let project;
@@ -456,7 +460,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       project = await db.query.projects.findFirst({
         where: eq(projects.id, projectId)
       });
-      console.log("Loaded project:", project?.id);
+      console.log("STEP 4: Loaded project:", project?.id);
     } catch (err: any) {
       console.error("Failed Loading project...", err.stack || err);
       throw err;
@@ -630,6 +634,9 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     let finalWebsiteContext = null;
     let sessionMemory = null;
 
+    console.log("STEP C: Backend - req.body.websiteContext:");
+    console.log(JSON.stringify(websiteContext, null, 2));
+
     try {
       if (contextSettings.enabled && websiteContext && sessionId) {
         const validated = validateWebsiteContext(websiteContext, contextSettings.maxContextSizeBytes);
@@ -665,6 +672,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       const widgetSettings = await db.query.projectWidgetSettings.findFirst({
         where: eq(projectWidgetSettings.projectId, projectId)
       });
+      console.log("STEP 5: Loaded widget settings:", widgetSettings ? "Found" : "Missing");
       if (widgetSettings?.humanHandoffLinks) {
         const links = widgetSettings.humanHandoffLinks as Record<string, string>;
         const details = [];
@@ -681,6 +689,9 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Error fetching widget settings for handoff:", err);
     }
 
+    console.log("STEP 6: Loaded knowledge documents. Count: ", fusedContext.knowledgeChunks?.length || 0);
+    console.log("STEP 7: Loaded conversation history. Count: " + messages.length);
+
     let systemPrompt;
     try {
       systemPrompt = buildContextAwarePrompt({
@@ -691,6 +702,8 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         handoffInfo
       });
       console.log("Built prompt length:", systemPrompt.length);
+      console.log("STEP D: Exact prompt sent to Gemini:");
+      console.log(systemPrompt);
     } catch (err: any) {
       console.error("Failed buildContextAwarePrompt()...", err.stack || err);
       throw err;
@@ -704,24 +717,33 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         parts: [{ text: m.content }]
       }))
     ];
+    
+    console.log("STEP 8: Constructed messages array:");
+    console.log(JSON.stringify(chatMessages, null, 2));
 
     try {
-      console.log("Calling Gemini... Request parts count:", chatMessages.length);
+      console.log("STEP 9: About to call executeLlmWithFailover()");
       const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
         contents: chatMessages as any
       });
-      console.log("Gemini response initialized.");
+      console.log("STEP 11: Gemini raw response initialized");
       
+      let fullResponseText = "";
       for await (const chunk of stream) {
         if (chunk.text) {
+          fullResponseText += chunk.text;
+          console.log("STEP 11 Chunk:", chunk.text);
           res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
           if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       }
+      console.log("STEP 13: Returned text before post-processing: " + fullResponseText);
+      console.log("STEP 14: No post-processing modifications applied in this route.");
     } catch (err: any) {
-      console.error("Failed GeminiClient.generate() step...", err.stack || err);
-      res.write(`data: ${JSON.stringify({ content: "Sorry, I am having trouble connecting right now." })}\n\n`);
-      throw err; // So it triggers the outer catch to log the full trace just in case
+      console.log("STEP 12: executeLlmWithFailover threw an error.");
+      console.error("FULL STACK TRACE:", err.stack || err);
+      // Let it fall through, do NOT replace
+      throw err;
     }
     
     res.end();
