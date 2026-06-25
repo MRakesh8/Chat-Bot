@@ -193,10 +193,20 @@ export class ContextFuser {
         const selected = t.selectedRow
           ? `\n  Selected row: ${t.selectedRow.join(" | ")}`
           : "";
+        
+        // Format visible rows so the LLM has access to the actual table records
+        let rowsFormatted = "";
+        if (t.visibleRows && t.visibleRows.length > 0) {
+          const rowLines = t.visibleRows.map((r: string[], idx: number) => `    Row ${idx + 1}: ${r.join(" | ")}`);
+          rowsFormatted = `\n  Visible Rows:\n${rowLines.join("\n")}`;
+        } else {
+          rowsFormatted = "\n  No visible rows extracted.";
+        }
+
         const meta = [rowInfo, sortInfo, pageInfo].filter(Boolean).join(", ");
         const caption = t.caption ? `Table "${t.caption}"` : "Data Table";
         sections.push(
-          `${caption} (${meta}):\n  Columns: ${header}${selected}`
+          `${caption} (${meta}):\n  Columns: ${header}${selected}${rowsFormatted}`
         );
       }
     }
