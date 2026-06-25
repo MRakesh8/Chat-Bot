@@ -440,7 +440,7 @@ export default function AdminProjectEditPage() {
                   <div className="text-center py-16 bg-muted/50 border border-border rounded-xl mt-8">
                     <Paintbrush className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                     <h3 className="text-lg font-medium text-foreground mb-2">Premium Feature Locked</h3>
-                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin to enable this feature.</p>
+                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin to enable this feature. For admin detail ask chatbot.</p>
                   </div>
                 ) : (
                   projectId && <WidgetStudio projectId={projectId} />
@@ -458,7 +458,7 @@ export default function AdminProjectEditPage() {
                   <div className="text-center py-16 bg-muted/50 border border-border rounded-xl mt-8">
                     <Brain className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                     <h3 className="text-lg font-medium text-foreground mb-2">Premium Feature Locked</h3>
-                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin to enable this feature.</p>
+                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin to enable this feature. For admin detail ask chatbot.</p>
                   </div>
                 ) : (
                   projectId && <ContextSettings projectId={projectId} />

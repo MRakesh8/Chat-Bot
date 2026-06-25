@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { users, projects, globalSettings, systemErrors } from "@workspace/db";
 import { z } from "zod";
@@ -159,6 +159,44 @@ Provide the likely root cause and how to fix it in 2-3 short paragraphs or bulle
   } catch (err: any) {
     req.log.error({ err }, "Error generating fix for system error");
     res.status(500).json({ error: "Internal server error generating fix" });
+  }
+});
+
+// GET /super-admin/supabase-stats
+router.get("/supabase-stats", async (req, res) => {
+  try {
+    const dbSize = await db.execute(sql`SELECT pg_size_pretty(pg_database_size(current_database())) as size, pg_database_size(current_database()) as bytes`);
+    
+    // Some supabase instances might have storage.objects restricted or not present in local dev. We wrap in a try-catch for safety.
+    let storageSizeRaw = 0;
+    let userStorage = [];
+    try {
+      const storageResult = await db.execute(sql`SELECT SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes FROM storage.objects`);
+      storageSizeRaw = Number(storageResult.rows[0]?.bytes || 0);
+
+      const userStorageResult = await db.execute(sql`
+        SELECT owner as user_id, SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes 
+        FROM storage.objects 
+        GROUP BY owner
+      `);
+      userStorage = userStorageResult.rows;
+    } catch (e) {
+      req.log.warn({ e }, "storage.objects not available or query failed");
+    }
+
+    res.json({
+      database: {
+        sizeStr: dbSize.rows[0]?.size || "0 bytes",
+        bytes: Number(dbSize.rows[0]?.bytes || 0)
+      },
+      storage: {
+        bytes: storageSizeRaw,
+        perUser: userStorage
+      }
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "Error fetching supabase stats");
+    res.status(500).json({ error: "Internal server error fetching stats" });
   }
 });
 

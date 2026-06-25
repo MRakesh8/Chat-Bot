@@ -21,6 +21,7 @@ type ApiKey = {
 export function ApiKeysSettings() {
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [apiMode, setApiMode] = useState<string>("auto");
+  const [chatRetention, setChatRetention] = useState<number>(30);
   const [loading, setLoading] = useState(true);
   const [newKey, setNewKey] = useState("");
   const [newName, setNewName] = useState("");
@@ -47,6 +48,7 @@ export function ApiKeysSettings() {
       if (modeRes.ok) {
         const modeJson = await modeRes.json();
         if (modeJson.apiMode) setApiMode(modeJson.apiMode);
+        if (modeJson.chatHistoryRetentionDays !== undefined) setChatRetention(modeJson.chatHistoryRetentionDays);
       }
     } catch (err) {
       console.error("Failed to fetch API key settings", err);
@@ -57,6 +59,15 @@ export function ApiKeysSettings() {
 
   const handleModeChange = async (newMode: string) => {
     setApiMode(newMode);
+    await updateSettings({ apiMode: newMode });
+  };
+
+  const handleRetentionChange = async (days: number) => {
+    setChatRetention(days);
+    await updateSettings({ chatHistoryRetentionDays: days });
+  };
+
+  const updateSettings = async (payload: any) => {
     try {
       const { data } = await supabase.auth.getSession();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -66,10 +77,10 @@ export function ApiKeysSettings() {
       await fetch(apiUrl("/api/api-keys/settings"), {
         method: "PUT",
         headers,
-        body: JSON.stringify({ apiMode: newMode }),
+        body: JSON.stringify(payload),
       });
     } catch (err) {
-      console.error("Failed to update API mode", err);
+      console.error("Failed to update settings", err);
     }
   };
 
@@ -173,6 +184,33 @@ export function ApiKeysSettings() {
             <div className="font-medium text-sm">System First</div>
             <div className="text-xs text-muted-foreground mt-1">Prioritize system default keys</div>
           </button>
+        </div>
+
+        <div className="pt-6 border-t border-border mt-8">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold">Chat History Retention</h3>
+            <p className="text-sm text-muted-foreground">Choose how long your normal AI chat sessions are kept before being auto-deleted.</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { id: 7, label: "7 Days" },
+              { id: 30, label: "30 Days" },
+              { id: 90, label: "90 Days" },
+              { id: -1, label: "Keep Forever" }
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => handleRetentionChange(opt.id)}
+                className={`p-3 rounded-xl border text-sm font-medium transition-all ${
+                  chatRetention === opt.id 
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm" 
+                  : "bg-card border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       

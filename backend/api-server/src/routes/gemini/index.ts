@@ -3,7 +3,7 @@
  * @description Routes for processing chat sessions and messaging with the Gemini model. Handles context (RAG) loading, chat logs, history limits, and feedback loops.
  */
 import { Router } from "express";
-import { and, eq, desc, like, inArray, or, isNull, gt } from "drizzle-orm";
+import { and, eq, desc, like, inArray, or, isNull, gt, lt } from "drizzle-orm";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import {
   isKnowledgeSaveCommand,
@@ -13,7 +13,7 @@ import {
   extractSourceContent,
 } from "../../services/knowledge";
 import { db } from "@workspace/db";
-import { chatSessions, messages, projects, knowledgeRetrievalCache, globalSettings } from "@workspace/db";
+import { chatSessions, messages, projects, knowledgeRetrievalCache, globalSettings, userApiSettings, users } from "@workspace/db";
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
@@ -69,6 +69,21 @@ router.get("/conversations", async (req, res) => {
   const userId = (req as any).auth?.userId ?? null;
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
+    // 1. Auto-cleanup logic
+    const [settings] = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
+    const retentionDays = settings?.chatHistoryRetentionDays ?? 30;
+    
+    if (retentionDays > 0) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      // Fire-and-forget deletion of old sessions (messages cascade)
+      db.delete(chatSessions)
+        .where(and(eq(chatSessions.userId, userId), lt(chatSessions.createdAt, cutoffDate)))
+        .execute()
+        .catch(err => req.log.error({ err }, "Failed to auto-delete old chats"));
+    }
+
+    // 2. Fetch conversations
     const results = await db
       .select()
       .from(chatSessions)

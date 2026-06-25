@@ -92,7 +92,7 @@ export default function AdminConsolePage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings" | "errors">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings" | "errors" | "supabase">("users");
   
   // System Settings state
   const [globalAiPrompt, setGlobalAiPrompt] = useState("");
@@ -152,6 +152,18 @@ export default function AdminConsolePage() {
     },
     enabled: isAdmin && activeTab === "errors",
     refetchInterval: activeTab === "errors" ? 5000 : false,
+  });
+
+  // Supabase Stats Fetch
+  const { data: supabaseStats, isLoading: supabaseLoading } = useQuery({
+    queryKey: ["super-admin-supabase"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/super-admin/supabase-stats"));
+      if (!res.ok) throw new Error("Failed to load supabase stats");
+      return res.json() as Promise<any>;
+    },
+    enabled: isAdmin && activeTab === "supabase",
+    refetchInterval: activeTab === "supabase" ? 10000 : false,
   });
 
   const [fixingErrorId, setFixingErrorId] = useState<string | null>(null);
@@ -328,6 +340,7 @@ export default function AdminConsolePage() {
             { id: "settings", label: "System Settings", icon: Settings2 },
             { id: "keys", label: "System Keys Health", icon: Key },
             { id: "errors", label: "System Errors", icon: AlertCircle },
+            { id: "supabase", label: "Supabase Monitor", icon: Activity },
             { id: "clarity", label: "Microsoft Clarity", icon: Activity },
           ].map((tab) => (
             <button
@@ -669,6 +682,78 @@ export default function AdminConsolePage() {
                 </div>
               </>
             ) : null}
+          </div>
+        )}
+
+        {/* SUPABASE TAB */}
+        {activeTab === "supabase" && (
+          <div className="flex-1 p-6 overflow-y-auto">
+            <h2 className="text-2xl font-black tracking-tight mb-6">Supabase Database & Storage Monitor</h2>
+            {supabaseLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M21 5c0 1.66-4 3-9 3s-9-1.34-9-3s4-3 9-3s9 1.34 9 3"/></svg>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-foreground text-lg">Database Size</h3>
+                        <p className="text-xs text-muted-foreground">Postgres Volume</p>
+                      </div>
+                    </div>
+                    <div className="text-4xl font-black">{supabaseStats?.database?.sizeStr}</div>
+                    <div className="mt-4 text-xs font-mono text-muted-foreground break-all">
+                      {supabaseStats?.database?.bytes} total bytes
+                    </div>
+                  </div>
+
+                  <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-foreground text-lg">Storage Buckets</h3>
+                        <p className="text-xs text-muted-foreground">Blob Storage</p>
+                      </div>
+                    </div>
+                    <div className="text-4xl font-black">
+                      {((supabaseStats?.storage?.bytes || 0) / (1024 * 1024)).toFixed(2)} <span className="text-xl">MB</span>
+                    </div>
+                    <div className="mt-4 text-xs font-mono text-muted-foreground break-all">
+                      {supabaseStats?.storage?.bytes || 0} total bytes
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                  <h3 className="font-bold text-lg mb-4">User Storage Consumption</h3>
+                  {supabaseStats?.storage?.perUser?.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No users have uploaded files yet.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {supabaseStats?.storage?.perUser?.map((u: any, idx: number) => {
+                        const userObj = users?.find(du => du.id === u.user_id);
+                        return (
+                          <div key={idx} className="flex items-center justify-between p-3 border border-border/50 rounded-xl">
+                            <div>
+                              <div className="font-medium text-sm">{userObj?.email || "Unknown User"}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{u.user_id}</div>
+                            </div>
+                            <div className="font-bold text-foreground">
+                              {(Number(u.bytes) / (1024 * 1024)).toFixed(2)} MB
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {/* SYSTEM ERRORS TAB */}

@@ -18,7 +18,8 @@ const UpdateKeyBody = z.object({
 });
 
 const UpdateSettingsBody = z.object({
-  apiMode: z.enum(["auto", "user_first", "system_first"]),
+  apiMode: z.enum(["auto", "user_first", "system_first"]).optional(),
+  chatHistoryRetentionDays: z.number().int().min(-1).optional(),
 });
 
 // GET /api/api-keys/settings
@@ -48,14 +49,18 @@ router.put("/settings", async (req, res): Promise<any> => {
     const parsed = UpdateSettingsBody.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const existing = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
-    if (existing.length === 0) {
-      await db.insert(userApiSettings).values({ userId, apiMode: parsed.data.apiMode });
-    } else {
-      await db.update(userApiSettings).set({ apiMode: parsed.data.apiMode }).where(eq(userApiSettings.userId, userId));
-    }
-    
-    res.json({ success: true, apiMode: parsed.data.apiMode });
+    const updateData: any = {};
+    if (parsed.data.apiMode) updateData.apiMode = parsed.data.apiMode;
+    if (parsed.data.chatHistoryRetentionDays !== undefined) updateData.chatHistoryRetentionDays = parsed.data.chatHistoryRetentionDays;
+
+    await db.insert(userApiSettings)
+      .values({ userId, ...updateData })
+      .onConflictDoUpdate({
+        target: userApiSettings.userId,
+        set: updateData
+      });
+
+    res.json({ success: true });
   } catch (err: any) {
     req.log.error({ err }, "Failed to update API settings");
     res.status(500).json({ error: "Failed to update API settings" });

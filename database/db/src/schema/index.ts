@@ -208,6 +208,7 @@ export const userApiKeys = pgTable("user_api_keys", {
 export const userApiSettings = pgTable("user_api_settings", {
   userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   apiMode: varchar("api_mode", { length: 50 }).default("auto").notNull(), // auto, user_first, system_first
+  chatHistoryRetentionDays: integer("chat_history_retention_days").default(30).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
