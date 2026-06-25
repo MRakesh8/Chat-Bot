@@ -17,6 +17,8 @@ import {
   ArrowLeft,
   ChevronDown,
   Copy,
+  FileText,
+  Image as ImageIcon,
   Loader2,
   Mic,
   Paperclip,
@@ -62,6 +64,25 @@ function greeting() {
   return "Good evening";
 }
 
+type FileMeta = { id: string; name: string; type: string };
+
+function FileAttachmentChip({ file }: { file: FileMeta }) {
+  const isImage = file.type.startsWith("image/");
+  const isPdf = file.type === "application/pdf";
+  const ext = file.name.split(".").pop()?.toUpperCase() || "FILE";
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg bg-foreground/5 border border-foreground/10 px-2.5 py-1.5 text-xs text-foreground/80 max-w-[220px]">
+      {isImage ? (
+        <ImageIcon className="h-3.5 w-3.5 shrink-0 text-primary/70" />
+      ) : (
+        <FileText className="h-3.5 w-3.5 shrink-0 text-primary/70" />
+      )}
+      <span className="truncate">{file.name}</span>
+      <span className="shrink-0 rounded bg-foreground/10 px-1 py-0.5 text-[10px] font-medium uppercase">{ext}</span>
+    </div>
+  );
+}
+
 const MemoizedMessage = memo(function MemoizedMessage({
   msg,
   basePath,
@@ -87,6 +108,7 @@ const MemoizedMessage = memo(function MemoizedMessage({
   onReadAloud?: (text: string, id: string) => void;
   isSpeaking?: boolean;
 }) {
+  const filesMeta: FileMeta[] = msg.filesMeta?.files || [];
   return (
     <div className={cn("group flex items-end gap-2", msg.role === "user" ? "justify-end" : "justify-start")}>
       {hasSelectedProjects && msg.role !== "user" && (
@@ -139,6 +161,13 @@ const MemoizedMessage = memo(function MemoizedMessage({
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             </div>
+          </div>
+        )}
+        {msg.role === "user" && filesMeta.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {filesMeta.map((file, i) => (
+              <FileAttachmentChip key={`${file.id}-${i}`} file={file} />
+            ))}
           </div>
         )}
         <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted relative">
@@ -455,6 +484,12 @@ export function ChatArea() {
 
     const messageText = textToSend;
     const fileIds = files.filter((f) => f.id).map((f) => f.id!);
+    // Build file metadata for display in chat bubbles
+    const filesMeta = files.filter((f) => f.id).map((f) => ({
+      id: f.id!,
+      name: f.file.name,
+      type: f.file.type || "application/octet-stream",
+    }));
     const useNormalAi = selectedSources.has("normal");
     let targetId = conversationId;
 
@@ -475,6 +510,7 @@ export function ChatArea() {
         id: optimisticUserMessageId,
         role: "user",
         content: messageText,
+        filesMeta: filesMeta.length > 0 ? { files: filesMeta } : null,
         createdAt: new Date().toISOString(),
       };
       queryClient.setQueryData(getListGeminiMessagesQueryKey(targetId), (old: any) => {
@@ -482,7 +518,7 @@ export function ChatArea() {
         return [...old, newMessage];
       });
 
-      setTimeout(() => sendMessage(targetId!, messageText, fileIds, selectedProjectIds, useNormalAi, optimisticUserMessageId), 50);
+      setTimeout(() => sendMessage(targetId!, messageText, fileIds, selectedProjectIds, useNormalAi, optimisticUserMessageId, filesMeta), 50);
       return;
     }
 
@@ -491,6 +527,7 @@ export function ChatArea() {
       id: optimisticUserMessageId,
       role: "user",
       content: messageText,
+      filesMeta: filesMeta.length > 0 ? { files: filesMeta } : null,
       createdAt: new Date().toISOString(),
     };
     queryClient.setQueryData(getListGeminiMessagesQueryKey(targetId), (old: any) => {
@@ -498,7 +535,7 @@ export function ChatArea() {
       return [...old, newMessage];
     });
 
-    sendMessage(targetId, messageText, fileIds, selectedProjectIds, useNormalAi, optimisticUserMessageId);
+    sendMessage(targetId, messageText, fileIds, selectedProjectIds, useNormalAi, optimisticUserMessageId, filesMeta);
     setTimeout(() => scrollToBottom(), 50);
   };
 

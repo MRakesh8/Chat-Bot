@@ -335,15 +335,64 @@ function serializeConversation(conversation: typeof chatSessions.$inferSelect) {
   };
 }
 
+const FILE_META_PREFIX = "[__files__:";
+
+function parseFilesMeta(content: string): { files: { id: string; name: string; type: string }[] } | null {
+  if (!content.startsWith(FILE_META_PREFIX)) return null;
+  const endIdx = content.indexOf("]\n");
+  if (endIdx === -1) return null;
+  try {
+    return JSON.parse(content.slice(FILE_META_PREFIX.length, endIdx));
+  } catch {
+    return null;
+  }
+}
+
+function stripFilesMeta(content: string): string {
+  if (!content.startsWith(FILE_META_PREFIX)) return content;
+  const endIdx = content.indexOf("]\n");
+  if (endIdx === -1) return content;
+  return content.slice(endIdx + 2);
+}
+
 function serializeMessage(message: typeof messages.$inferSelect) {
+  const meta = message.sender === "user" ? parseFilesMeta(message.content) : null;
   return {
     id: message.id,
     conversationId: message.sessionId,
     role: message.sender === "user" ? "user" : "assistant",
-    content: message.content,
-    fileIds: null,
+    content: meta ? stripFilesMeta(message.content) : message.content,
+    filesMeta: meta,
     createdAt: message.createdAt,
   };
+}
+
+// Infer MIME type from file extension when the Blob type is empty (common in some environments)
+function inferMimeType(fileId: string, blobType: string): string {
+  if (blobType && blobType !== "application/octet-stream") return blobType;
+  const ext = (fileId.split("/").pop() || "").split(".").pop()?.toLowerCase() || "";
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    mp4: "video/mp4",
+    mp3: "audio/mpeg",
+    txt: "text/plain",
+    md: "text/markdown",
+    csv: "text/csv",
+    json: "application/json",
+    zip: "application/zip",
+  };
+  return map[ext] || "application/octet-stream";
 }
 
 async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
@@ -361,7 +410,8 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
       }
       
       const fileBuffer = Buffer.from(await fileData.arrayBuffer());
-      const mimetype = fileData.type;
+      const mimetype = inferMimeType(fileId, fileData.type);
+      const filename = fileId.split("/").pop();
       
       if (mimetype.startsWith("image/")) {
         parts.push({
@@ -372,8 +422,8 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
         });
       } else {
         let sourceType = "file";
-        const filename = fileId.split("/").pop();
         if (mimetype.startsWith("video/")) sourceType = "video";
+        else if (mimetype.startsWith("audio/")) sourceType = "audio";
         
         try {
           const extractedText = await extractSourceContent({
@@ -383,9 +433,15 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
             filename,
             userId: null
           });
-          parts.push({ text: `[Contents of attached file: ${filename}]:\n${extractedText}` });
+          if (extractedText && extractedText.trim()) {
+            parts.push({ text: `[Contents of attached file: ${filename}]:\n${extractedText}` });
+          } else {
+            logger.warn(`Empty text extracted from ${filename}, skipping`);
+          }
         } catch (extractErr: any) {
           logger.error(`Failed to extract text from ${filename}: ${extractErr.message}`);
+          // Still include a note that the file was attached but couldn't be parsed
+          parts.push({ text: `[Attached file: ${filename} - content could not be extracted]` });
         }
       }
     } catch (err) {
@@ -519,11 +575,22 @@ router.post("/conversations/:id/messages", async (req, res) => {
     // --- END QUICK ADD ---
 
     currentStep = "MESSAGE_SAVED_USER";
-    // Save user message
+    // Save user message — if files are attached, embed a metadata prefix so we can show attachments in the UI
+    let userContent = content || "";
+    if (fileIds && fileIds.length > 0) {
+      // Fetch original filenames from storage metadata
+      const fileMeta: { id: string; name: string; type: string }[] = [];
+      for (const fid of fileIds) {
+        const ext = (fid.split("/").pop() || "").split(".").slice(1).join(".") || "";
+        const rawName = fid.split("/").pop() || fid;
+        fileMeta.push({ id: fid, name: rawName, type: inferMimeType(fid, "") });
+      }
+      userContent = `[__files__:${JSON.stringify({ files: fileMeta })}]\n${userContent}`;
+    }
     await db.insert(messages).values({
       sessionId: conversationId as any,
       sender: "user",
-      content: content || "",
+      content: userContent,
     });
     req.log.info("[MESSAGE_SAVED] user message saved");
 
@@ -537,12 +604,17 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
     // All messages except the last (just saved) one = chat history
     // Strip out conversational fluff to prevent few-shot learning of bad behavior
+    // Also strip file metadata prefixes from user messages (used for UI display only)
     const historyWithoutCurrent = history.slice(0, -1).map(m => {
        if (m.sender === "assistant") {
          let text = m.content || "";
          text = text.replace(/^(Understood!|I will|Here's|Let's)[^\n]*\n/gi, "").trim();
          text = text.replace(/^Project Structure:?\s*\n/gi, "").trim();
          return { ...m, content: text };
+       }
+       if (m.sender === "user") {
+         // Strip the [__files__:...]\n metadata prefix if present
+         return { ...m, content: stripFilesMeta(m.content || "") };
        }
        return m;
     });

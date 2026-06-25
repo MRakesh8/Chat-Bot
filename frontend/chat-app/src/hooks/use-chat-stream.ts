@@ -23,7 +23,15 @@ export function useChatStream() {
     setStreamingContent("");
   };
 
-  const sendMessage = async (conversationId: string, content: string, fileIds: string[], projectIds: string[] = [], useNormalAi: boolean = true, optimisticUserMessageId?: string) => {
+  const sendMessage = async (
+    conversationId: string,
+    content: string,
+    fileIds: string[],
+    projectIds: string[] = [],
+    useNormalAi: boolean = true,
+    optimisticUserMessageId?: string,
+    filesMeta?: { id: string; name: string; type: string }[]
+  ) => {
     setIsStreaming(true);
     setStreamingContent("");
     let fullContent = "";
@@ -81,6 +89,7 @@ export function useChatStream() {
                   id: optimisticUserMessageId || "optimistic-user-" + Date.now(),
                   role: "user",
                   content: content,
+                  filesMeta: filesMeta && filesMeta.length > 0 ? { files: filesMeta } : null,
                   createdAt: new Date().toISOString(),
                 };
                 const assistantMsg = {
