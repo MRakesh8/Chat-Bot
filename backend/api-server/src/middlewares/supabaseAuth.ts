@@ -48,13 +48,17 @@ export const supabaseAuthMiddleware = async (
     return;
   }
 
+  let dbUser;
   try {
     const existingUser = await db.select().from(users).where(eq(users.id, data.user.id));
     if (existingUser.length === 0) {
-      await db.insert(users).values({
+      const inserted = await db.insert(users).values({
         id: data.user.id,
         email: data.user.email || "no-email@example.com",
-      });
+      }).returning();
+      dbUser = inserted[0];
+    } else {
+      dbUser = existingUser[0];
     }
   } catch (err) {
     console.error("Failed to upsert user:", err);
@@ -62,6 +66,6 @@ export const supabaseAuthMiddleware = async (
     return;
   }
 
-  (req as any).auth = { userId: data.user.id, user: data.user };
+  (req as any).auth = { userId: data.user.id, user: data.user, dbUser };
   next();
 };

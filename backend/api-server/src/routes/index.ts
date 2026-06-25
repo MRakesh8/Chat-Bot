@@ -10,6 +10,7 @@ import apiKeysRouter from "./api-keys";
 import servicesRouter from "./services";
 
 import systemRouter from "./system";
+import superAdminRouter from "./super-admin";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use("/categories", categoriesRouter);
 router.use("/api-keys", apiKeysRouter);
 router.use("/services", servicesRouter);
 router.use("/system", systemRouter);
+router.use("/super-admin", superAdminRouter);
 
 export default router;

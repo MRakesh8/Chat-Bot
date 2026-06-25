@@ -120,7 +120,7 @@ router.get("/:id", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
     res.json(project);
   } catch (err: any) {
     req.log.error({ err }, "Error getting project");
@@ -150,7 +150,7 @@ router.patch("/:id", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -182,7 +182,7 @@ router.delete("/:id", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
     await db.delete(projects).where(eq(projects.id, id));
     res.status(204).send();
   } catch (err: any) {
@@ -211,7 +211,7 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { contents } = parsed.data;
     

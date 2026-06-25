@@ -56,6 +56,7 @@ export default function AdminProjectEditPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const authFetch = useAuthFetch();
+  const { dbUser } = useAuth();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -433,7 +434,15 @@ export default function AdminProjectEditPage() {
                   <h3 className="text-xl font-medium mb-1">Widget Studio</h3>
                   <p className="text-white/60 text-sm">Customize the appearance and behavior of your chatbot widget.</p>
                 </div>
-                {projectId && <WidgetStudio projectId={projectId} />}
+                {dbUser?.features?.canUseWidgetStudio === false ? (
+                  <div className="text-center py-16 bg-muted/50 border border-border rounded-xl mt-8">
+                    <Paintbrush className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium text-foreground mb-2">Premium Feature Locked</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin to enable this feature.</p>
+                  </div>
+                ) : (
+                  projectId && <WidgetStudio projectId={projectId} />
+                )}
               </div>
             </TabsContent>
 
@@ -443,7 +452,15 @@ export default function AdminProjectEditPage() {
                   <h3 className="text-xl font-medium mb-1">Context Engine</h3>
                   <p className="text-white/60 text-sm">Configure how the AI understands and interacts with your website.</p>
                 </div>
-                {projectId && <ContextSettings projectId={projectId} />}
+                {dbUser?.features?.canUseContextEngine === false ? (
+                  <div className="text-center py-16 bg-muted/50 border border-border rounded-xl mt-8">
+                    <Brain className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium text-foreground mb-2">Premium Feature Locked</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin to enable this feature.</p>
+                  </div>
+                ) : (
+                  projectId && <ContextSettings projectId={projectId} />
+                )}
               </div>
             </TabsContent>
 

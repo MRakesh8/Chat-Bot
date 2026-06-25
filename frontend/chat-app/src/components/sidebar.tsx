@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3 } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3, Shield } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -136,7 +136,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
 
 export function Sidebar({ className, onClose, onDesktopClose }: { className?: string, onClose?: () => void, onDesktopClose?: () => void }) {
   const [location, setLocation] = useLocation();
-  const { user, session, signOut } = useAuth();
+  const { user, dbUser, session, signOut } = useAuth();
   const { data: conversations, isLoading } = useListGeminiConversations();
   const deleteConversation = useDeleteGeminiConversation();
   const updateConversation = useUpdateGeminiConversation();
@@ -503,6 +503,14 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
                 <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
                   <BarChart3 className="w-4 h-4 text-primary" />
                   Admin Analytics
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {dbUser?.role === "super_admin" && (
+              <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
+                <Link href="/super-admin/dashboard" className="flex items-center gap-3 w-full py-2">
+                  <Shield className="w-4 h-4 text-purple-400" />
+                  Super Admin
                 </Link>
               </DropdownMenuItem>
             )}

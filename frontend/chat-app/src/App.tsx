@@ -26,6 +26,7 @@ const AdminProjectEditPage = lazy(() => import("./pages/admin-project-edit"));
 const SharedChatPage = lazy(() => import("./pages/shared-chat"));
 const AdminClarityPage = lazy(() => import("./pages/admin-clarity"));
 const ConnectedServicesPage = lazy(() => import("./pages/connected-services"));
+const SuperAdminDashboardPage = lazy(() => import("./pages/super-admin/dashboard"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +45,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   if (isLoading) return <div>Loading...</div>;
   if (!user) return <Home />;
+  
+  return <>{children}</>;
+}
+
+function SuperAdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, dbUser, isLoading } = useAuth();
+  
+  if (isLoading) return <div>Loading...</div>;
+  if (!user || !dbUser || dbUser.role !== "super_admin") return <Home />;
   
   return <>{children}</>;
 }
@@ -88,6 +98,9 @@ export default function App() {
                 </Route>
                 <Route path="/admin/clarity">
                   <ProtectedRoute><DashboardLayoutLazy><AdminClarityPage /></DashboardLayoutLazy></ProtectedRoute>
+                </Route>
+                <Route path="/super-admin/dashboard">
+                  <SuperAdminRoute><DashboardLayoutLazy><SuperAdminDashboardPage /></DashboardLayoutLazy></SuperAdminRoute>
                 </Route>
                 <Route component={NotFound} />
               </Switch>

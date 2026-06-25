@@ -20,6 +20,11 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   role: varchar("role", { length: 50 }).default("user").notNull(), // super_admin, admin, user, client
+  features: jsonb("features").$type<{
+    canCreateProject: boolean;
+    canUseWidgetStudio: boolean;
+    canUseContextEngine: boolean;
+  }>().default({ canCreateProject: true, canUseWidgetStudio: false, canUseContextEngine: false }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

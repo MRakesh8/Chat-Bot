@@ -12,6 +12,16 @@ router.get("/database", (req, res) => {
   res.json(getDatabaseStatus());
 });
 
+// GET /api/system/me
+router.get("/me", (req, res) => {
+  const dbUser = (req as any).auth?.dbUser;
+  if (!dbUser) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  res.json(dbUser);
+});
+
 // GET /api/system/ai-status
 router.get("/ai-status", async (req, res) => {
   try {
