@@ -444,11 +444,23 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
   try {
     const projectId = (req as any).projectId;
+    console.log("=== INCOMING CHAT REQUEST ===");
+    console.log("Request body:", JSON.stringify({ messages: messages?.length, websiteContext: !!websiteContext, sessionId }));
+    console.log("Project ID:", projectId);
+    console.log("Widget Token:", req.params.widgetToken);
+    console.log("Website Context:", websiteContext ? "Present" : "Missing");
 
     // Get project details to know the owner's userId for key failover/rotation
-    const project = await db.query.projects.findFirst({
-      where: eq(projects.id, projectId)
-    });
+    let project;
+    try {
+      project = await db.query.projects.findFirst({
+        where: eq(projects.id, projectId)
+      });
+      console.log("Loaded project:", project?.id);
+    } catch (err: any) {
+      console.error("Failed Loading project...", err.stack || err);
+      throw err;
+    }
     const userId = project ? project.userId : null;
 
     // Track Analytics
@@ -588,9 +600,16 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     }
 
     // 3. Normal flow with Context Engine & Knowledge Base retrieval
-    let contextSettings = await db.query.projectContextSettings.findFirst({
-      where: eq(projectContextSettings.projectId, projectId)
-    });
+    let contextSettings;
+    try {
+      contextSettings = await db.query.projectContextSettings.findFirst({
+        where: eq(projectContextSettings.projectId, projectId)
+      });
+      console.log("Loaded context settings:", contextSettings ? "Found" : "Missing");
+    } catch (err: any) {
+      console.error("Failed Loading context settings...", err.stack || err);
+      throw err;
+    }
     
     // Default settings if not configured
     if (!contextSettings) {
@@ -611,24 +630,35 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     let finalWebsiteContext = null;
     let sessionMemory = null;
 
-    if (contextSettings.enabled && websiteContext && sessionId) {
-      const validated = validateWebsiteContext(websiteContext, contextSettings.maxContextSizeBytes);
-      if (validated) {
-        finalWebsiteContext = deltaReconstructor.reconstruct(sessionId, validated);
-        if (finalWebsiteContext && contextSettings.contextMemory) {
-          sessionMemory = sessionMemoryStore.update(sessionId, finalWebsiteContext);
+    try {
+      if (contextSettings.enabled && websiteContext && sessionId) {
+        const validated = validateWebsiteContext(websiteContext, contextSettings.maxContextSizeBytes);
+        if (validated) {
+          finalWebsiteContext = deltaReconstructor.reconstruct(sessionId, validated);
+          if (finalWebsiteContext && contextSettings.contextMemory) {
+            sessionMemory = sessionMemoryStore.update(sessionId, finalWebsiteContext);
+          }
         }
       }
+    } catch (err: any) {
+      console.error("Failed processing website context...", err.stack || err);
+      throw err;
     }
 
     // Fuse context & KB
-    const fusedContext = await contextFuser.fuse({
-      userMessage: lastUserMessage,
-      websiteContext: finalWebsiteContext,
-      projectId,
-      userId,
-      settings: contextSettings as any
-    });
+    let fusedContext;
+    try {
+      fusedContext = await contextFuser.fuse({
+        userMessage: lastUserMessage,
+        websiteContext: finalWebsiteContext,
+        projectId,
+        userId,
+        settings: contextSettings as any
+      });
+    } catch (err: any) {
+      console.error("Failed contextFuser() step...", err.stack || err);
+      throw err;
+    }
 
     let handoffInfo = "";
     try {
@@ -651,13 +681,20 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       console.error("Error fetching widget settings for handoff:", err);
     }
 
-    const systemPrompt = buildContextAwarePrompt({
-      project,
-      fusedContext,
-      sessionMemory,
-      settings: contextSettings as any,
-      handoffInfo
-    });
+    let systemPrompt;
+    try {
+      systemPrompt = buildContextAwarePrompt({
+        project,
+        fusedContext,
+        sessionMemory,
+        settings: contextSettings as any,
+        handoffInfo
+      });
+      console.log("Built prompt length:", systemPrompt.length);
+    } catch (err: any) {
+      console.error("Failed buildContextAwarePrompt()...", err.stack || err);
+      throw err;
+    }
 
     const chatMessages = [
       { role: "user", parts: [{ text: systemPrompt }] },
@@ -669,9 +706,11 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     ];
 
     try {
+      console.log("Calling Gemini... Request parts count:", chatMessages.length);
       const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
         contents: chatMessages as any
       });
+      console.log("Gemini response initialized.");
       
       for await (const chunk of stream) {
         if (chunk.text) {
@@ -679,10 +718,12 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       }
-    } catch (err) {
-      console.error("Error generating normal stream response:", err);
+    } catch (err: any) {
+      console.error("Failed GeminiClient.generate() step...", err.stack || err);
       res.write(`data: ${JSON.stringify({ content: "Sorry, I am having trouble connecting right now." })}\n\n`);
+      throw err; // So it triggers the outer catch to log the full trace just in case
     }
+    
     res.end();
     return res;
 
