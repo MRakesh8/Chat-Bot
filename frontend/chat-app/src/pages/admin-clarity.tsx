@@ -258,6 +258,28 @@ export default function AdminConsolePage() {
     }
   };
 
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case "HEALTHY": return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+      case "QUOTA_EXCEEDED": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case "COOLDOWN":
+      case "UNHEALTHY": return "bg-rose-500/10 text-rose-500 border-rose-500/20";
+      case "INVALID": return "bg-red-500/10 text-red-500 border-red-500/20";
+      default: return "bg-muted text-muted-foreground border-border";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "HEALTHY": return <CheckCircle2 className="w-4 h-4 mr-1" />;
+      case "QUOTA_EXCEEDED": return <AlertTriangle className="w-4 h-4 mr-1" />;
+      case "COOLDOWN":
+      case "UNHEALTHY": return <Clock className="w-4 h-4 mr-1" />;
+      case "INVALID": return <XCircle className="w-4 h-4 mr-1" />;
+      default: return <AlertCircle className="w-4 h-4 mr-1" />;
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Header */}
@@ -442,42 +464,177 @@ export default function AdminConsolePage() {
               </div>
             ) : report ? (
               <>
+                {/* Aggregate Summary Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                    <div className="text-3xl font-black">{report.summary.totalSystemKeys}</div>
-                    <div className="text-xs text-muted-foreground uppercase mt-1">Total System Keys</div>
+                  {/* Total Keys Card */}
+                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-primary/10 transition-all duration-500" />
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                        <Key className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs text-emerald-500 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                        {report.summary.healthyKeys} / {report.summary.totalSystemKeys} Active
+                      </span>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight mb-1">{report.summary.totalSystemKeys}</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total System Keys</div>
                   </div>
-                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                    <div className="text-3xl font-black">{report.summary.overallSuccessRatePercent}%</div>
-                    <div className="text-xs text-muted-foreground uppercase mt-1">Overall Success Rate</div>
+
+                  {/* Overall Success Rate Card */}
+                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-emerald-500/10 transition-all duration-500" />
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+                        <Activity className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">Lifetime Metrics</span>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight mb-1">{report.summary.overallSuccessRatePercent}%</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Overall Success Rate</div>
                   </div>
-                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                    <div className="text-3xl font-black">{report.summary.aggregateRequests}</div>
-                    <div className="text-xs text-muted-foreground uppercase mt-1">Aggregate Requests</div>
+
+                  {/* Aggregate Requests Card */}
+                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-blue-500/10 transition-all duration-500" />
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+                        <Zap className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">All Models</span>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight mb-1">{report.summary.aggregateRequests}</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aggregate Requests</div>
                   </div>
-                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                    <div className="text-3xl font-black">{report.summary.aggregateDailyUsed}</div>
-                    <div className="text-xs text-muted-foreground uppercase mt-1">Today's Usage</div>
+                  
+                  {/* Today's Usage Card */}
+                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl -mr-6 -mt-6 group-hover:bg-amber-500/10 transition-all duration-500" />
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="p-2 bg-amber-500/10 rounded-xl text-amber-500">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">Reset Midnight UTC</span>
+                    </div>
+                    <div className="text-3xl font-black tracking-tight mb-1">{report.summary.aggregateDailyUsed}</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Today's Usage</div>
                   </div>
                 </div>
                 
+                {/* Key Cards Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                  {report.keys.map((key) => (
-                    <div key={key.id} className="bg-card border border-border rounded-2xl p-5">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h3 className="font-bold">{key.name}</h3>
-                          <div className="text-xs text-muted-foreground font-mono">{key.maskedKey}</div>
+                  {report.keys.map((key: any) => {
+                    const progressPercent = key.metrics.dailyLimit 
+                      ? Math.min(100, Math.round((key.metrics.dailyUsed / key.metrics.dailyLimit) * 100))
+                      : 0;
+                    
+                    return (
+                      <div key={key.id} className="bg-card border border-border rounded-2xl flex flex-col shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-primary/30 group-hover:bg-primary transition-colors" />
+                        
+                        {/* Header */}
+                        <div className="p-5 border-b border-border flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-bold text-foreground tracking-tight">{key.name}</h3>
+                              {key.isPrimary && (
+                                <span className="px-2 py-0.5 text-[10px] font-bold bg-primary/15 text-primary rounded-full border border-primary/20 uppercase tracking-wide">
+                                  Primary
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground font-mono flex items-center gap-1.5">
+                              <span className="uppercase font-bold text-foreground/85">{key.provider}</span>
+                              <span>•</span>
+                              <span>{key.maskedKey}</span>
+                            </div>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full border text-xs font-bold flex items-center shadow-sm ${getStatusBadgeClass(key.status)}`}>
+                            {getStatusIcon(key.status)}
+                            {key.status.replace("_", " ")}
+                          </span>
                         </div>
-                        <span className="text-xs font-bold px-2 py-1 bg-muted rounded-md">{key.status}</span>
+
+                        {/* Metrics Panel */}
+                        <div className="p-5 flex-1 space-y-4">
+                          {/* Daily Usage Progress Bar */}
+                          <div>
+                            <div className="flex justify-between items-center text-xs font-semibold mb-1.5">
+                              <span className="text-muted-foreground">Daily Request Quota</span>
+                              <span className="text-foreground">
+                                {key.metrics.dailyUsed} / {key.metrics.dailyLimit !== null ? key.metrics.dailyLimit : "∞"} requests
+                              </span>
+                            </div>
+                            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  progressPercent > 80 
+                                    ? "bg-rose-500" 
+                                    : progressPercent > 50 
+                                    ? "bg-amber-500" 
+                                    : "bg-primary"
+                                }`}
+                                style={{ width: `${key.metrics.dailyLimit !== null ? progressPercent : 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Request Stats Grid */}
+                          <div className="grid grid-cols-3 gap-2 text-center bg-muted/35 p-3 rounded-xl border border-border">
+                            <div>
+                              <div className="text-lg font-black tracking-tight text-foreground">{key.metrics.totalRequests}</div>
+                              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Requests</div>
+                            </div>
+                            <div>
+                              <div className="text-lg font-black tracking-tight text-emerald-500">{key.metrics.totalSuccesses}</div>
+                              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Successes</div>
+                            </div>
+                            <div>
+                              <div className="text-lg font-black tracking-tight text-rose-500">{key.metrics.totalFailures}</div>
+                              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Failures</div>
+                            </div>
+                          </div>
+
+                          {/* Efficiency Metrics */}
+                          <div className="flex items-center justify-between text-xs border-b border-border/50 pb-2">
+                            <span className="text-muted-foreground font-medium">Efficiency Rates</span>
+                            <span className="font-semibold text-foreground">
+                              {key.metrics.successRatePercent}% success rate / {key.metrics.failureRatePercent}% error rate
+                            </span>
+                          </div>
+
+                          {/* Cooldown Info */}
+                          {key.cooldownRemainingMinutes > 0 && (
+                            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-xl p-3 text-xs flex items-start gap-2.5">
+                              <Clock className="w-4 h-4 flex-none mt-0.5" />
+                              <div>
+                                <span className="font-bold">Active Cooling Period:</span> The key is temporarily benched for another <span className="font-bold">{key.cooldownRemainingMinutes} minutes</span> to allow the remote Gemini API rate quotas to reset.
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Failure Reason Box */}
+                          {key.failureReason && (
+                            <div className="bg-rose-500/10 border border-rose-500/20 text-rose-600 rounded-xl p-3 text-xs flex flex-col gap-1.5">
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <AlertCircle className="w-4 h-4" />
+                                Last Logged Failure Reason
+                              </div>
+                              <div className="font-mono bg-background/50 p-2 rounded border border-rose-500/15 break-all max-h-24 overflow-y-auto">
+                                {key.failureReason}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Card Footer Timestamps */}
+                        <div className="px-5 py-3 border-t border-border bg-muted/10 text-[10px] text-muted-foreground flex justify-between">
+                          <span>Last Success: {key.lastSuccess ? new Date(key.lastSuccess).toLocaleTimeString() : "Never"}</span>
+                          <span>Last Failure: {key.lastFailure ? new Date(key.lastFailure).toLocaleTimeString() : "Never"}</span>
+                        </div>
                       </div>
-                      <div className="text-xs space-y-1">
-                        <div>Daily Used: {key.metrics.dailyUsed} / {key.metrics.dailyLimit || "∞"}</div>
-                        <div>Total Requests: {key.metrics.totalRequests}</div>
-                        <div>Success Rate: {key.metrics.successRatePercent}%</div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             ) : null}

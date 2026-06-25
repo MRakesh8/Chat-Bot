@@ -6,11 +6,11 @@ import { z } from "zod";
 
 const router = Router();
 
-// Middleware to ensure super_admin
+// Middleware to ensure admin or super_admin
 router.use((req, res, next) => {
   const dbUser = (req as any).auth?.dbUser;
-  if (!dbUser || dbUser.role !== "super_admin") {
-    res.status(403).json({ error: "Forbidden: Super Admin access required" });
+  if (!dbUser || (dbUser.role !== "super_admin" && dbUser.role !== "admin")) {
+    res.status(403).json({ error: "Forbidden: Admin access required" });
     return;
   }
   next();

@@ -39,6 +39,11 @@ router.get("/", async (req, res) => {
     return;
   }
   try {
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "admin" || role === "super_admin") 
+      ? undefined 
+      : eq(projects.userId, userId);
+
     const result = await db
       .select({
         project: projects,
@@ -46,7 +51,7 @@ router.get("/", async (req, res) => {
       })
       .from(projects)
       .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
-      .where(eq(projects.userId, userId))
+      .where(condition)
       .groupBy(projects.id)
       .orderBy(desc(projects.createdAt));
       
@@ -120,7 +125,8 @@ router.get("/:id", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
+    const role = (req as any).auth?.dbUser?.role;
+    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
     res.json(project);
   } catch (err: any) {
     req.log.error({ err }, "Error getting project");
@@ -150,7 +156,8 @@ router.patch("/:id", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
+    const role = (req as any).auth?.dbUser?.role;
+    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -182,7 +189,8 @@ router.delete("/:id", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
+    const role = (req as any).auth?.dbUser?.role;
+    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
     await db.delete(projects).where(eq(projects.id, id));
     res.status(204).send();
   } catch (err: any) {
@@ -211,7 +219,8 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
   try {
     const [project] = await db.select().from(projects).where(eq(projects.id, id));
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    if (project.userId !== userId && (req as any).auth?.dbUser?.role !== "super_admin") { res.status(403).json({ error: "Forbidden" }); return; }
+    const role = (req as any).auth?.dbUser?.role;
+    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
 
     const { contents } = parsed.data;
     
