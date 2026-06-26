@@ -653,7 +653,17 @@
     };
 
     const onDown = (e) => {
-      if (e.target && e.target.closest && e.target.closest('.close-btn')) return;
+      // Exclude close button, form inputs, links, and message content from initiating drag
+      if (e.target && e.target.closest) {
+        if (e.target.closest('.close-btn') || 
+            e.target.closest('#chat-form') || 
+            e.target.closest('button') || 
+            e.target.closest('a') ||
+            e.target.closest('.message')) {
+          return;
+        }
+      }
+      
       const clientX = e.clientX ?? e.touches?.[0]?.clientX;
       const clientY = e.clientY ?? e.touches?.[0]?.clientY;
       if (clientX == null || clientY == null) return;
@@ -706,9 +716,13 @@
       });
     }
 
+    // Allow dragging from any empty space in the chat panel
+    if (panel) {
+      panel.addEventListener('mousedown', onDown);
+      panel.addEventListener('touchstart', onDown, { passive: false });
+    }
+    
     if (header) {
-      header.addEventListener('mousedown', onDown);
-      header.addEventListener('touchstart', onDown, { passive: false });
       header.style.cursor = 'grab';
     }
 
