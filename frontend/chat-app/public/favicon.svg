@@ -1,3 +1,39 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <!-- Background: deep purple-blue rounded square -->
+  <rect width="180" height="180" rx="40" fill="url(#bg)"/>
+
+  <!-- Subtle inner glow ring -->
+  <rect x="4" y="4" width="172" height="172" rx="37" fill="none" stroke="url(#ring)" stroke-width="2" opacity="0.6"/>
+
+  <!-- Chat bubble body -->
+  <rect x="28" y="32" width="124" height="92" rx="20" fill="url(#bubble)"/>
+
+  <!-- Chat bubble tail (bottom-left) -->
+  <path d="M44 124 L28 148 L72 132 Z" fill="url(#bubble)"/>
+
+  <!-- AI dots / neural indicator (three animated-style dots inside bubble) -->
+  <circle cx="65" cy="78" r="8" fill="white" opacity="0.95"/>
+  <circle cx="90" cy="78" r="8" fill="white" opacity="0.75"/>
+  <circle cx="115" cy="78" r="8" fill="white" opacity="0.5"/>
+
+  <!-- Top sparkle / AI star -->
+  <path d="M136 30 L139 22 L142 30 L150 33 L142 36 L139 44 L136 36 L128 33 Z" fill="#A78BFA" opacity="0.9"/>
+
+  <!-- Small accent star -->
+  <path d="M42 42 L43.5 38 L45 42 L49 43.5 L45 45 L43.5 49 L42 45 L38 43.5 Z" fill="#60A5FA" opacity="0.8"/>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E1040"/>
+      <stop offset="100%" stop-color="#2D1B69"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="28" y1="32" x2="152" y2="148" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
 </svg>
