@@ -549,9 +549,10 @@
 
     // Initialize top/left positioning from current rendered position
     function initDraggablePosition() {
+      const hostRect = container.getBoundingClientRect();
       const rect = wrapper.getBoundingClientRect();
-      wrapper.style.left = rect.left + 'px';
-      wrapper.style.top = rect.top + 'px';
+      wrapper.style.left = (rect.left - hostRect.left) + 'px';
+      wrapper.style.top = (rect.top - hostRect.top) + 'px';
       wrapper.style.right = 'auto';
       wrapper.style.bottom = 'auto';
       wrapper.classList.add('draggable-ready');
@@ -625,11 +626,13 @@
       }
       if (!isDragging) return;
 
-      const newLeft = wrapperStartLeft + dx;
-      const newTop = wrapperStartTop + dy;
-      const clamped = clampToViewport(newLeft, newTop);
-      wrapper.style.left = clamped.left + 'px';
-      wrapper.style.top = clamped.top + 'px';
+      const hostRect = container.getBoundingClientRect();
+      const viewportLeft = wrapperStartLeft + hostRect.left + dx;
+      const viewportTop = wrapperStartTop + hostRect.top + dy;
+      
+      const clamped = clampToViewport(viewportLeft, viewportTop);
+      wrapper.style.left = (clamped.left - hostRect.left) + 'px';
+      wrapper.style.top = (clamped.top - hostRect.top) + 'px';
       
       // Update alignment quadrant only when closed so it doesn't jump while open
       if (!isOpen) {
@@ -676,11 +679,12 @@
         initDraggablePosition();
       }
 
+      const hostRect = container.getBoundingClientRect();
       const rect = wrapper.getBoundingClientRect();
       dragStartX = clientX;
       dragStartY = clientY;
-      wrapperStartLeft = rect.left;
-      wrapperStartTop = rect.top;
+      wrapperStartLeft = rect.left - hostRect.left;
+      wrapperStartTop = rect.top - hostRect.top;
       if (header) header.style.cursor = 'grabbing';
 
       document.addEventListener('mousemove', onMove, { passive: false });
@@ -707,10 +711,11 @@
         }
         
         // Snap the wrapper to a valid position so the panel opens fully on-screen
+        const hostRect = container.getBoundingClientRect();
         const rect = wrapper.getBoundingClientRect();
         const clamped = clampToViewport(rect.left, rect.top);
-        wrapper.style.left = clamped.left + 'px';
-        wrapper.style.top = clamped.top + 'px';
+        wrapper.style.left = (clamped.left - hostRect.left) + 'px';
+        wrapper.style.top = (clamped.top - hostRect.top) + 'px';
 
         sessionStorage.setItem(storageKeyOpen, 'true');
         panel.classList.add('open');
