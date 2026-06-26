@@ -1,6 +1,7 @@
 /**
- * Aria AI - Embeddable Widget
+ * Aria AI - Embeddable Widget v2.1
  * Uses Shadow DOM for style isolation
+ * Feature: Draggable widget (drag FAB or header to reposition)
  */
 (function() {
   // Prevent multiple initializations
