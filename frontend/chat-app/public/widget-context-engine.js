@@ -702,15 +702,15 @@
    */
   function isElementRelevantFallback(el, vi) {
     if (vi.inViewport) return true;
-    if (vi.distance !== 9999) return vi.distance < 200;
+    if (vi.distance !== 9999) return vi.distance < 400; // Increased distance threshold
     
     try {
       var rect = el.getBoundingClientRect();
       var vpH = window.innerHeight;
-      var inViewport = rect.top >= 0 && rect.bottom <= vpH;
+      var inViewport = rect.top < vpH && rect.bottom > 0; // Correct intersection check
       if (inViewport) return true;
-      var dist = Math.min(Math.abs(rect.top), Math.abs(rect.bottom - vpH));
-      return dist < 200;
+      var dist = Math.min(Math.abs(rect.top - vpH), Math.abs(rect.bottom));
+      return dist < 400;
     } catch(e) {
       return false;
     }
@@ -891,16 +891,16 @@
         // Extract all text blocks in this element recursively
         var lines = getTextBlocks(el);
         
-        // A KPI card typically has 2 to 5 text blocks
-        if (lines.length < 2 || lines.length > 5) continue;
+        // A KPI card typically has 2 to 15 text blocks (complex cards might have badges, icons, or split text)
+        if (lines.length < 2 || lines.length > 15) continue;
         
         var totalLen = 0;
         for (var c = 0; c < lines.length; c++) {
           totalLen += lines[c].length;
         }
         
-        // A stat card usually has short total text (less than 150 chars)
-        if (totalLen > 150) continue;
+        // A stat card usually has short total text (less than 300 chars)
+        if (totalLen > 300) continue;
 
         // At least one line should look like a numeric value, currency, or count
         var valueIdx = -1;
