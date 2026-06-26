@@ -60,53 +60,53 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <WouterRouter base={basePath}>
-      <AuthProvider>
-        <ThemeProvider defaultTheme="dark">
-          <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <Suspense fallback={<div className="flex items-center justify-center h-screen w-screen text-muted-foreground">Loading...</div>}>
-              <Switch>
-                <Route path="/" component={Home} />
-                <Route path="/sign-in"><AuthPage /></Route>
-                <Route path="/sign-up"><AuthPage /></Route>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <ThemeProvider defaultTheme="dark">
+            <TooltipProvider>
+              <Suspense fallback={<div className="flex items-center justify-center h-screen w-screen text-muted-foreground">Loading...</div>}>
+                <Switch>
+                  <Route path="/" component={Home} />
+                  <Route path="/sign-in"><AuthPage /></Route>
+                  <Route path="/sign-up"><AuthPage /></Route>
 
-                {/* Shared project chat */}
-                <Route path="/p/:token" component={SharedChatPage} />
+                  {/* Shared project chat */}
+                  <Route path="/p/:token" component={SharedChatPage} />
 
-                <Route path="/admin/projects">
-                  <ProtectedRoute><DashboardLayoutLazy><AdminProjectsPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/admin/projects/new">
-                  <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/admin/projects/:id/edit">
-                  <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
+                  <Route path="/admin/projects">
+                    <ProtectedRoute><DashboardLayoutLazy><AdminProjectsPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/projects/new">
+                    <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/projects/:id/edit">
+                    <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
 
-                <Route path="/chat/:id?">
-                  <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/settings">
-                  <ProtectedRoute><DashboardLayoutLazy><SettingsPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/profile">
-                  <ProtectedRoute><DashboardLayoutLazy><ProfilePage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/services">
-                  <ProtectedRoute><DashboardLayoutLazy><ConnectedServicesPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route path="/admin/clarity">
-                  <ProtectedRoute><DashboardLayoutLazy><AdminClarityPage /></DashboardLayoutLazy></ProtectedRoute>
-                </Route>
-                <Route component={NotFound} />
-              </Switch>
-            </Suspense>
-            <GlobalCommandMenu />
-            <Toaster />
-          </TooltipProvider>
-          </QueryClientProvider>
-        </ThemeProvider>
-      </AuthProvider>
+                  <Route path="/chat/:id?">
+                    <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route path="/settings">
+                    <ProtectedRoute><DashboardLayoutLazy><SettingsPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route path="/profile">
+                    <ProtectedRoute><DashboardLayoutLazy><ProfilePage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route path="/services">
+                    <ProtectedRoute><DashboardLayoutLazy><ConnectedServicesPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route path="/admin/clarity">
+                    <ProtectedRoute><DashboardLayoutLazy><AdminClarityPage /></DashboardLayoutLazy></ProtectedRoute>
+                  </Route>
+                  <Route component={NotFound} />
+                </Switch>
+              </Suspense>
+              <GlobalCommandMenu />
+              <Toaster />
+            </TooltipProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </WouterRouter>
   );
 }
