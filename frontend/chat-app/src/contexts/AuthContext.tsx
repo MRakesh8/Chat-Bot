@@ -70,6 +70,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } else {
         setDbUser(null);
         setIsLoading(false);
+        queryClient.clear(); // Ensure cache is clear if initially unauthenticated
       }
     });
 
@@ -82,6 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } else {
           setDbUser(null);
           setIsLoading(false);
+          queryClient.clear(); // Clear cache when auth state changes to logged out
         }
       }
     );
