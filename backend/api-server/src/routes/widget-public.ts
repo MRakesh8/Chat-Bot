@@ -15,6 +15,49 @@ import {
   sessionMemoryStore
 } from "../services/context-engine";
 
+function isRetryableLlmError(err: any): boolean {
+  if (!err) return false;
+  const status = err?.status || err?.response?.status || err?.code;
+  if (status === 429 || status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
+    return true;
+  }
+  const statusStr = String(err?.status || err?.response?.status || err?.code || "").toUpperCase();
+  if (statusStr === "UNAVAILABLE" || statusStr === "RESOURCE_EXHAUSTED" || statusStr === "INTERNAL") {
+    return true;
+  }
+  const errMessage = String(err?.message || err?.stack || err).toLowerCase();
+  const retryableKeywords = [
+    "429", "503", "500", "502", "504",
+    "unavailable", "resource_exhausted", "quota", "timeout", "deadline exceeded",
+    "rate limit", "overloaded", "too many requests", "service unavailable", "internal server error",
+    "spikes in demand", "experiencing high demand", "try again later"
+  ];
+  return retryableKeywords.some(keyword => errMessage.includes(keyword));
+}
+
+async function executeWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelayMs: number = 500
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      const isRetryable = isRetryableLlmError(err);
+      if (isRetryable && attempt <= maxRetries) {
+        const delayMs = initialDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`[LLM Retry] Attempt ${attempt} failed with retryable error: ${err.message || err}. Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
   const directClient = new GoogleGenAI({
     apiKey: activeKey,
@@ -40,17 +83,14 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
       console.log("Full request payload:", JSON.stringify(attemptOptions, null, 2).substring(0, 500) + '...');
       
       if (method === 'generateContent') {
-        return await directClient.models.generateContent(attemptOptions);
+        return await executeWithRetry(() => directClient.models.generateContent(attemptOptions));
       } else {
-        return await directClient.models.generateContentStream(attemptOptions);
+        return await executeWithRetry(() => directClient.models.generateContentStream(attemptOptions));
       }
     } catch (err: any) {
-      const status = err?.status || err?.response?.status || err?.code;
-      const isRetryable = status === 429 || status === 503 || status === 404 || status === 500 ||
-                          err?.message?.includes("429") || err?.message?.includes("503") || err?.message?.includes("404") || err?.message?.includes("500") ||
-                          err?.message?.toLowerCase().includes("timeout");
+      const isRetryable = isRetryableLlmError(err);
       if (isRetryable && !isLast) {
-        console.warn(`Widget API error ${status} on model ${attemptModel}, falling back to next model...`);
+        console.warn(`Widget API error on model ${attemptModel}, falling back to next model...`);
         continue;
       }
       throw err;
@@ -72,10 +112,13 @@ interface WidgetKey {
 async function fetchAndManageWidgetKeys(projectId: string, userId: string | null): Promise<WidgetKey[]> {
   const now = new Date();
   const widgetKeys: WidgetKey[] = [];
+  let projectKeysList: any[] = [];
+  let userKeysList: any[] = [];
+  let systemKeysList: any[] = [];
 
   try {
     // 1. Project Keys
-    const projectKeysList = await db.query.projectApiKeys.findMany({
+    projectKeysList = await db.query.projectApiKeys.findMany({
       where: eq(projectApiKeys.projectId, projectId)
     });
 
@@ -109,7 +152,7 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
   try {
     // 2. User Keys (Project Owner)
     if (userId) {
-      const userKeysList = await db.query.userApiKeys.findMany({
+      userKeysList = await db.query.userApiKeys.findMany({
         where: and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
       });
 
@@ -140,7 +183,7 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
 
   try {
     // 3. System Keys
-    const systemKeysList = await db.query.userApiKeys.findMany({
+    systemKeysList = await db.query.userApiKeys.findMany({
       where: and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true))
     });
 
@@ -166,6 +209,64 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
     }
   } catch (err) {
     console.error("Widget public router: failed to load system keys:", err);
+  }
+
+  // Fallback: If no fully HEALTHY keys are available in the database, fall back to trying all enabled keys
+  // that are not explicitly marked as INVALID (meaning cooldown/quota status but still enabled).
+  // This matches the self-healing behavior in integrations-gemini-ai/src/client.ts.
+  if (widgetKeys.length === 0) {
+    console.warn("[Widget Routing] No HEALTHY keys available. Falling back to trying all enabled keys in cooldown/quota status.");
+    
+    // Project keys fallback
+    for (const key of projectKeysList) {
+      if (key.isEnabled && key.status !== "INVALID") {
+        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+        if (decrypted) {
+          widgetKeys.push({
+            id: key.id,
+            type: 'project',
+            provider: key.provider,
+            model: key.model || undefined,
+            decryptedKey: decrypted,
+            rawDbKey: key
+          });
+        }
+      }
+    }
+    
+    // User keys fallback
+    if (userId) {
+      for (const key of userKeysList) {
+        if (key.isEnabled && key.status !== "INVALID") {
+          const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+          if (decrypted) {
+            widgetKeys.push({
+              id: key.id,
+              type: 'user',
+              provider: key.provider,
+              decryptedKey: decrypted,
+              rawDbKey: key
+            });
+          }
+        }
+      }
+    }
+    
+    // System keys fallback
+    for (const key of systemKeysList) {
+      if (key.isEnabled && key.status !== "INVALID") {
+        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+        if (decrypted) {
+          widgetKeys.push({
+            id: key.id,
+            type: 'system',
+            provider: key.provider,
+            decryptedKey: decrypted,
+            rawDbKey: key
+          });
+        }
+      }
+    }
   }
 
   // 4. Env fallback keys
@@ -415,7 +516,18 @@ async function executeLlmWithFailover(
       lastError = err;
       console.error(`[Widget API Failover] Key failed: ${key.id || 'env'} (${key.type}). Error: ${err.message || err}`);
       
-      updateKeyFailureWidget(key, err).catch(e => console.error("Key failure update error:", e));
+      const status = err?.status || err?.response?.status || err?.code;
+      const isTransient = status === 503 || status === 502 || status === 504 || status === 500 ||
+                          err?.message?.includes("503") || err?.message?.includes("502") || 
+                          err?.message?.includes("504") || err?.message?.includes("500") ||
+                          err?.message?.toLowerCase().includes("timeout") ||
+                          err?.message?.toLowerCase().includes("unavailable");
+                          
+      if (isTransient) {
+        console.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient server-side load/outage.`);
+      } else {
+        updateKeyFailureWidget(key, err).catch(e => console.error("Key failure update error:", e));
+      }
     }
   }
   

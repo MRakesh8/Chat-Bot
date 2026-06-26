@@ -15,13 +15,48 @@ const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const isRetryableError = (err: any) => {
-  const status = err?.status || err?.response?.status;
-  return status === 429 || status === 503 || status === 500 || status === 502 || status === 504 ||
-         err?.message?.includes("429") || err?.message?.includes("503") ||
-         err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("504") ||
-         err?.message?.includes("timeout");
+const isRetryableError = (err: any): boolean => {
+  if (!err) return false;
+  const status = err?.status || err?.response?.status || err?.code;
+  if (status === 429 || status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
+    return true;
+  }
+  const statusStr = String(err?.status || err?.response?.status || err?.code || "").toUpperCase();
+  if (statusStr === "UNAVAILABLE" || statusStr === "RESOURCE_EXHAUSTED" || statusStr === "INTERNAL") {
+    return true;
+  }
+  const errMessage = String(err?.message || err?.stack || err).toLowerCase();
+  const retryableKeywords = [
+    "429", "503", "500", "502", "504",
+    "unavailable", "resource_exhausted", "quota", "timeout", "deadline exceeded",
+    "rate limit", "overloaded", "too many requests", "service unavailable", "internal server error",
+    "spikes in demand", "experiencing high demand", "try again later"
+  ];
+  return retryableKeywords.some(keyword => errMessage.includes(keyword));
 };
+
+async function executeWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelayMs: number = 500
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      const isRetryable = isRetryableError(err);
+      if (isRetryable && attempt <= maxRetries) {
+        const delayMs = initialDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`[LLM Retry] Attempt ${attempt} failed with retryable error: ${err.message || err}. Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 import type { GenerateContentResponse, EmbedContentResponse } from "@google/genai";
 
@@ -312,9 +347,13 @@ class GeminiFailoverModels {
           console.log(`[Gemini Routing] Provider: ${key.provider} | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: Trying`);
           
           let result;
-          if (method === 'generateContent') result = await client.models.generateContent(attemptOptions);
-          else if (method === 'generateContentStream') result = await client.models.generateContentStream(attemptOptions);
-          else if (method === 'embedContent') result = await client.models.embedContent(attemptOptions as any);
+          if (method === 'generateContent') {
+            result = await executeWithRetry(() => client.models.generateContent(attemptOptions));
+          } else if (method === 'generateContentStream') {
+            result = await executeWithRetry(() => client.models.generateContentStream(attemptOptions));
+          } else if (method === 'embedContent') {
+            result = await executeWithRetry(() => client.models.embedContent(attemptOptions as any));
+          }
 
           await this._updateKeySuccess(key);
           return result;
