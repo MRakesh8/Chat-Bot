@@ -388,6 +388,7 @@ export default function AdminConsolePage() {
                     <tr>
                       <th className="p-4 font-medium">User Email</th>
                       <th className="p-4 font-medium">Role</th>
+                      <th className="p-4 font-medium">Projects</th>
                       <th className="p-4 font-medium">Create Projects</th>
                       <th className="p-4 font-medium">Widget Studio</th>
                       <th className="p-4 font-medium">Context Engine</th>
@@ -407,6 +408,9 @@ export default function AdminConsolePage() {
                             <option value="user">User</option>
                             <option value="super_admin">Super Admin</option>
                           </select>
+                        </td>
+                        <td className="p-4 text-center font-medium">
+                          {u.projectCount || 0}
                         </td>
                         <td className="p-4">
                           <Switch

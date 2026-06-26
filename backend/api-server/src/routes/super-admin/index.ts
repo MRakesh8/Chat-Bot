@@ -20,8 +20,18 @@ router.use((req, res, next) => {
 // GET /api/super-admin/users
 router.get("/users", async (req, res) => {
   try {
-    const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
-    res.json(allUsers);
+    const allUsers = await db
+      .select({
+        user: users,
+        projectCount: sql<number>`count(${projects.id})`.mapWith(Number),
+      })
+      .from(users)
+      .leftJoin(projects, eq(users.id, projects.userId))
+      .groupBy(users.id)
+      .orderBy(desc(users.createdAt));
+      
+    const flattened = allUsers.map(u => ({ ...u.user, projectCount: u.projectCount }));
+    res.json(flattened);
   } catch (err: any) {
     req.log.error({ err }, "Error listing users for super-admin");
     res.status(500).json({ error: "Internal server error" });

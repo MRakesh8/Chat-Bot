@@ -39,10 +39,7 @@ router.get("/", async (req, res) => {
     return;
   }
   try {
-    const role = (req as any).auth?.dbUser?.role;
-    const condition = (role === "admin" || role === "super_admin") 
-      ? undefined 
-      : eq(projects.userId, userId);
+    const condition = eq(projects.userId, userId);
 
     const result = await db
       .select({
