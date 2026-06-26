@@ -141,10 +141,16 @@
         position: fixed;
         z-index: 2147483647;
         pointer-events: none !important;
+        /* Default: bottom-right corner — top/left will be set via JS */
+        bottom: 24px;
+        right: 24px;
       }
 
-      .widget-wrapper.position-bottom-right { bottom: 24px; right: 24px; }
-      .widget-wrapper.position-bottom-left { bottom: 24px; left: 24px; }
+      /* JS will override with top/left after first layout */
+      .widget-wrapper.draggable-ready {
+        bottom: auto !important;
+        right: auto !important;
+      }
 
       /* Floating Button */
       .floating-button {
@@ -433,11 +439,11 @@
       document.body.appendChild(container);
     }
 
-    const positionClass = config.position === "bottom-left" ? "position-bottom-left" : "position-bottom-right";
+    const isBottomLeft = config.position === "bottom-left";
 
     shadow.innerHTML = `
       <style>${getBaseStyles()}</style>
-      <div class="widget-wrapper ${positionClass}">
+      <div class="widget-wrapper" id="widget-wrapper">
         ${config.displayMode !== 'custom' ? `
         <div class="chat-panel ${isOpen ? 'open' : ''}">
           <div class="header">
@@ -517,60 +523,93 @@
     const typingIndicator = shadow.querySelector('#typing-indicator');
 
     let isDragging = false;
-    let startX, startY;
-    let initialTransformX = 0;
-    let initialTransformY = 0;
-    let currentTransformX = 0;
-    let currentTransformY = 0;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let wrapperStartLeft = 0;
+    let wrapperStartTop = 0;
     
     const wrapper = shadow.querySelector('.widget-wrapper');
     const header = shadow.querySelector('.header');
 
-    const onMouseMove = (e) => {
-      const clientX = e.clientX ?? e.touches?.[0].clientX;
-      const clientY = e.clientY ?? e.touches?.[0].clientY;
-      if (clientX === undefined || clientY === undefined) return;
-      
-      const dx = clientX - startX;
-      const dy = clientY - startY;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
-      currentTransformX = initialTransformX + dx;
-      currentTransformY = initialTransformY + dy;
-      wrapper.style.transform = `translate(${currentTransformX}px, ${currentTransformY}px)`;
-      wrapper.style.transition = 'none'; // Disable transition during drag
+    // Initialize top/left positioning from current rendered position
+    function initDraggablePosition() {
+      const rect = wrapper.getBoundingClientRect();
+      wrapper.style.left = rect.left + 'px';
+      wrapper.style.top = rect.top + 'px';
+      wrapper.style.right = 'auto';
+      wrapper.style.bottom = 'auto';
+      wrapper.classList.add('draggable-ready');
+    }
+
+    function clampToViewport(left, top) {
+      const wRect = wrapper.getBoundingClientRect();
+      const w = wRect.width || 60;
+      const h = wRect.height || 60;
+      const maxLeft = window.innerWidth - w;
+      const maxTop = window.innerHeight - h;
+      return {
+        left: Math.max(0, Math.min(left, maxLeft)),
+        top: Math.max(0, Math.min(top, maxTop)),
+      };
+    }
+
+    const onMove = (e) => {
+      e.preventDefault();
+      const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+      const clientY = e.clientY ?? e.touches?.[0]?.clientY;
+      if (clientX == null || clientY == null) return;
+
+      const dx = clientX - dragStartX;
+      const dy = clientY - dragStartY;
+      if (!isDragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        isDragging = true;
+      }
+      if (!isDragging) return;
+
+      const newLeft = wrapperStartLeft + dx;
+      const newTop = wrapperStartTop + dy;
+      const clamped = clampToViewport(newLeft, newTop);
+      wrapper.style.left = clamped.left + 'px';
+      wrapper.style.top = clamped.top + 'px';
     };
 
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('touchmove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.removeEventListener('touchend', onMouseUp);
-      wrapper.style.transition = ''; // Re-enable transition
-      initialTransformX = currentTransformX;
-      initialTransformY = currentTransformY;
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchend', onUp);
       if (header) header.style.cursor = 'grab';
+      // Small timeout to prevent click firing after drag
+      setTimeout(() => { isDragging = false; }, 50);
     };
 
-    const onMouseDown = (e) => {
-      if (e.target.closest && e.target.closest('.close-btn')) return;
-      isDragging = false;
-      const clientX = e.clientX ?? e.touches?.[0].clientX;
-      const clientY = e.clientY ?? e.touches?.[0].clientY;
-      if (clientX === undefined || clientY === undefined) return;
+    const onDown = (e) => {
+      if (e.target && e.target.closest && e.target.closest('.close-btn')) return;
+      const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+      const clientY = e.clientY ?? e.touches?.[0]?.clientY;
+      if (clientX == null || clientY == null) return;
 
-      startX = clientX;
-      startY = clientY;
+      // Switch to top/left positioning on first drag attempt
+      if (!wrapper.classList.contains('draggable-ready')) {
+        initDraggablePosition();
+      }
+
+      const rect = wrapper.getBoundingClientRect();
+      dragStartX = clientX;
+      dragStartY = clientY;
+      wrapperStartLeft = rect.left;
+      wrapperStartTop = rect.top;
       if (header) header.style.cursor = 'grabbing';
-      
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('touchmove', onMouseMove, { passive: false });
-      document.addEventListener('mouseup', onMouseUp);
-      document.addEventListener('touchend', onMouseUp);
+
+      document.addEventListener('mousemove', onMove, { passive: false });
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchend', onUp);
     };
 
     if (fab) {
-      fab.addEventListener('mousedown', onMouseDown);
-      fab.addEventListener('touchstart', onMouseDown, { passive: true });
+      fab.addEventListener('mousedown', onDown);
+      fab.addEventListener('touchstart', onDown, { passive: false });
 
       fab.addEventListener('click', (e) => {
         if (isDragging) {
@@ -582,13 +621,13 @@
         sessionStorage.setItem(storageKeyOpen, 'true');
         panel.classList.add('open');
         fab.style.display = 'none';
-        setTimeout(() => input.focus(), 300);
+        setTimeout(() => input && input.focus(), 300);
       });
     }
 
     if (header) {
-      header.addEventListener('mousedown', onMouseDown);
-      header.addEventListener('touchstart', onMouseDown, { passive: true });
+      header.addEventListener('mousedown', onDown);
+      header.addEventListener('touchstart', onDown, { passive: false });
       header.style.cursor = 'grab';
     }
 
