@@ -1,6 +1,6 @@
 import { db, crypto } from "@workspace/db";
 import { userApiKeys, projectApiKeys } from "@workspace/db/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, lt } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
 import { logger } from "./logger";
 
@@ -29,6 +29,38 @@ async function testApiKey(apiKey: string): Promise<{ success: boolean; isRateLim
       isRateLimit,
       message: errMessage
     };
+  }
+}
+
+export async function resetDailyQuotas() {
+  const now = new Date();
+  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  
+  try {
+    const keysToReset = await db.select({ id: userApiKeys.id, status: userApiKeys.status }).from(userApiKeys).where(
+      lt(userApiKeys.lastResetAt, todayUTC)
+    );
+    
+    if (keysToReset.length > 0) {
+      logger.info(`[QuotaReset] Resetting daily limit for ${keysToReset.length} system/user keys.`);
+      
+      for (const key of keysToReset) {
+        let newStatus = key.status;
+        let updateData: any = {
+          dailyUsed: 0,
+          lastResetAt: now
+        };
+        
+        if (newStatus === "QUOTA_EXCEEDED") {
+          updateData.status = "HEALTHY";
+          updateData.failureReason = null;
+        }
+        
+        await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, key.id));
+      }
+    }
+  } catch (err) {
+    logger.error(err, "[QuotaReset] Error resetting daily limits");
   }
 }
 
@@ -157,10 +189,14 @@ export async function checkAllUnhealthyKeys() {
 export function startApiKeyHealthCheckTask() {
   // Run 10 seconds after server starts to avoid clogging startup database queries
   setTimeout(() => {
+    resetDailyQuotas();
     checkAllUnhealthyKeys();
   }, 10000);
   
   // Run every 5 minutes
   const FIVE_MINUTES = 5 * 60 * 1000;
-  setInterval(checkAllUnhealthyKeys, FIVE_MINUTES);
+  setInterval(() => {
+    resetDailyQuotas();
+    checkAllUnhealthyKeys();
+  }, FIVE_MINUTES);
 }

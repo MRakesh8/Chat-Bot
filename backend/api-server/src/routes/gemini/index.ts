@@ -927,7 +927,7 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
     const [dbUser] = await db.select().from(users).where(eq(users.id, userId as string));
     const userContext = dbUser ? `\nUser Context:\n- Name/Email: ${dbUser.email}\n- Role: ${dbUser.role}\n- ID: ${dbUser.id}` : "";
     const currentDatetime = new Date().toLocaleString();
-    const liveContext = `\n\n[SYSTEM: LIVE AWARENESS ENABLED]\nCurrent Exact Time: ${currentDatetime}${userContext}\nYou are the primary, unconstrained Normal AI. You must ALWAYS use your Google Search Grounding to answer any live, current, or factual queries. Ensure your answers are fully up to date with the requested information.`;
+    const liveContext = `\n\n[SYSTEM: LIVE AWARENESS ENABLED]\nCurrent Exact Time: ${currentDatetime}${userContext}\nYou must ALWAYS use your Google Search Grounding to answer any live, current, or factual queries. Ensure your answers are fully up to date with the requested information.`;
 
     if (useNormalAi) {
       // Normal AI mode: Behave as a general assistant.
@@ -946,7 +946,10 @@ CRITICAL INSTRUCTIONS:
 1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
 2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
 3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
-4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.`;
+4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.
+
+${liveContext}`;
+      enableSearchGrounding = true;
     } else {
       // No projects selected, and useNormalAi is false (e.g. general chat or fallback).
       finalSystemPrompt = customNormalAiPrompt 
