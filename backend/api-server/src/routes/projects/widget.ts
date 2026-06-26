@@ -389,6 +389,7 @@ Rules:
     const aiRes = await ai.models.generateContent(userId, {
       model: "gemini-2.5-flash",
       contents: systemPrompt,
+      projectId,
     });
 
     let cssText = aiRes.text || "";

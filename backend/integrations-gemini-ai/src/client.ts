@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { db, userApiKeys, userApiSettings, crypto } from "@workspace/db";
+import { db, userApiKeys, userApiSettings, projectApiKeys, crypto } from "@workspace/db";
 import { eq, and, isNull, asc } from "drizzle-orm";
 
 if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
@@ -60,6 +60,25 @@ async function executeWithRetry<T>(
 
 import type { GenerateContentResponse, EmbedContentResponse } from "@google/genai";
 
+interface RoutingKey {
+  id: string;
+  type: 'project' | 'user' | 'system';
+  provider: string;
+  model?: string;
+  encryptedKey: string;
+  isPrimary: boolean;
+  isEnabled: boolean;
+  isSystem: boolean;
+  status: string;
+  cooldownUntil: Date | null;
+  dailyLimit?: number | null;
+  dailyUsed?: number;
+  totalRequests?: number;
+  totalFailures?: number;
+  lastResetAt?: Date;
+  rawDbKey: any;
+}
+
 class GeminiFailoverModels {
   async generateContent(userId: string | null, options: any): Promise<GenerateContentResponse> {
     return this._executeWithRouting(userId, 'generateContent', options) as Promise<GenerateContentResponse>;
@@ -73,7 +92,7 @@ class GeminiFailoverModels {
     return this._executeWithRouting(userId, 'embedContent', options) as Promise<EmbedContentResponse>;
   }
 
-  private async _fetchAndResetKeys(userId: string | null) {
+  private async _fetchAndResetKeys(userId: string | null, projectId?: string | null): Promise<RoutingKey[]> {
     // 1. Fetch Mode
     let mode = "auto";
     if (userId) {
@@ -82,6 +101,15 @@ class GeminiFailoverModels {
     }
 
     // 2. Fetch Keys
+    let projectKeys: any[] = [];
+    if (projectId) {
+      try {
+        projectKeys = await db.select().from(projectApiKeys).where(and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true)));
+      } catch (err) {
+        console.error("[Gemini Routing] Failed to fetch project keys:", err);
+      }
+    }
+
     let userKeys: any[] = [];
     if (userId) {
        userKeys = await db.select().from(userApiKeys).where(and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true)));
@@ -138,57 +166,143 @@ class GeminiFailoverModels {
       }
     }
 
-    let keys = [...userKeys, ...systemKeys];
-
     // 3. Reset logic
     const now = new Date();
-    for (const key of keys) {
+
+    // Reset project keys cooldown
+    for (const key of projectKeys) {
+      if (
+        (key.status === "COOLDOWN" || key.status === "QUOTA_EXCEEDED" || key.status === "UNHEALTHY") &&
+        key.cooldownUntil &&
+        now > key.cooldownUntil
+      ) {
+        try {
+          await db.update(projectApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(projectApiKeys.id, key.id));
+          key.status = "HEALTHY";
+          key.cooldownUntil = null;
+          key.failureReason = null;
+        } catch (err) {
+          console.error("Failed to reset project key cooldown:", err);
+        }
+      }
+    }
+
+    // Reset user/system keys cooldown and daily limits
+    const userSystemKeys = [...userKeys, ...systemKeys];
+    for (const key of userSystemKeys) {
        // Reset if it's a new day (simple UTC check for now)
        if (
          key.lastResetAt.getUTCDate() !== now.getUTCDate() ||
          key.lastResetAt.getUTCMonth() !== now.getUTCMonth() ||
          key.lastResetAt.getUTCFullYear() !== now.getUTCFullYear()
        ) {
-         await db.update(userApiKeys).set({
-           dailyUsed: 0,
-           status: "HEALTHY",
-           cooldownUntil: null,
-           lastResetAt: now,
-           failureReason: null
-         }).where(eq(userApiKeys.id, key.id));
-         key.dailyUsed = 0;
-         key.status = "HEALTHY";
-         key.cooldownUntil = null;
-         key.lastResetAt = now;
-         key.failureReason = null;
+         try {
+           await db.update(userApiKeys).set({
+             dailyUsed: 0,
+             status: "HEALTHY",
+             cooldownUntil: null,
+             lastResetAt: now,
+             failureReason: null
+           }).where(eq(userApiKeys.id, key.id));
+           key.dailyUsed = 0;
+           key.status = "HEALTHY";
+           key.cooldownUntil = null;
+           key.lastResetAt = now;
+           key.failureReason = null;
+         } catch (err) {
+           console.error("Failed to reset user/system key daily quota:", err);
+         }
        } else if (
          (key.status === "COOLDOWN" || key.status === "QUOTA_EXCEEDED" || key.status === "UNHEALTHY") &&
          key.cooldownUntil &&
          now > key.cooldownUntil
        ) {
-         await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
-         key.status = "HEALTHY";
-         key.cooldownUntil = null;
-         key.failureReason = null;
+         try {
+           await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
+           key.status = "HEALTHY";
+           key.cooldownUntil = null;
+           key.failureReason = null;
+         } catch (err) {
+           console.error("Failed to reset user/system key cooldown:", err);
+         }
        }
     }
 
+    // Map all keys to RoutingKey objects
+    const mappedProjectKeys: RoutingKey[] = projectKeys.map(k => ({
+      id: k.id,
+      type: 'project',
+      provider: k.provider,
+      model: k.model || undefined,
+      encryptedKey: k.encryptedKey,
+      isPrimary: k.isPrimary,
+      isEnabled: k.isEnabled,
+      isSystem: false,
+      status: k.status,
+      cooldownUntil: k.cooldownUntil,
+      rawDbKey: k
+    }));
+
+    const mappedUserKeys: RoutingKey[] = userKeys.map(k => ({
+      id: k.id,
+      type: 'user',
+      provider: k.provider,
+      encryptedKey: k.encryptedKey,
+      isPrimary: k.isPrimary,
+      isEnabled: k.isEnabled,
+      isSystem: false,
+      status: k.status,
+      cooldownUntil: k.cooldownUntil,
+      dailyLimit: k.dailyLimit,
+      dailyUsed: k.dailyUsed,
+      totalRequests: k.totalRequests,
+      totalFailures: k.totalFailures,
+      lastResetAt: k.lastResetAt,
+      rawDbKey: k
+    }));
+
+    const mappedSystemKeys: RoutingKey[] = systemKeys.map(k => ({
+      id: k.id,
+      type: 'system',
+      provider: k.provider,
+      encryptedKey: k.encryptedKey,
+      isPrimary: k.isPrimary,
+      isEnabled: k.isEnabled,
+      isSystem: true,
+      status: k.status,
+      cooldownUntil: k.cooldownUntil,
+      dailyLimit: k.dailyLimit,
+      dailyUsed: k.dailyUsed,
+      totalRequests: k.totalRequests,
+      totalFailures: k.totalFailures,
+      lastResetAt: k.lastResetAt,
+      rawDbKey: k
+    }));
+
+    let allMappedKeys = [...mappedProjectKeys, ...mappedUserKeys, ...mappedSystemKeys];
+
     // Filter available
-    let availableKeys = keys.filter(k => k.status === "HEALTHY");
+    let availableKeys = allMappedKeys.filter(k => k.status === "HEALTHY");
 
     // Fallback: If no fully HEALTHY keys are available, fall back to trying all enabled keys
-    // that are not explicitly marked as INVALID (which means they have a physical bad key / 403 error).
-    // This allows temporary/cooldown/quota keys to self-heal and be retried, avoiding full outages.
+    // that are not explicitly marked as INVALID.
     if (availableKeys.length === 0) {
       console.warn("[Gemini Routing] No HEALTHY keys available. Falling back to trying all enabled keys in cooldown/quota status.");
-      availableKeys = keys.filter(k => k.isEnabled && k.status !== "INVALID");
+      availableKeys = allMappedKeys.filter(k => k.isEnabled && k.status !== "INVALID");
     }
 
-    // 4. Sort based on mode and primary status
+    // Sort based on type, primary status, and mode
     availableKeys.sort((a, b) => {
-      // Primary keys first
+      // Prioritize Project keys -> User keys -> System keys
+      const typePriority = { project: 1, user: 2, system: 3 };
+      if (typePriority[a.type] !== typePriority[b.type]) {
+        return typePriority[a.type] - typePriority[b.type];
+      }
+
+      // Prioritize Primary keys
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
       
+      // Fallback sorting based on API mode settings for user vs system
       if (mode === "auto" || mode === "user_first") {
         return (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1);
       } else if (mode === "system_first") {
@@ -256,7 +370,7 @@ class GeminiFailoverModels {
     return 1; // default 1 minute for other 429 rate limits
   }
 
-  private async _updateKeyFailure(key: any, error: any) {
+  private async _updateKeyFailure(key: RoutingKey, error: any) {
     const now = new Date();
     
     const errMessage = error?.message || String(error);
@@ -288,37 +402,64 @@ class GeminiFailoverModels {
 
     const cooldownUntil = cooldownMinutes > 0 ? new Date(now.getTime() + cooldownMinutes * 60000) : null;
     
-    await db.update(userApiKeys).set({
-      status,
-      cooldownUntil,
-      isEnabled,
-      failureReason: errMessage,
-      lastFailure: now,
-      totalFailures: key.totalFailures + 1,
-      totalRequests: key.totalRequests + 1,
-    }).where(eq(userApiKeys.id, key.id));
+    try {
+      if (key.type === 'project') {
+        await db.update(projectApiKeys).set({
+          status,
+          cooldownUntil,
+          isEnabled,
+          failureReason: errMessage,
+          lastFailure: now
+        }).where(eq(projectApiKeys.id, key.id));
+      } else {
+        await db.update(userApiKeys).set({
+          status,
+          cooldownUntil,
+          isEnabled,
+          failureReason: errMessage,
+          lastFailure: now,
+          totalFailures: (key.totalFailures || 0) + 1,
+          totalRequests: (key.totalRequests || 0) + 1,
+        }).where(eq(userApiKeys.id, key.id));
+      }
+    } catch (err) {
+      console.error("Failed to update key failure stats:", err);
+    }
   }
 
-  private async _updateKeySuccess(key: any) {
+  private async _updateKeySuccess(key: RoutingKey) {
     const now = new Date();
-    const newUsed = key.dailyUsed + 1;
-    let status = "HEALTHY";
+    
+    try {
+      if (key.type === 'project') {
+        await db.update(projectApiKeys).set({
+          lastSuccess: now,
+          status: "HEALTHY",
+          failureReason: null
+        }).where(eq(projectApiKeys.id, key.id));
+      } else {
+        const newUsed = (key.dailyUsed || 0) + 1;
+        let status = "HEALTHY";
 
-    if (key.dailyLimit !== null && newUsed >= key.dailyLimit) {
-      status = "QUOTA_EXCEEDED";
+        if (key.dailyLimit !== null && key.dailyLimit !== undefined && newUsed >= key.dailyLimit) {
+          status = "QUOTA_EXCEEDED";
+        }
+
+        await db.update(userApiKeys).set({
+          dailyUsed: newUsed,
+          lastSuccess: now,
+          totalRequests: (key.totalRequests || 0) + 1,
+          status,
+          failureReason: null
+        }).where(eq(userApiKeys.id, key.id));
+      }
+    } catch (err) {
+      console.error("Failed to update key success stats:", err);
     }
-
-    await db.update(userApiKeys).set({
-      dailyUsed: newUsed,
-      lastSuccess: now,
-      totalRequests: key.totalRequests + 1,
-      status,
-      failureReason: null
-    }).where(eq(userApiKeys.id, key.id));
   }
 
   private async _executeWithRouting(userId: string | null, method: 'generateContent' | 'generateContentStream' | 'embedContent', options: any) {
-    const keys = await this._fetchAndResetKeys(userId);
+    const keys = await this._fetchAndResetKeys(userId, options?.projectId);
 
     if (keys.length === 0) {
       throw { success: false, code: "NO_HEALTHY_KEYS", status: 503, message: "All AI API keys are unavailable. Please add a new API key or wait for quota reset." };

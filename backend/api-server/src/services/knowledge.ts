@@ -184,10 +184,11 @@ function safeJsonFromModel(text: string | undefined) {
   }
 }
 
-async function generateSummary(userId: string | null, text: string) {
+async function generateSummary(userId: string | null, text: string, projectId?: string) {
   const res = await ai.models.generateContent(userId, {
     model: "gemini-2.5-flash",
     contents: `Summarize this knowledge source for retrieval. Keep the important named tools, links, entities, and use cases.\n\n${text.slice(0, 30000)}`,
+    projectId,
   });
   return res.text?.trim() || text.slice(0, 1000);
 }
@@ -240,6 +241,7 @@ Return strictly valid JSON:
   const res = await ai.models.generateContent(params.userId, {
     model: "gemini-2.5-flash",
     contents: prompt,
+    projectId: params.projectId,
   });
   const parsed: any = safeJsonFromModel(res.text);
   const tags = normalizeTags(parsed.tags);
@@ -382,6 +384,7 @@ Return strictly valid JSON:
     const mergeRes = await ai.models.generateContent(params.userId, {
       model: "gemini-2.5-flash",
       contents: mergePrompt,
+      projectId: params.projectId,
     });
     const mergeDecision = safeJsonFromModel(mergeRes.text);
 
@@ -689,7 +692,7 @@ export async function searchProjectKnowledge(params: {
   };
 }
 
-export async function extractSourceContent(params: { sourceType: string, sourceUrl?: string | null, fileBuffer?: Buffer, filename?: string, userId?: string | null }): Promise<string> {
+export async function extractSourceContent(params: { sourceType: string, sourceUrl?: string | null, fileBuffer?: Buffer, filename?: string, userId?: string | null, projectId?: string | null }): Promise<string> {
   let extractedText = "";
   const { sourceType, sourceUrl, fileBuffer, filename } = params;
 
@@ -702,14 +705,16 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       const transcript = await fetchYouTubeTranscriptText(videoId);
       const res = await ai.models.generateContent(params.userId || null, {
         model: "gemini-2.5-flash",
-        contents: `Please summarize and provide a detailed structured text representation of the following YouTube video transcript: \n\n${transcript.slice(0, 50000)}`
+        contents: `Please summarize and provide a detailed structured text representation of the following YouTube video transcript: \n\n${transcript.slice(0, 50000)}`,
+        projectId: params.projectId,
       });
       extractedText = res.text || transcript;
     } catch (err) {
       logger.warn({ err }, `YouTube transcript failed for ${videoId}. Falling back to direct URL Gemini summarization.`);
       const res = await ai.models.generateContent(params.userId || null, {
         model: "gemini-2.5-flash",
-        contents: `Please summarize and provide a detailed description of the content for this YouTube video: ${sourceUrl}`
+        contents: `Please summarize and provide a detailed description of the content for this YouTube video: ${sourceUrl}`,
+        projectId: params.projectId,
       });
       extractedText = res.text || "";
     }
@@ -738,6 +743,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
           model: "gemini-2.5-flash",
           contents: `Search the web for this URL and extract the main text content, purpose, and key details: ${safeUrl}`,
           tools: [{ googleSearch: {} }],
+          projectId: params.projectId,
         });
         extractedText = res.text || `Website Reference: ${safeUrl}`;
       } catch (geminiErr) {
@@ -776,6 +782,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
         model: "gemini-2.5-flash",
         contents: `Search the web for this Instagram URL and extract any available public metadata, caption, visible text, and likely topic for this Instagram reel/post/video. URL: ${sourceUrl}`,
         tools: [{ googleSearch: {} }],
+        projectId: params.projectId,
       });
       extractedText = res.text || `Instagram source: ${sourceUrl}`;
     } catch (err) {
@@ -826,7 +833,8 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
         contents: [
           "OCR and describe this image. Extract all visible text first, then summarize the image for searchable project knowledge.",
           { inlineData: { mimeType: imageMime, data: fileBuffer.toString("base64") } }
-        ]
+        ],
+        projectId: params.projectId,
       });
       extractedText = res.text || "";
     } else if (lowerFilename.match(/\.(mp3|wav|ogg|m4a|aac)$/)) {
@@ -837,7 +845,8 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
           contents: [
             "Transcribe and summarize this audio file for searchable project knowledge.",
             { inlineData: { mimeType: audioMime, data: fileBuffer.toString("base64") } }
-          ]
+          ],
+          projectId: params.projectId,
         });
         extractedText = res.text || "";
       } catch (err: any) {
@@ -852,7 +861,8 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
           contents: [
             "Transcribe and describe the contents of this video for searchable project knowledge.",
             { inlineData: { mimeType: videoMime, data: fileBuffer.toString("base64") } }
-          ]
+          ],
+          projectId: params.projectId,
         });
         extractedText = res.text || "";
       } catch (err: any) {
@@ -884,6 +894,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
                 fileBuffer: zipEntry.getData(),
                 filename: entryName,
                 userId: params.userId || null,
+                projectId: params.projectId || null,
               });
               combinedText += `\n\n--- File: ${entryName} ---\n${nestedText}`;
             } catch (err) {
@@ -964,7 +975,8 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
             sourceUrl: source.sourceUrl,
             fileBuffer,
             filename: source.filename || undefined,
-            userId
+            userId,
+            projectId: source.projectId,
           });
         }
       }
@@ -994,7 +1006,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
       
       // PHASE 2: AI ENRICHMENT
       try {
-        const summary = await generateSummary(userId, extractedText);
+        const summary = await generateSummary(userId, extractedText, source.projectId);
         const fullKeywordIndex = uniqueStrings([baseKeywordIndex, summary]).join(" ").slice(0, 12000);
 
         const chunks = chunkText(extractedText);
@@ -1009,6 +1021,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
                 model: "gemini-embedding-2",
                 contents: text,
                 config: { outputDimensionality: 768 },
+                projectId: source.projectId,
               });
 
               const embedding = response.embeddings?.[0]?.values;

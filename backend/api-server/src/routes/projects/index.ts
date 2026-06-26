@@ -636,6 +636,7 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
           model: "gemini-2.5-flash",
           contents: chatMessages,
           config: { maxOutputTokens: 8192 },
+          projectId: project.id,
         });
 
         let chunkCount = 0;
