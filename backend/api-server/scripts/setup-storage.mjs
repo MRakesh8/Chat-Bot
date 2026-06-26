@@ -27,7 +27,6 @@ async function setupStorage() {
     console.log(`Creating bucket: ${bucketName}...`);
     const { error: createError } = await supabase.storage.createBucket(bucketName, {
       public: false, // Must use signed URLs or access token to view
-      allowedMimeTypes: ["image/*", "application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
       fileSizeLimit: 52428800, // 50MB
     });
 

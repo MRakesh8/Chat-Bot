@@ -150,11 +150,21 @@ router.post("/upload", (req, res, next) => {
     if (localPath && originalname && mimetype && filename) {
       const fileBuffer = fs.readFileSync(localPath);
       const storagePath = isChatUpload ? `chats/${conversationId || "temp-" + Date.now()}/${filename}` : `${projectId}/${filename}`;
+      let uploadMimetype = mimetype;
       
+      // Supabase storage bucket default allows ["image/*", "application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+      // Convert unsupported text mimetypes (like text/markdown, text/csv, text/html) to text/plain to bypass bucket restrictions
+      if (mimetype.startsWith("text/") && mimetype !== "text/plain") {
+        uploadMimetype = "text/plain";
+      } else if (!mimetype.startsWith("image/") && mimetype !== "application/pdf" && !mimetype.includes("wordprocessingml")) {
+        // Fallback for everything else like videos, audio, or binary files that Supabase might reject
+        uploadMimetype = "application/octet-stream";
+      }
+
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
         .from("project-files")
         .upload(storagePath, fileBuffer, {
-          contentType: mimetype,
+          contentType: uploadMimetype,
           upsert: false,
         });
 
