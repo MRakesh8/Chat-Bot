@@ -142,6 +142,8 @@
         position: fixed;
         z-index: 2147483647;
         pointer-events: none !important;
+        width: 56px;
+        height: 56px;
         /* Default: bottom-right corner — top/left will be set via JS */
         bottom: 24px;
         right: 24px;
@@ -155,8 +157,8 @@
 
       /* Floating Button */
       .floating-button {
-        width: 56px;
-        height: 56px;
+        width: 100%;
+        height: 100%;
         border-radius: 50%;
         background-color: var(--primary);
         color: white;
@@ -168,7 +170,6 @@
         border: none;
         outline: none;
         transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        justify-content: center;
         pointer-events: auto !important;
       }
       .floating-button:hover { transform: scale(1.05); }
@@ -177,7 +178,7 @@
       /* Chat Panel */
       .chat-panel {
         position: absolute;
-        bottom: 80px;
+        bottom: calc(100% + 24px);
         right: 0;
         width: 380px;
         height: 600px;
@@ -196,8 +197,23 @@
         transform-origin: bottom right;
       }
 
-      .widget-wrapper.position-bottom-left .chat-panel {
-        right: auto; left: 0; transform-origin: bottom left;
+      /* Dynamic Alignments */
+      .widget-wrapper.align-top .chat-panel {
+        bottom: auto;
+        top: calc(100% + 24px);
+        transform-origin: top right;
+      }
+      .widget-wrapper.align-left .chat-panel {
+        right: auto;
+        left: 0;
+        transform-origin: bottom left;
+      }
+      .widget-wrapper.align-top.align-left .chat-panel {
+        bottom: auto;
+        top: calc(100% + 24px);
+        right: auto;
+        left: 0;
+        transform-origin: top left;
       }
 
       .chat-panel.open {
@@ -209,14 +225,13 @@
       /* Mobile Full Screen */
       @media (max-width: 768px) {
         .chat-panel {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
+          position: fixed !important;
+          top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
           width: 100%; height: 100%; max-height: 100%;
           border-radius: 0;
-          bottom: 0 !important; right: 0 !important;
           transform: translateY(100%);
         }
-        .chat-panel.open { transform: translateY(0); }
+        .chat-panel.open { transform: translateY(0) scale(1); }
       }
 
       .header {
@@ -540,17 +555,60 @@
       wrapper.style.right = 'auto';
       wrapper.style.bottom = 'auto';
       wrapper.classList.add('draggable-ready');
+      updateAlignment();
+    }
+
+    function updateAlignment() {
+      if (!wrapper.classList.contains('draggable-ready')) return;
+      const rect = wrapper.getBoundingClientRect();
+      const isTopHalf = rect.top < window.innerHeight / 2;
+      const isLeftHalf = rect.left < window.innerWidth / 2;
+      
+      if (isTopHalf) wrapper.classList.add('align-top');
+      else wrapper.classList.remove('align-top');
+      
+      if (isLeftHalf) wrapper.classList.add('align-left');
+      else wrapper.classList.remove('align-left');
     }
 
     function clampToViewport(left, top) {
-      const wRect = wrapper.getBoundingClientRect();
-      const w = wRect.width || 60;
-      const h = wRect.height || 60;
-      const maxLeft = window.innerWidth - w;
-      const maxTop = window.innerHeight - h;
+      let w = 56, h = 56;
+      let minLeft = 0;
+      let minTop = 0;
+      let maxLeft = window.innerWidth - w;
+      let maxTop = window.innerHeight - h;
+
+      if (isOpen) {
+        // Constrain so the chat panel itself stays within the screen
+        const panelW = 380;
+        const panelH = Math.min(600, window.innerHeight - 100);
+        const isAlignTop = wrapper.classList.contains('align-top');
+        const isAlignLeft = wrapper.classList.contains('align-left');
+
+        if (isAlignLeft) {
+          minLeft = 0;
+          maxLeft = window.innerWidth - panelW;
+        } else {
+          minLeft = panelW - w;
+          maxLeft = window.innerWidth - w;
+        }
+
+        if (isAlignTop) {
+          minTop = 0;
+          maxTop = window.innerHeight - h - 24 - panelH;
+        } else {
+          maxTop = window.innerHeight - h;
+          minTop = panelH + 24;
+        }
+        
+        // Failsafe for small screens to just clamp to viewport
+        if (maxLeft < minLeft) maxLeft = minLeft;
+        if (maxTop < minTop) maxTop = minTop;
+      }
+
       return {
-        left: Math.max(0, Math.min(left, maxLeft)),
-        top: Math.max(0, Math.min(top, maxTop)),
+        left: Math.max(minLeft, Math.min(left, maxLeft)),
+        top: Math.max(minTop, Math.min(top, maxTop)),
       };
     }
 
@@ -572,6 +630,11 @@
       const clamped = clampToViewport(newLeft, newTop);
       wrapper.style.left = clamped.left + 'px';
       wrapper.style.top = clamped.top + 'px';
+      
+      // Update alignment quadrant only when closed so it doesn't jump while open
+      if (!isOpen) {
+        updateAlignment();
+      }
     };
 
     const onUp = () => {
@@ -580,7 +643,12 @@
       document.removeEventListener('mouseup', onUp);
       document.removeEventListener('touchend', onUp);
       if (header) header.style.cursor = 'grab';
-      // Small timeout to prevent click firing after drag
+      
+      // Final alignment check if we were dragging the closed FAB
+      if (!isOpen) {
+        updateAlignment();
+      }
+      
       setTimeout(() => { isDragging = false; }, 50);
     };
 
@@ -619,6 +687,18 @@
           return;
         }
         isOpen = true;
+        
+        // Ensure it has absolute coordinates before clamping
+        if (!wrapper.classList.contains('draggable-ready')) {
+          initDraggablePosition();
+        }
+        
+        // Snap the wrapper to a valid position so the panel opens fully on-screen
+        const rect = wrapper.getBoundingClientRect();
+        const clamped = clampToViewport(rect.left, rect.top);
+        wrapper.style.left = clamped.left + 'px';
+        wrapper.style.top = clamped.top + 'px';
+
         sessionStorage.setItem(storageKeyOpen, 'true');
         panel.classList.add('open');
         fab.style.display = 'none';
