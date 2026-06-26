@@ -517,7 +517,54 @@
     const typingIndicator = shadow.querySelector('#typing-indicator');
 
     if (fab) {
-      fab.addEventListener('click', () => {
+      let isDragging = false;
+      let startX, startY;
+      let initialTransformX = 0;
+      let initialTransformY = 0;
+      let currentTransformX = 0;
+      let currentTransformY = 0;
+      
+      const wrapper = shadow.querySelector('.widget-wrapper');
+
+      const onMouseMove = (e) => {
+        const dx = (e.clientX || e.touches?.[0].clientX) - startX;
+        const dy = (e.clientY || e.touches?.[0].clientY) - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
+        currentTransformX = initialTransformX + dx;
+        currentTransformY = initialTransformY + dy;
+        wrapper.style.transform = `translate(${currentTransformX}px, ${currentTransformY}px)`;
+        wrapper.style.transition = 'none'; // Disable transition during drag
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('touchmove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('touchend', onMouseUp);
+        wrapper.style.transition = ''; // Re-enable transition
+        initialTransformX = currentTransformX;
+        initialTransformY = currentTransformY;
+      };
+
+      const onMouseDown = (e) => {
+        isDragging = false;
+        startX = e.clientX || e.touches?.[0].clientX;
+        startY = e.clientY || e.touches?.[0].clientY;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchend', onMouseUp);
+      };
+
+      fab.addEventListener('mousedown', onMouseDown);
+      fab.addEventListener('touchstart', onMouseDown, { passive: true });
+
+      fab.addEventListener('click', (e) => {
+        if (isDragging) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         isOpen = true;
         sessionStorage.setItem(storageKeyOpen, 'true');
         panel.classList.add('open');

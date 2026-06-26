@@ -117,6 +117,16 @@ app.use(
 // ============================================================
 // ROUTES
 // ============================================================
+
+// Prevent CDN/Browser caching of all API responses by default (avoids cross-user data leakage)
+app.use("/api", (req, res, next) => {
+  if (!req.path.startsWith("/widget")) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+  next();
+});
 app.use("/api/widget", widgetPublicRouter);
 
 app.use("/api", healthRouter);

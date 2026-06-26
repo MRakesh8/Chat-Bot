@@ -12,6 +12,7 @@ import {
   varchar,
   jsonb,
   vector,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -56,7 +57,9 @@ export const projects = pgTable("projects", {
   isActive: boolean("is_active").default(true),
   tags: jsonb("tags").$type<string[]>().default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("projects_user_id_idx").on(table.userId),
+}));
 
 export const projectSettings = pgTable("project_settings", {
   projectId: uuid("project_id")
@@ -74,7 +77,9 @@ export const projectModes = pgTable("project_modes", {
   description: text("description"),
   promptInstructions: text("prompt_instructions").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  projectIdIdx: index("project_modes_project_id_idx").on(table.projectId),
+}));
 
 export const knowledgeCategories = pgTable("knowledge_categories", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -85,7 +90,9 @@ export const knowledgeCategories = pgTable("knowledge_categories", {
   isWidgetExposed: boolean("is_widget_exposed").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  projectIdIdx: index("knowledge_categories_project_id_idx").on(table.projectId),
+}));
 
 export const knowledgeSources = pgTable("knowledge_sources", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -117,7 +124,10 @@ export const knowledgeSources = pgTable("knowledge_sources", {
   lastError: text("last_error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  projectIdIdx: index("knowledge_sources_project_id_idx").on(table.projectId),
+  categoryIdIdx: index("knowledge_sources_category_id_idx").on(table.categoryId),
+}));
 
 export const knowledgeChunks = pgTable("knowledge_chunks", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -128,7 +138,10 @@ export const knowledgeChunks = pgTable("knowledge_chunks", {
   chunkText: text("chunk_text").notNull(),
   embedding: vector("embedding", { dimensions: 768 }), // Gemini embedding size (768)
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  sourceIdIdx: index("knowledge_chunks_source_id_idx").on(table.knowledgeSourceId),
+  projectIdIdx: index("knowledge_chunks_project_id_idx").on(table.projectId),
+}));
 
 export const chatSessions = pgTable("chat_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -140,7 +153,10 @@ export const chatSessions = pgTable("chat_sessions", {
   isFavorite: boolean("is_favorite").default(false).notNull(),
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("chat_sessions_user_id_idx").on(table.userId),
+  projectIdIdx: index("chat_sessions_project_id_idx").on(table.projectId),
+}));
 
 export const messages = pgTable("messages", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -203,7 +219,9 @@ export const userApiKeys = pgTable("user_api_keys", {
   lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("user_api_keys_user_id_idx").on(table.userId),
+}));
 
 export const userApiSettings = pgTable("user_api_settings", {
   userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
@@ -321,7 +339,9 @@ export const projectApiKeys = pgTable("project_api_keys", {
   cooldownUntil: timestamp("cooldown_until"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  projectIdIdx: index("project_api_keys_project_id_idx").on(table.projectId),
+}));
 
 export const widgetAnalytics = pgTable("widget_analytics", {
   id: uuid("id").primaryKey().defaultRandom(),

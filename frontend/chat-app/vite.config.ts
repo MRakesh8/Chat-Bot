@@ -59,6 +59,9 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ["react", "react-dom"],
+          query: ["@tanstack/react-query"],
+          router: ["react-router", "react-router-dom"],
+          charts: ["recharts"],
           ui: ["lucide-react", "framer-motion", "clsx", "tailwind-merge"]
         }
       }

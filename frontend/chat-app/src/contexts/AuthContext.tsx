@@ -3,6 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import { apiBaseUrl } from "@/lib/api-url";
+import { useQueryClient } from "@tanstack/react-query";
 
 type DbUser = {
   id: string;
@@ -32,6 +33,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -88,6 +90,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    queryClient.clear();
     await supabase.auth.signOut();
   };
 

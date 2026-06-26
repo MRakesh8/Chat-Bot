@@ -638,10 +638,10 @@ router.post("/conversations/:id/messages", async (req, res) => {
       .where(eq(messages.sessionId, conversationId))
       .orderBy(messages.createdAt);
 
-    // All messages except the last (just saved) one = chat history
+    // Limit to the last 15 messages to dramatically reduce token parsing latency
     // Strip out conversational fluff to prevent few-shot learning of bad behavior
     // Also strip file metadata prefixes from user messages (used for UI display only)
-    const historyWithoutCurrent = history.slice(0, -1).map(m => {
+    const historyWithoutCurrent = history.slice(-15, -1).map(m => {
        if (m.sender === "assistant") {
          let text = m.content || "";
          text = text.replace(/^(Understood!|I will|Here's|Let's)[^\n]*\n/gi, "").trim();
