@@ -516,46 +516,59 @@
     const messagesContainer = shadow.querySelector('#messages-container');
     const typingIndicator = shadow.querySelector('#typing-indicator');
 
-    if (fab) {
-      let isDragging = false;
-      let startX, startY;
-      let initialTransformX = 0;
-      let initialTransformY = 0;
-      let currentTransformX = 0;
-      let currentTransformY = 0;
+    let isDragging = false;
+    let startX, startY;
+    let initialTransformX = 0;
+    let initialTransformY = 0;
+    let currentTransformX = 0;
+    let currentTransformY = 0;
+    
+    const wrapper = shadow.querySelector('.widget-wrapper');
+    const header = shadow.querySelector('.header');
+
+    const onMouseMove = (e) => {
+      const clientX = e.clientX ?? e.touches?.[0].clientX;
+      const clientY = e.clientY ?? e.touches?.[0].clientY;
+      if (clientX === undefined || clientY === undefined) return;
       
-      const wrapper = shadow.querySelector('.widget-wrapper');
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
+      currentTransformX = initialTransformX + dx;
+      currentTransformY = initialTransformY + dy;
+      wrapper.style.transform = `translate(${currentTransformX}px, ${currentTransformY}px)`;
+      wrapper.style.transition = 'none'; // Disable transition during drag
+    };
 
-      const onMouseMove = (e) => {
-        const dx = (e.clientX || e.touches?.[0].clientX) - startX;
-        const dy = (e.clientY || e.touches?.[0].clientY) - startY;
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
-        currentTransformX = initialTransformX + dx;
-        currentTransformY = initialTransformY + dy;
-        wrapper.style.transform = `translate(${currentTransformX}px, ${currentTransformY}px)`;
-        wrapper.style.transition = 'none'; // Disable transition during drag
-      };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('touchmove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('touchend', onMouseUp);
+      wrapper.style.transition = ''; // Re-enable transition
+      initialTransformX = currentTransformX;
+      initialTransformY = currentTransformY;
+      if (header) header.style.cursor = 'grab';
+    };
 
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('touchmove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        document.removeEventListener('touchend', onMouseUp);
-        wrapper.style.transition = ''; // Re-enable transition
-        initialTransformX = currentTransformX;
-        initialTransformY = currentTransformY;
-      };
+    const onMouseDown = (e) => {
+      if (e.target.closest && e.target.closest('.close-btn')) return;
+      isDragging = false;
+      const clientX = e.clientX ?? e.touches?.[0].clientX;
+      const clientY = e.clientY ?? e.touches?.[0].clientY;
+      if (clientX === undefined || clientY === undefined) return;
 
-      const onMouseDown = (e) => {
-        isDragging = false;
-        startX = e.clientX || e.touches?.[0].clientX;
-        startY = e.clientY || e.touches?.[0].clientY;
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('touchmove', onMouseMove, { passive: false });
-        document.addEventListener('mouseup', onMouseUp);
-        document.addEventListener('touchend', onMouseUp);
-      };
+      startX = clientX;
+      startY = clientY;
+      if (header) header.style.cursor = 'grabbing';
+      
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('touchmove', onMouseMove, { passive: false });
+      document.addEventListener('mouseup', onMouseUp);
+      document.addEventListener('touchend', onMouseUp);
+    };
 
+    if (fab) {
       fab.addEventListener('mousedown', onMouseDown);
       fab.addEventListener('touchstart', onMouseDown, { passive: true });
 
@@ -571,6 +584,12 @@
         fab.style.display = 'none';
         setTimeout(() => input.focus(), 300);
       });
+    }
+
+    if (header) {
+      header.addEventListener('mousedown', onMouseDown);
+      header.addEventListener('touchstart', onMouseDown, { passive: true });
+      header.style.cursor = 'grab';
     }
 
     if (closeBtn) {
