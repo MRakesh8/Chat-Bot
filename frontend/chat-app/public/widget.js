@@ -653,8 +653,11 @@
     };
 
     const onDown = (e) => {
-      // Exclude close button, form inputs, links, and message content from initiating drag
-      if (e.target && e.target.closest) {
+      // Allow drag if it's the floating button itself
+      const isFab = e.target && e.target.closest && e.target.closest('.floating-button');
+      
+      if (!isFab && e.target && e.target.closest) {
+        // Exclude close button, form inputs, links, and message content from initiating drag
         if (e.target.closest('.close-btn') || 
             e.target.closest('#chat-form') || 
             e.target.closest('button') || 
