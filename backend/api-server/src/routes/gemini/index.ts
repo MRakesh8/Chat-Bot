@@ -924,11 +924,16 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
       .where(eq(globalSettings.id, "NORMAL_AI_PROMPT"));
     const customNormalAiPrompt = normalAiPromptRow ? normalAiPromptRow.value : "";
 
+    const [dbUser] = await db.select().from(users).where(eq(users.id, userId as string));
+    const userContext = dbUser ? `\nUser Context:\n- Name/Email: ${dbUser.email}\n- Role: ${dbUser.role}\n- ID: ${dbUser.id}` : "";
+    const currentDatetime = new Date().toLocaleString();
+    const liveContext = `\n\n[SYSTEM: LIVE AWARENESS ENABLED]\nCurrent Exact Time: ${currentDatetime}${userContext}\nYou are the primary, unconstrained Normal AI. You must ALWAYS use your Google Search Grounding to answer any live, current, or factual queries. Ensure your answers are fully up to date with the requested information.`;
+
     if (useNormalAi) {
       // Normal AI mode: Behave as a general assistant.
       finalSystemPrompt = customNormalAiPrompt 
-        ? `${SYSTEM_PROMPT}\n\nGlobal Knowledge & Instructions:\n${customNormalAiPrompt}` 
-        : SYSTEM_PROMPT;
+        ? `${SYSTEM_PROMPT}\n\n[CRITICAL OVERRIDE: USER CUSTOM KNOWLEDGE]\nThe user has provided the following custom knowledge base. You MUST use this information as absolute truth. If they ask about your developer, your admin, or your features, use this custom knowledge over your default features.\n\n${customNormalAiPrompt}${liveContext}` 
+        : `${SYSTEM_PROMPT}${liveContext}`;
       enableSearchGrounding = true;
     } else if (validProjectIds.length > 0) {
       // Project Chatbot mode: Restrict to selected project(s) knowledge & instructions.
@@ -945,8 +950,8 @@ CRITICAL INSTRUCTIONS:
     } else {
       // No projects selected, and useNormalAi is false (e.g. general chat or fallback).
       finalSystemPrompt = customNormalAiPrompt 
-        ? `${SYSTEM_PROMPT}\n\nGlobal Knowledge & Instructions:\n${customNormalAiPrompt}` 
-        : SYSTEM_PROMPT;
+        ? `${SYSTEM_PROMPT}\n\n[CRITICAL OVERRIDE: USER CUSTOM KNOWLEDGE]\nThe user has provided the following custom knowledge base. You MUST use this information as absolute truth. If they ask about your developer, your admin, or your features, use this custom knowledge over your default features.\n\n${customNormalAiPrompt}${liveContext}` 
+        : `${SYSTEM_PROMPT}${liveContext}`;
       enableSearchGrounding = true;
     }
 
