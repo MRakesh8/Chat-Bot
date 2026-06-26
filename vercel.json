@@ -1,6 +1,10 @@
 {
   "framework": null,
-  "installCommand": "corepack enable && corepack pnpm install --frozen-lockfile",
+  "installCommand": "corepack enable && PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true corepack pnpm install --frozen-lockfile",
+  "env": {
+    "PUPPETEER_SKIP_DOWNLOAD": "true",
+    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+  },
   "buildCommand": "corepack pnpm --filter @workspace/chat-app build",
   "outputDirectory": "frontend/chat-app/dist/public",
   "rewrites": [

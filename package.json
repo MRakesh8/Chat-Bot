@@ -24,7 +24,6 @@
       "@swc/core",
       "msw",
       "unrs-resolver",
-      "puppeteer",
       "tesseract.js"
     ]
   }
