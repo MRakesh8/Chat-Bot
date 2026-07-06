@@ -4,7 +4,7 @@ services:
     name: chat-bot-api
     runtime: node
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && npx puppeteer browsers install chrome && pnpm --filter @workspace/api-server build
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server exec puppeteer browsers install chrome && pnpm --filter @workspace/api-server build
     startCommand: pnpm --filter @workspace/api-server start
     healthCheckPath: /api/healthz
     envVars:
