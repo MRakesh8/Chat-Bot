@@ -162,12 +162,13 @@ Context: ${JSON.stringify(sysErr.context || {})}
 
 Provide the likely root cause and how to fix it in 2-3 short paragraphs or bullet points.`;
 
-    const { text } = await ai.generateText({
-      model: ai.models.gemini25Flash,
-      prompt,
+    const response = await ai.models.generateContent((req as any).auth.userId, {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      systemInstruction: "You are a Senior Full-Stack Engineer debugging a system error.",
+      generationConfig: { maxOutputTokens: 1024 }
     });
 
-    res.json({ fixSuggestion: text });
+    res.json({ fixSuggestion: response.text });
   } catch (err: any) {
     req.log.error({ err }, "Error generating fix for system error");
     res.status(500).json({ error: "Internal server error generating fix" });
@@ -181,7 +182,7 @@ router.get("/supabase-stats", async (req, res) => {
     
     // Some supabase instances might have storage.objects restricted or not present in local dev. We wrap in a try-catch for safety.
     let storageSizeRaw = 0;
-    let userStorage = [];
+    let userStorage: any[] = [];
     try {
       const storageResult = await db.execute(sql`SELECT SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes FROM storage.objects`);
       storageSizeRaw = Number(storageResult.rows[0]?.bytes || 0);

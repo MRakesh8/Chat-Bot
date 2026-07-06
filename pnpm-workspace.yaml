@@ -41,6 +41,7 @@ packages:
   - database/*
   - shared/*
   - scripts
+  - e2e-tests
 
 catalog:
   "@replit/vite-plugin-cartographer": ^0.5.1

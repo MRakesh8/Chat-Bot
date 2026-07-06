@@ -384,3 +384,80 @@ export const widgetLeadsRelations = relations(widgetLeads, ({ one }) => ({
 export const contextSettingsRelations = relations(projectContextSettings, ({ one }) => ({
   project: one(projects, { fields: [projectContextSettings.projectId], references: [projects.id] }),
 }));
+
+// Aria AI v2 - Agent Tables
+export const websiteMemory = pgTable("website_memory", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id").references(() => chatSessions.id, { onDelete: "cascade" }).notNull(),
+  state: jsonb("state").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const agentWorkflows = pgTable("agent_workflows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  steps: jsonb("steps").$type<any[]>().default([]).notNull(),
+  status: varchar("status", { length: 50 }).default("idle").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const agentSkills = pgTable("agent_skills", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  definition: jsonb("definition").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const websiteAdapters = pgTable("website_adapters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  tools: jsonb("tools").$type<any[]>().default([]).notNull(),
+  apis: jsonb("apis").$type<any[]>().default([]).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const enterpriseAuditLogs = pgTable("enterprise_audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  actionType: text("action_type").notNull(),
+  details: jsonb("details").default({}).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+export const websitePermissions = pgTable("website_permissions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  rbacRules: jsonb("rbac_rules").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Aria AI v2 - Relations
+export const websiteMemoryRelations = relations(websiteMemory, ({ one }) => ({
+  session: one(chatSessions, { fields: [websiteMemory.sessionId], references: [chatSessions.id] }),
+}));
+
+export const agentWorkflowsRelations = relations(agentWorkflows, ({ one }) => ({
+  project: one(projects, { fields: [agentWorkflows.projectId], references: [projects.id] }),
+}));
+
+export const agentSkillsRelations = relations(agentSkills, ({ one }) => ({
+  project: one(projects, { fields: [agentSkills.projectId], references: [projects.id] }),
+}));
+
+export const websiteAdaptersRelations = relations(websiteAdapters, ({ one }) => ({
+  project: one(projects, { fields: [websiteAdapters.projectId], references: [projects.id] }),
+}));
+
+export const enterpriseAuditLogsRelations = relations(enterpriseAuditLogs, ({ one }) => ({
+  project: one(projects, { fields: [enterpriseAuditLogs.projectId], references: [projects.id] }),
+}));
+
+export const websitePermissionsRelations = relations(websitePermissions, ({ one }) => ({
+  project: one(projects, { fields: [websitePermissions.projectId], references: [projects.id] }),
+}));

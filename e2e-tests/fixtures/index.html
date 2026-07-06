@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Aria AI Synthetic E2E Test Fixture</title>
+  <style>
+    body { font-family: sans-serif; }
+    .hidden { display: none; }
+    .scroll-container { height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+    .scroll-content { height: 1000px; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="#home">Home</a>
+      <a href="#dashboard">Dashboard</a>
+      <a href="#settings">Settings</a>
+    </nav>
+  </header>
+  
+  <main>
+    <section id="react-mock">
+      <h2>React Dashboard</h2>
+      <div id="data-grid">
+         <div class="row">Client A</div>
+         <div class="row">Client B</div>
+      </div>
+    </section>
+    
+    <section id="forms">
+      <h2>Create Invoice</h2>
+      <form id="invoice-form">
+         <input type="text" name="clientName" placeholder="Client Name" />
+         <input type="number" name="amount" placeholder="Amount" />
+         <input type="password" name="apiKey" value="super-secret-key-123" /> <!-- Security check -->
+         <button type="button" id="submit-invoice" aria-label="Submit Form">Submit</button>
+      </form>
+      <div id="form-result" class="hidden">Invoice Submitted Successfully!</div>
+    </section>
+
+    <section id="shadow-dom-test">
+       <h2>Shadow DOM Component</h2>
+       <div id="shadow-host"></div>
+    </section>
+
+    <section id="smart-scroll">
+       <h2>Smart Scroll</h2>
+       <div class="scroll-container" id="lazy-list">
+          <div class="scroll-content">
+             <p>Item 1</p>
+             <p style="margin-top: 800px;" id="lazy-item-bottom">Item 50</p>
+          </div>
+       </div>
+    </section>
+
+  </main>
+  
+  <script>
+    // Mock Shopify
+    window.Shopify = { currency: { active: 'USD' } };
+
+    // Setup Shadow DOM
+    const host = document.getElementById('shadow-host');
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = `<button id="shadow-btn">Shadow Click</button><div id="shadow-result" style="display:none;">Clicked inside shadow!</div>`;
+    
+    root.getElementById('shadow-btn').addEventListener('click', () => {
+       root.getElementById('shadow-result').style.display = 'block';
+    });
+
+    // Setup Form Action
+    document.getElementById('submit-invoice').addEventListener('click', () => {
+       document.getElementById('form-result').classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>

@@ -1079,7 +1079,7 @@ ${liveContext}`;
     res.end();
   } catch (err: any) {
     req.log.error({ err, currentStep }, `Error in streaming message at step: ${currentStep}`);
-    logSystemError("chatbot", err, { currentStep, conversationId, text });
+    logSystemError("chatbot", err, { currentStep, conversationId: req.params.id, text: (req.body as any)?.content || "unknown" });
     
     const isQuotaError = err?.type === "quota_exceeded";
     const status = err?.status || err?.response?.status;

@@ -920,6 +920,24 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       }
+
+      // After streaming chat, invoke Swarm Coordinator for actions
+      try {
+        const { CoordinatorAgent } = require("../agents/coordinator");
+        const coordinator = new CoordinatorAgent();
+        const actionRes = await coordinator.execute({
+           projectId,
+           sessionId,
+           payload: { intent: lastUserMessage, context: finalWebsiteContext }
+        });
+        
+        if (actionRes.success && actionRes.data?.action && actionRes.data.action.type !== 'idle') {
+           res.write(`data: ${JSON.stringify({ action: actionRes.data.action })}\n\n`);
+           if (typeof (res as any).flush === 'function') (res as any).flush();
+        }
+      } catch(e) {
+         console.error("Coordinator error during stream:", e);
+      }
     } catch (err: any) {
       console.error("executeLlmWithFailover threw an error:", err);
       res.write(`data: ${JSON.stringify({ content: "I'm sorry, I'm having trouble connecting to my backend systems right now. Please try again later." })}\n\n`);
@@ -935,6 +953,39 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     res.write(`data: ${JSON.stringify({ content: "Internal server error occurred." })}\n\n`);
     res.end();
     return res;
+  }
+});
+
+// Milestone 2: Swarm Dry-run execution
+import { CoordinatorAgent } from "../agents/coordinator";
+
+router.post("/:widgetToken/swarm-dryrun", async (req: Request, res: Response): Promise<any> => {
+  const { intent, context, sessionId } = req.body;
+  if (!intent || !sessionId) {
+    return res.status(400).json({ error: "Missing intent or sessionId" });
+  }
+
+  try {
+    const projectId = (req as any).projectId;
+    const coordinator = new CoordinatorAgent();
+
+    const result = await coordinator.execute({
+      projectId,
+      sessionId,
+      payload: {
+        intent,
+        context
+      }
+    });
+
+    if (result.success) {
+      return res.json(result.data);
+    } else {
+      return res.status(500).json({ error: result.error });
+    }
+  } catch (error: any) {
+    console.error("Swarm dryrun error:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
