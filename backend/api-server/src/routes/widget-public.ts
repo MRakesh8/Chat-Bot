@@ -907,7 +907,71 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       }))
     ];
 
+    // INTENT DETECTION
+    let intentType = "GENERAL_QUESTION";
     try {
+      const intentPrompt = `Classify the user's intent based on their latest message: "${lastUserMessage}".
+      
+      Categories:
+      - ACTION_REQUEST: The user is explicitly asking you to DO something on the website (e.g., "Create a client", "Click the Add button", "Fill the form", "Navigate to dashboard", "Delete the invoice", "Update my profile").
+      - KNOWLEDGE_QUESTION: The user is asking for information, facts, or help that requires an explanation (e.g., "How do I create a client?", "What is your refund policy?").
+      - GENERAL_QUESTION: Conversational chat or generic questions.
+      
+      Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;
+
+      const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
+        config: { responseMimeType: "application/json" }
+      });
+      
+      try {
+        const parsed = JSON.parse(intentRes.text || "{}");
+        if (parsed.intent) {
+          intentType = parsed.intent;
+        }
+      } catch (e) {
+        console.error("Failed to parse intent JSON", e);
+      }
+    } catch (e) {
+      console.error("Intent detection failed, defaulting to GENERAL_QUESTION", e);
+    }
+    
+    console.log(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
+
+    try {
+      // If the intent is an ACTION_REQUEST, bypass the conversational LLM and route directly to the Coordinator
+      if (intentType === "ACTION_REQUEST") {
+        
+        // Let the user know we are processing the action immediately
+        res.write(`data: ${JSON.stringify({ content: "⚙️ *Executing action...*\n\n" })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+
+        const { CoordinatorAgent } = require("../agents/coordinator");
+        const coordinator = new CoordinatorAgent();
+        const actionRes = await coordinator.execute({
+           projectId,
+           sessionId,
+           payload: { intent: lastUserMessage, context: finalWebsiteContext }
+        });
+        
+        if (actionRes.success && actionRes.data?.action && actionRes.data.action.type !== 'idle') {
+           const payload = { 
+              action: actionRes.data.action,
+              executionId: actionRes.data.executionId,
+              security: actionRes.data.security
+           };
+           res.write(`data: ${JSON.stringify(payload)}\n\n`);
+           if (typeof (res as any).flush === 'function') (res as any).flush();
+        } else if (!actionRes.success) {
+           res.write(`data: ${JSON.stringify({ content: `\n❌ *Failed to execute action:* ${actionRes.error}` })}\n\n`);
+        }
+        
+        res.end();
+        return res;
+      }
+
+      // OTHERWISE, normal conversational flow
       const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
         contents: chatMessages as any
       });
@@ -921,7 +985,8 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         }
       }
 
-      // After streaming chat, invoke Swarm Coordinator for actions
+      // After streaming chat, invoke Swarm Coordinator ONLY IF they explicitly asked for an action in a roundabout way
+      // But usually, ACTION_REQUEST handles this now. We'll leave a soft-invoke here just in case the LLM realizes it needs to act.
       try {
         const { CoordinatorAgent } = require("../agents/coordinator");
         const coordinator = new CoordinatorAgent();
@@ -941,7 +1006,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
            if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       } catch(e) {
-         console.error("Coordinator error during stream:", e);
+         console.error("Coordinator error during stream fallback:", e);
       }
     } catch (err: any) {
       console.error("executeLlmWithFailover threw an error:", err);
