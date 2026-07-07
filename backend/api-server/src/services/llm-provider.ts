@@ -1,3 +1,7 @@
+import { OpenAI } from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
+
 export interface ProviderConfig {
   provider: "gemini" | "openai" | "claude" | "groq" | "deepseek" | "openrouter" | string;
   apiKey: string;
@@ -51,143 +55,205 @@ export class UniversalProviderAdapter {
     }
   }
 
-  private getOpenAIBaseUrl(provider: string): string {
+  async *generateChatStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
+    const { provider } = this.config;
+    
+    switch (provider.toLowerCase()) {
+      case "gemini":
+        yield* this.handleGeminiStream(request);
+        break;
+      case "openai":
+      case "groq":
+      case "deepseek":
+      case "openrouter":
+        yield* this.handleOpenAICompatibleStream(request);
+        break;
+      case "claude":
+        yield* this.handleClaudeStream(request);
+        break;
+      default:
+        yield* this.handleOpenAICompatibleStream(request);
+    }
+  }
+
+  private getOpenAIBaseUrl(provider: string): string | undefined {
     if (this.config.baseUrl) return this.config.baseUrl;
     switch (provider.toLowerCase()) {
       case "openai": return "https://api.openai.com/v1";
       case "groq": return "https://api.groq.com/openai/v1";
       case "deepseek": return "https://api.deepseek.com/v1";
       case "openrouter": return "https://openrouter.ai/api/v1";
-      default: return "https://api.openai.com/v1";
+      default: return undefined;
     }
   }
 
   private async handleOpenAICompatible(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-    const baseUrl = this.getOpenAIBaseUrl(this.config.provider);
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.config.apiKey}`
-      },
-      body: JSON.stringify({
-        model: this.config.model,
-        messages: request.messages,
-        temperature: request.temperature ?? 0.7,
-        max_tokens: request.maxTokens
-      })
+    const baseURL = this.getOpenAIBaseUrl(this.config.provider);
+    const client = new OpenAI({ apiKey: this.config.apiKey, baseURL });
+
+    const response = await client.chat.completions.create({
+      model: this.config.model,
+      messages: request.messages,
+      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`${this.config.provider} API error: ${response.status} ${err}`);
-    }
-
-    const data = (await response.json()) as any;
     const resultObj = {
-      content: data.choices[0]?.message?.content || "",
+      content: response.choices[0]?.message?.content || "",
       usage: {
-        promptTokens: data.usage?.prompt_tokens || 0,
-        completionTokens: data.usage?.completion_tokens || 0,
-        totalTokens: data.usage?.total_tokens || 0,
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
       }
     };
-    console.log("LOG: OpenAI provider returning:", JSON.stringify(resultObj).substring(0, 500));
     return resultObj;
   }
 
-  private async handleGemini(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-    const baseUrl = this.config.baseUrl || "https://generativelanguage.googleapis.com/v1beta";
-    let actualModel = this.config.model;
-    if (actualModel === "gemini-1.5-flash") {
-      actualModel = "gemini-2.0-flash"; // Upgrade deprecated model
+  private async *handleOpenAICompatibleStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
+    const baseURL = this.getOpenAIBaseUrl(this.config.provider);
+    const client = new OpenAI({ apiKey: this.config.apiKey, baseURL });
+
+    const stream = await client.chat.completions.create({
+      model: this.config.model,
+      messages: request.messages,
+      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens,
+      stream: true
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.choices[0]?.delta?.content) {
+        yield { text: chunk.choices[0].delta.content };
+      }
     }
+  }
+
+  private async handleGemini(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+    const httpOptions: any = { apiVersion: '' };
+    if (this.config.baseUrl) httpOptions.baseUrl = this.config.baseUrl;
     
-    // Convert to Gemini format
-    const contents = request.messages.map(m => ({
-      role: m.role === "assistant" ? "model" : m.role === "system" ? "user" : "user",
+    const client = new GoogleGenAI({ apiKey: this.config.apiKey, httpOptions });
+    let actualModel = this.config.model;
+    if (actualModel === "gemini-1.5-flash") actualModel = "gemini-2.0-flash";
+
+    const contents = request.messages.filter(m => m.role !== "system").map(m => ({
+      role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }]
     }));
-
     const systemInstruction = request.messages.find(m => m.role === "system")?.content;
     const body: any = {
-      contents: contents.filter(c => request.messages.find(m => m.content === c.parts[0].text)?.role !== "system"),
-      generationConfig: {
+      contents,
+      config: {
         temperature: request.temperature ?? 0.7,
         maxOutputTokens: request.maxTokens
       }
     };
-
     if (systemInstruction) {
-        body.systemInstruction = {
-            parts: [{ text: systemInstruction }]
-        };
+      body.config.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
 
-    const response = await fetch(`${baseUrl}/models/${actualModel}:generateContent?key=${this.config.apiKey}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
+    const response = await client.models.generateContent({
+      model: actualModel,
+      ...body
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini API error: ${response.status} ${err}`);
+    return {
+      content: response.text || "",
+      usage: {
+        promptTokens: response.usageMetadata?.promptTokenCount || 0,
+        completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+        totalTokens: response.usageMetadata?.totalTokenCount || 0
+      }
+    };
+  }
+
+  private async *handleGeminiStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
+    const httpOptions: any = { apiVersion: '' };
+    if (this.config.baseUrl) httpOptions.baseUrl = this.config.baseUrl;
+    
+    const client = new GoogleGenAI({ apiKey: this.config.apiKey, httpOptions });
+    let actualModel = this.config.model;
+    if (actualModel === "gemini-1.5-flash") actualModel = "gemini-2.0-flash";
+
+    const contents = request.messages.filter(m => m.role !== "system").map(m => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }]
+    }));
+    const systemInstruction = request.messages.find(m => m.role === "system")?.content;
+    const body: any = {
+      contents,
+      config: {
+        temperature: request.temperature ?? 0.7,
+        maxOutputTokens: request.maxTokens
+      }
+    };
+    if (systemInstruction) {
+      body.config.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
 
-    const data = (await response.json()) as any;
-    
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const promptTokens = data.usageMetadata?.promptTokenCount || 0;
-    const completionTokens = data.usageMetadata?.candidatesTokenCount || 0;
-    const totalTokens = data.usageMetadata?.totalTokenCount || 0;
+    const stream = await client.models.generateContentStream({
+      model: actualModel,
+      ...body
+    });
 
-    const resultObj = {
-      content,
-      usage: { promptTokens, completionTokens, totalTokens }
-    };
-    console.log("LOG: Gemini provider returning:", JSON.stringify(resultObj).substring(0, 500));
-    return resultObj;
+    for await (const chunk of stream) {
+      if (chunk.text) {
+        yield { text: chunk.text };
+      }
+    }
   }
 
   private async handleClaude(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-    const baseUrl = this.config.baseUrl || "https://api.anthropic.com/v1";
-    const systemMessage = request.messages.find(m => m.role === "system")?.content;
-    const chatMessages = request.messages.filter(m => m.role !== "system");
+    const baseURL = this.config.baseUrl || "https://api.anthropic.com";
+    const client = new Anthropic({ apiKey: this.config.apiKey, baseURL });
 
-    const response = await fetch(`${baseUrl}/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.config.apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: this.config.model,
-        system: systemMessage,
-        messages: chatMessages,
-        temperature: request.temperature ?? 0.7,
-        max_tokens: request.maxTokens || 4096
-      })
+    const systemMessage = request.messages.find(m => m.role === "system")?.content;
+    const chatMessages = request.messages.filter(m => m.role !== "system").map(m => ({
+      role: m.role === "assistant" ? "assistant" as const : "user" as const,
+      content: m.content
+    }));
+
+    const response = await client.messages.create({
+      model: this.config.model,
+      system: systemMessage,
+      messages: chatMessages,
+      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens || 4096
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Claude API error: ${response.status} ${err}`);
-    }
-
-    const data = (await response.json()) as any;
-    const resultObj = {
-      content: data.content?.[0]?.text || "",
+    return {
+      content: response.content[0]?.type === "text" ? response.content[0].text : "",
       usage: {
-        promptTokens: data.usage?.input_tokens || 0,
-        completionTokens: data.usage?.output_tokens || 0,
-        totalTokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+        promptTokens: response.usage?.input_tokens || 0,
+        completionTokens: response.usage?.output_tokens || 0,
+        totalTokens: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0),
       }
     };
-    console.log("LOG: Anthropic provider returning:", JSON.stringify(resultObj).substring(0, 500));
-    return resultObj;
+  }
+
+  private async *handleClaudeStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
+    const baseURL = this.config.baseUrl || "https://api.anthropic.com";
+    const client = new Anthropic({ apiKey: this.config.apiKey, baseURL });
+
+    const systemMessage = request.messages.find(m => m.role === "system")?.content;
+    const chatMessages = request.messages.filter(m => m.role !== "system").map(m => ({
+      role: m.role === "assistant" ? "assistant" as const : "user" as const,
+      content: m.content
+    }));
+
+    const stream = await client.messages.create({
+      model: this.config.model,
+      system: systemMessage,
+      messages: chatMessages,
+      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens || 4096,
+      stream: true
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        yield { text: chunk.delta.text };
+      }
+    }
   }
 }

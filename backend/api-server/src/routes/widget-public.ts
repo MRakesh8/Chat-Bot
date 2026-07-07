@@ -507,11 +507,31 @@ async function updateKeyFailureWidget(key: WidgetKey, error: any) {
 }
 
 async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
+  const selectedModel = options.model || key.model || "gemini-2.0-flash";
+
+  // Validate that the selected model belongs to the selected provider
+  let isModelValid = true;
+  if (key.rawDbKey?.availableModels && Array.isArray(key.rawDbKey.availableModels)) {
+    isModelValid = key.rawDbKey.availableModels.includes(selectedModel);
+  } else if (key.provider === "groq" && selectedModel.includes("gemini")) {
+    isModelValid = false;
+  } else if (key.provider === "gemini" && !selectedModel.includes("gemini") && !selectedModel.includes("learnlm")) {
+    isModelValid = false;
+  }
+
+  if (!isModelValid) {
+    throw new Error(`Invalid model for selected provider.`);
+  }
+
+  console.log(`\nSelected Provider: ${key.provider}`);
+  console.log(`Selected Model: ${selectedModel}`);
+  console.log(`Selected API Key: ${key.id || 'env'}`);
+  
   if (key.provider !== 'gemini') {
     const adapter = new UniversalProviderAdapter({
       provider: key.provider,
       apiKey: key.decryptedKey,
-      model: options.model || key.model || "gpt-4o"
+      model: selectedModel
     });
     
     let messages: any[] = [];
@@ -524,25 +544,26 @@ async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'ge
       messages = [{ role: 'user' as const, content: options.contents }];
     }
 
-    const response = await adapter.generateChat({
-      messages,
-      temperature: 0.7
-    });
-
     if (method === 'generateContent') {
-      const resVal = { text: response.content };
-      console.log("LOG: executeKeyRequest (UniversalProviderAdapter) returning (generateContent):", JSON.stringify(resVal).substring(0, 500));
-      return resVal;
+      console.log(`Selected Client: ${key.provider === 'claude' ? 'Anthropic SDK' : 'OpenAI SDK'}`);
+      console.log(`Selected Endpoint: Universal Adapter`);
+      const response = await adapter.generateChat({
+        messages,
+        temperature: 0.7
+      });
+      return { text: response.content };
     } else {
-      const resVal = [{ text: response.content }];
-      console.log("LOG: executeKeyRequest (UniversalProviderAdapter) returning (stream):", JSON.stringify(resVal).substring(0, 500));
-      return resVal;
+      console.log(`Selected Client: ${key.provider === 'claude' ? 'Anthropic SDK' : 'OpenAI SDK'}`);
+      console.log(`Selected Endpoint: Universal Adapter (Stream)`);
+      return adapter.generateChatStream({
+        messages,
+        temperature: 0.7
+      });
     }
   } else {
-    console.log("LOG: executeKeyRequest delegating to executeWithFallback (Gemini native)");
-    const resVal = await executeWithFallback(key.decryptedKey, method, options);
-    console.log("LOG: executeKeyRequest (executeWithFallback) returned");
-    return resVal;
+    console.log(`Selected Client: GoogleGenAI SDK`);
+    console.log(`Selected Endpoint: https://generativelanguage.googleapis.com`);
+    return await executeWithFallback(key.decryptedKey, method, { ...options, model: selectedModel });
   }
 }
 
@@ -568,20 +589,16 @@ async function executeLlmWithFailover(
     keyUsageStats[statKey].lastUsed = Date.now();
     
     try {
-      const attemptOptions = { ...options };
-      if (key.model && !attemptOptions.model) {
-        attemptOptions.model = key.model;
-      }
+      // Overwrite the requested model with the key's native model if one exists.
+      // This prevents passing a hardcoded `gemini-2.0-flash` to a Groq key.
+      const selectedModel = key.model || options.model;
+      const attemptOptions = { ...options, model: selectedModel };
       
       const result = await executeKeyRequest(key, method, attemptOptions);
       
       updateKeySuccessWidget(key).catch(e => console.error("Key success update error:", e));
       
       console.log(`Success\n`);
-      console.log(`Model: ${attemptOptions.model || 'default'}`);
-      console.log(`API Key ID: ${key.id || 'env'}`);
-      console.log(`Provider: ${key.provider}\n`);
-      
       return { result, keyUsed: key };
     } catch (err: any) {
       const status = err?.status || err?.response?.status || err?.code;
