@@ -64,14 +64,14 @@ async function executeWithRetry<T>(
 }
 
 async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
-  const httpOptions: any = {};
+  const httpOptions: any = { apiVersion: '' };
   if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
     httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   }
   
   const directClient = new GoogleGenAI({
     apiKey: activeKey,
-    ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
+    httpOptions
   });
   
   const FALLBACK_MODELS = [

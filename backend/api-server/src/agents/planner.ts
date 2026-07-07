@@ -28,15 +28,15 @@ export class PlannerAgent extends BaseAgent {
       if (!keyData) {
          return { success: false, error: "No API key found for this project." };
       }
-
+      
       const activeKey = crypto.decrypt(keyData.encryptedKey) || keyData.encryptedKey;
-      const httpOptions: any = {};
+      const httpOptions: any = { apiVersion: '' };
       if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
          httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
       }
       const directClient = new GoogleGenAI({
         apiKey: activeKey,
-        ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
+        httpOptions
       });
 
       const systemPrompt = `You are Aria AI's Planner Agent, an autonomous Website Agent.
