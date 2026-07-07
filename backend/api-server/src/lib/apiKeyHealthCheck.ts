@@ -14,7 +14,7 @@ async function testApiKey(apiKey: string): Promise<{ success: boolean; isRateLim
     
     // Use a very short content generation to minimize token usage
     await client.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: "ping"
     });
     

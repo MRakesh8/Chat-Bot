@@ -71,7 +71,7 @@ async function runCleanup() {
            Summary: ${sourceB.summary}`;
            
            try {
-             const res = await ai.models.generateContent(null, { model: "gemini-2.5-flash", contents: prompt });
+             const res = await ai.models.generateContent(null, { model: "gemini-2.0-flash", contents: prompt });
              const parsed = JSON.parse(res.text?.replace(/```json/gi, "").replace(/```/gi, "").trim() || "{}");
              isDuplicate = parsed.isDuplicate === true;
            } catch (e) {

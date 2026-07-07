@@ -71,7 +71,7 @@ router.put("/settings", async (req, res): Promise<any> => {
 async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
   try {
     const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" } });
-    await client.models.generateContent({ model: "gemini-2.5-flash", contents: "test" });
+    await client.models.generateContent({ model: "gemini-2.0-flash", contents: "test" });
     return { success: true, message: "API key verified successfully." };
   } catch (e: any) {
     const status = e?.status || e?.response?.status || e?.code;

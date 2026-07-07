@@ -186,7 +186,7 @@ function safeJsonFromModel(text: string | undefined) {
 
 async function generateSummary(userId: string | null, text: string, projectId?: string) {
   const res = await ai.models.generateContent(userId, {
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash",
     contents: `Summarize this knowledge source for retrieval. Keep the important named tools, links, entities, and use cases.\n\n${text.slice(0, 30000)}`,
     projectId,
   });
@@ -239,7 +239,7 @@ Return strictly valid JSON:
 }`;
 
   const res = await ai.models.generateContent(params.userId, {
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash",
     contents: prompt,
     projectId: params.projectId,
   });
@@ -382,7 +382,7 @@ Return strictly valid JSON:
 }`;
 
     const mergeRes = await ai.models.generateContent(params.userId, {
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: mergePrompt,
       projectId: params.projectId,
     });
@@ -704,7 +704,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     try {
       const transcript = await fetchYouTubeTranscriptText(videoId);
       const res = await ai.models.generateContent(params.userId || null, {
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: `Please summarize and provide a detailed structured text representation of the following YouTube video transcript: \n\n${transcript.slice(0, 50000)}`,
         projectId: params.projectId,
       });
@@ -712,7 +712,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     } catch (err) {
       logger.warn({ err }, `YouTube transcript failed for ${videoId}. Falling back to direct URL Gemini summarization.`);
       const res = await ai.models.generateContent(params.userId || null, {
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: `Please summarize and provide a detailed description of the content for this YouTube video: ${sourceUrl}`,
         projectId: params.projectId,
       });
@@ -740,7 +740,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       logger.warn({ err }, `Direct fetch failed for website ${safeUrl}. Falling back to Gemini search.`);
       try {
         const res = await ai.models.generateContent(params.userId || null, {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: `Search the web for this URL and extract the main text content, purpose, and key details: ${safeUrl}`,
           tools: [{ googleSearch: {} }],
           projectId: params.projectId,
@@ -779,7 +779,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     logger.info(`Extracting Instagram video content via Gemini for ${sourceUrl}`);
     try {
       const res = await ai.models.generateContent(params.userId || null, {
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: `Search the web for this Instagram URL and extract any available public metadata, caption, visible text, and likely topic for this Instagram reel/post/video. URL: ${sourceUrl}`,
         tools: [{ googleSearch: {} }],
         projectId: params.projectId,
@@ -829,7 +829,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       const ext = lowerFilename.split('.').pop()?.replace('jpg', 'jpeg') || 'jpeg';
       const imageMime = `image/${ext}`;
       const res = await ai.models.generateContent(params.userId || null, {
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: [
           "OCR and describe this image. Extract all visible text first, then summarize the image for searchable project knowledge.",
           { inlineData: { mimeType: imageMime, data: fileBuffer.toString("base64") } }
@@ -841,7 +841,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       const audioMime = `audio/${lowerFilename.split('.').pop()}`;
       try {
         const res = await ai.models.generateContent(params.userId || null, {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: [
             "Transcribe and summarize this audio file for searchable project knowledge.",
             { inlineData: { mimeType: audioMime, data: fileBuffer.toString("base64") } }
@@ -857,7 +857,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
       const videoMime = `video/${lowerFilename.split('.').pop()}`;
       try {
         const res = await ai.models.generateContent(params.userId || null, {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: [
             "Transcribe and describe the contents of this video for searchable project knowledge.",
             { inlineData: { mimeType: videoMime, data: fileBuffer.toString("base64") } }

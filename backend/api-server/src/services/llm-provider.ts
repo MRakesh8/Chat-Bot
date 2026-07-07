@@ -100,7 +100,7 @@ export class UniversalProviderAdapter {
     const baseUrl = this.config.baseUrl || "https://generativelanguage.googleapis.com/v1beta";
     let actualModel = this.config.model;
     if (actualModel === "gemini-1.5-flash") {
-      actualModel = "gemini-2.5-flash"; // Upgrade deprecated model
+      actualModel = "gemini-2.0-flash"; // Upgrade deprecated model
     }
     
     // Convert to Gemini format

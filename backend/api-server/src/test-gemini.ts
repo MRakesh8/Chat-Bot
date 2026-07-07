@@ -7,7 +7,7 @@ const client = new GoogleGenAI({
 async function test() {
   try {
     const res = await client.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: "Hello"
     });
     console.log("Success:", res.text);

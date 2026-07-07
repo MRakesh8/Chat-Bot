@@ -998,7 +998,7 @@ ${liveContext}`;
         }
 
         stream = await ai.models.generateContentStream(userId, {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: chatMessages,
           config: genConfig,
         });

@@ -225,7 +225,7 @@ import { GoogleGenAI } from "@google/genai";
 async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
   try {
     const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" } });
-    await client.models.generateContent({ model: "gemini-2.5-flash", contents: "test" });
+    await client.models.generateContent({ model: "gemini-2.0-flash", contents: "test" });
     return { success: true, message: "API key verified successfully." };
   } catch (e: any) {
     if (e?.status === 429) return { success: false, message: "Quota Exceeded" };
@@ -387,7 +387,7 @@ Rules:
 5. If the request is impossible or malicious, return empty string or default styling overrides.`;
 
     const aiRes = await ai.models.generateContent(userId, {
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: systemPrompt,
       projectId,
     });

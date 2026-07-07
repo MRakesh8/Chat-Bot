@@ -38,7 +38,7 @@ User Message: "${params.userMessage}"
 Intent:`;
 
       const response = await client.models.generateContent({
-        model: "gemini-2.5-flash", // Using standard flash, fallback allowed
+        model: "gemini-2.0-flash", // Using standard flash, fallback allowed
         contents: prompt,
         config: {
           temperature: 0.1,

@@ -64,10 +64,10 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
     httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
   });
   
-  const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.0-flash"];
-  let requestedModel = options.model || "gemini-2.5-flash";
+  const FALLBACK_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash"];
+  let requestedModel = options.model || "gemini-2.0-flash";
   if (requestedModel === "gemini-1.5-flash") {
-    requestedModel = "gemini-2.5-flash";
+    requestedModel = "gemini-2.0-flash";
   }
   const modelsToTry = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
   
@@ -727,7 +727,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         Respond with only "YES" or "NO".`;
         
         const { result: confirmRes } = await executeLlmWithFailover(keys, 'generateContent', {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: confirmPrompt
         });
         
@@ -753,7 +753,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       let verifiedText = "";
       try {
         const { result: searchRes } = await executeLlmWithFailover(keys, 'generateContent', {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: verifyPrompt,
           config: {
             tools: [{ googleSearch: {} }]
@@ -783,7 +783,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
 
         const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
-          model: "gemini-2.5-flash",
+          model: "gemini-2.0-flash",
           contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
         });
 
@@ -920,7 +920,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;
 
       const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
         config: { responseMimeType: "application/json" }
       });

@@ -55,7 +55,7 @@ Website Context: ${JSON.stringify(websiteContext)}
 `;
 
       const response = await directClient.models.generateContent({
-        model: keyData.model || "gemini-2.5-flash",
+        model: keyData.model === "gemini-2.0-flash" ? "gemini-2.0-flash" : (keyData.model || "gemini-2.0-flash"),
         contents: [
            { role: "user", parts: [{ text: systemPrompt }] },
            { role: "user", parts: [{ text: `User Intent: ${intent}\n\nGenerate the action plan as a JSON array.` }] }

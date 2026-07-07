@@ -11,7 +11,7 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -465,7 +465,7 @@ class GeminiFailoverModels {
       throw { success: false, code: "NO_HEALTHY_KEYS", status: 503, message: "All AI API keys are unavailable. Please add a new API key or wait for quota reset." };
     }
 
-    const originalModel = options.model || "gemini-2.5-flash";
+    const originalModel = options.model || "gemini-2.0-flash";
     const modelsToTry = method === 'embedContent' ? [originalModel] : Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
     
     let lastError: any = null;

@@ -154,7 +154,7 @@ async function runTest() {
   console.log("\n=== STAGE 7: GEMINI RESPONSE ===");
   const client = new GoogleGenAI({ apiKey });
   const response = await client.models.generateContentStream({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash",
     contents: chatMessages as any
   });
 
