@@ -64,12 +64,22 @@ async function executeWithRetry<T>(
 }
 
 async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
+  const httpOptions: any = {};
+  if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+    httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  }
+  
   const directClient = new GoogleGenAI({
     apiKey: activeKey,
-    httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
+    ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
   });
   
-  const FALLBACK_MODELS = ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+  const FALLBACK_MODELS = [
+    "gemini-2.0-flash-lite", 
+    "gemini-1.5-pro", 
+    "gemini-1.5-flash-002", 
+    "gemini-1.5-flash-8b"
+  ];
   let requestedModel = options.model || "gemini-2.0-flash";
   const modelsToTry = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
   

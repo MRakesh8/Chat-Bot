@@ -30,9 +30,13 @@ export class PlannerAgent extends BaseAgent {
       }
 
       const activeKey = crypto.decrypt(keyData.encryptedKey) || keyData.encryptedKey;
+      const httpOptions: any = {};
+      if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+         httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+      }
       const directClient = new GoogleGenAI({
         apiKey: activeKey,
-        httpOptions: { baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
+        ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
       });
 
       const systemPrompt = `You are Aria AI's Planner Agent, an autonomous Website Agent.
@@ -57,7 +61,8 @@ Website Context: ${JSON.stringify(websiteContext)}
       const FALLBACK_MODELS = [
         keyData.model || "gemini-2.0-flash", 
         "gemini-2.0-flash-lite", 
-        "gemini-1.5-flash", 
+        "gemini-1.5-pro",
+        "gemini-1.5-flash-002", 
         "gemini-1.5-flash-8b"
       ];
       
