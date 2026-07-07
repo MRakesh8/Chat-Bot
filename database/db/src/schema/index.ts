@@ -337,6 +337,8 @@ export const projectApiKeys = pgTable("project_api_keys", {
   lastFailure: timestamp("last_failure"),
   failureReason: text("failure_reason"),
   cooldownUntil: timestamp("cooldown_until"),
+  totalRequests: integer("total_requests").default(0).notNull(),
+  totalFailures: integer("total_failures").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

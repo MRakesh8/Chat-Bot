@@ -129,6 +129,8 @@ interface WidgetKey {
   rawDbKey?: any;
 }
 
+const keyUsageStats: Record<string, { inFlight: number, lastUsed: number }> = {};
+
 async function fetchAndManageWidgetKeys(projectId: string, userId: string | null): Promise<WidgetKey[]> {
   const now = new Date();
   const widgetKeys: WidgetKey[] = [];
@@ -328,6 +330,9 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
   console.log(`-----------------------\n`);
 
   // Sort: Project Keys (primary first) -> User Keys -> System Keys -> Env Keys
+  // Within the same priority group, sort by:
+  // 1. inFlight count (ascending - pick the least busy key)
+  // 2. lastUsed time (ascending - LRU)
   return widgetKeys.sort((a, b) => {
     const priority = { project: 1, user: 2, system: 3, env: 4 };
     if (priority[a.type] !== priority[b.type]) {
@@ -336,9 +341,18 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
     if (a.type === 'project' && b.type === 'project') {
       const ap = a.rawDbKey?.isPrimary ? 1 : 0;
       const bp = b.rawDbKey?.isPrimary ? 1 : 0;
-      return bp - ap;
+      if (bp !== ap) return bp - ap;
     }
-    return 0;
+    
+    // Concurrency / Load Balancing
+    const statA = keyUsageStats[a.id || a.decryptedKey] || { inFlight: 0, lastUsed: 0 };
+    const statB = keyUsageStats[b.id || b.decryptedKey] || { inFlight: 0, lastUsed: 0 };
+    
+    if (statA.inFlight !== statB.inFlight) {
+      return statA.inFlight - statB.inFlight;
+    }
+    
+    return statA.lastUsed - statB.lastUsed;
   });
 }
 
@@ -351,6 +365,7 @@ async function updateKeySuccessWidget(key: WidgetKey) {
       await db.update(projectApiKeys).set({
         lastSuccess: now,
         status: "HEALTHY",
+        totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
         failureReason: null
       }).where(eq(projectApiKeys.id, key.id!));
     } else {
@@ -537,7 +552,15 @@ async function executeLlmWithFailover(
   
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
+    const statKey = key.id || key.decryptedKey;
+    
+    if (!keyUsageStats[statKey]) {
+      keyUsageStats[statKey] = { inFlight: 0, lastUsed: 0 };
+    }
+    
     console.log(`Trying API Key #${i + 1}`);
+    keyUsageStats[statKey].inFlight += 1;
+    keyUsageStats[statKey].lastUsed = Date.now();
     
     try {
       const attemptOptions = { ...options };
@@ -585,6 +608,9 @@ async function executeLlmWithFailover(
         // This will correctly mark 429 quota exhausted keys as UNHEALTHY/QUOTA_EXCEEDED in the database
         updateKeyFailureWidget(key, err).catch(e => console.error("Key failure update error:", e));
       }
+    } finally {
+      // Always decrement inFlight when request finishes (success or failure)
+      keyUsageStats[statKey].inFlight = Math.max(0, keyUsageStats[statKey].inFlight - 1);
     }
   }
   
