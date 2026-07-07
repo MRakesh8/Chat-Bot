@@ -26,6 +26,11 @@ function isRetryableLlmError(err: any): boolean {
     return true;
   }
   const errMessage = String(err?.message || err?.stack || err).toLowerCase();
+  
+  // Fast-fail if the quota limit is explicitly 0 (model not available on this tier)
+  if (errMessage.includes("limit: 0")) {
+    return false;
+  }
   const retryableKeywords = [
     "429", "503", "500", "502", "504",
     "unavailable", "resource_exhausted", "quota", "timeout", "deadline exceeded",
@@ -64,11 +69,8 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
     httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
   });
   
-  const FALLBACK_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash"];
+  const FALLBACK_MODELS = ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
   let requestedModel = options.model || "gemini-2.0-flash";
-  if (requestedModel === "gemini-1.5-flash") {
-    requestedModel = "gemini-2.0-flash";
-  }
   const modelsToTry = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
   
   for (let i = 0; i < modelsToTry.length; i++) {

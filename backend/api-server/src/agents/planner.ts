@@ -54,16 +54,38 @@ Current URL: ${currentUrl}
 Website Context: ${JSON.stringify(websiteContext)}
 `;
 
-      const response = await directClient.models.generateContent({
-        model: keyData.model === "gemini-2.0-flash" ? "gemini-2.0-flash" : (keyData.model || "gemini-2.0-flash"),
-        contents: [
-           { role: "user", parts: [{ text: systemPrompt }] },
-           { role: "user", parts: [{ text: `User Intent: ${intent}\n\nGenerate the action plan as a JSON array.` }] }
-        ],
-        config: {
-           responseMimeType: "application/json",
-        }
-      });
+      const FALLBACK_MODELS = [
+        keyData.model || "gemini-2.0-flash", 
+        "gemini-2.0-flash-lite", 
+        "gemini-1.5-flash", 
+        "gemini-1.5-flash-8b"
+      ];
+      
+      let response = null;
+      let lastError = null;
+      
+      for (const attemptModel of FALLBACK_MODELS) {
+         try {
+             response = await directClient.models.generateContent({
+               model: attemptModel === "gemini-2.5-flash" ? "gemini-2.0-flash" : attemptModel,
+               contents: [
+                  { role: "user", parts: [{ text: systemPrompt }] },
+                  { role: "user", parts: [{ text: `User Intent: ${intent}\n\nGenerate the action plan as a JSON array.` }] }
+               ],
+               config: {
+                  responseMimeType: "application/json",
+               }
+             });
+             break; // Success
+         } catch (e: any) {
+             lastError = e;
+             console.warn(`[PlannerAgent] Model ${attemptModel} failed:`, e.message);
+         }
+      }
+      
+      if (!response) {
+         throw lastError || new Error("All fallback models failed for PlannerAgent");
+      }
 
       let planSteps = [];
       try {
