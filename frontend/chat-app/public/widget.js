@@ -89,6 +89,12 @@
         }
       };
       document.head.appendChild(script);
+
+      // Also load action engine
+      const actionEngineUrl = scriptTag && scriptTag.src ? scriptTag.src.replace('widget.js', 'widget-action-engine.js') : `${apiBaseUrl}/widget-action-engine.js`;
+      const actionScript = document.createElement('script');
+      actionScript.src = actionEngineUrl;
+      document.head.appendChild(actionScript);
     } catch (e) {
       console.error("Failed to init context engine", e);
     }
@@ -824,6 +830,61 @@
                     botResponse += data.content;
                     botMsgDiv.innerHTML = formatMessageText(botResponse);
                     scrollToBottom();
+                  }
+                  if (data.action) {
+                    if (!window.AriaActionEngineInstance && window.AriaActionEngine) {
+                       window.AriaActionEngineInstance = new window.AriaActionEngine();
+                    }
+                    if (window.AriaActionEngineInstance) {
+                        const progressDiv = document.createElement('div');
+                        progressDiv.className = 'message bot';
+                        progressDiv.style.fontSize = '12px';
+                        progressDiv.style.opacity = '0.8';
+                        const actionLabel = data.action.actionType || data.action.type;
+                        progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
+                        messagesContainer.insertBefore(progressDiv, typingIndicator);
+                        scrollToBottom();
+                        
+                        if (data.security && data.security.requiresConfirmation) {
+                           progressDiv.innerHTML = `⚠️ <b>Action Requires Approval</b><br>${data.security.reason}<br>
+                           <button id="approve-btn-${data.action.id}" style="margin-top:4px; padding: 4px 8px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">Approve</button>
+                           <button id="reject-btn-${data.action.id}" style="margin-top:4px; margin-left: 4px; padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Reject</button>`;
+                           
+                           const approveBtn = progressDiv.querySelector(`#approve-btn-${data.action.id}`);
+                           const rejectBtn = progressDiv.querySelector(`#reject-btn-${data.action.id}`);
+                           
+                           approveBtn.addEventListener('click', function() {
+                              progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
+                              window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl)
+                               .then(res => { progressDiv.innerHTML = `✅ <em>Completed: ${actionLabel}</em>`; })
+                               .catch(err => { progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`; });
+                           });
+                           
+                           rejectBtn.addEventListener('click', function() {
+                              progressDiv.innerHTML = `❌ <em>Rejected by user</em>`;
+                              // Post rejection result
+                              fetch(apiBaseUrl + '/api/widget/' + widgetToken + '/action-result', {
+                                 method: 'POST',
+                                 headers: { 'Content-Type': 'application/json' },
+                                 body: JSON.stringify({
+                                    executionId: data.executionId,
+                                    actionId: data.action.id,
+                                    status: 'failed',
+                                    tool: actionLabel,
+                                    error: 'User rejected the action'
+                                 })
+                              });
+                           });
+                        } else {
+                           window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl)
+                             .then(res => {
+                                progressDiv.innerHTML = res.status === 'failed' ? `❌ <em>Failed: ${res.error}</em>` : `✅ <em>Completed: ${actionLabel}</em>`;
+                             })
+                             .catch(err => {
+                                progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`;
+                             });
+                        }
+                    }
                   }
                 } catch (e) {
                   // Ignore parse error

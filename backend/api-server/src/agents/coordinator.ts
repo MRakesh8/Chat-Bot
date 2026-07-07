@@ -1,28 +1,19 @@
 import { BaseAgent, AgentContext, AgentResult } from "./base";
-import { MemoryAgent } from "./memory";
 import { PlannerAgent } from "./planner";
-import { NavigationAgent } from "./navigation";
-import { KnowledgeAgent } from "./knowledge";
-import { ContextCompressorAgent } from "./contextCompressor";
 import { VerificationAgent } from "./verification";
 import { SecurityAgent } from "./security";
+import { db } from "@workspace/db";
+import { workflowExecutions, executionSteps } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 export class CoordinatorAgent extends BaseAgent {
-  private memoryAgent: MemoryAgent;
   private plannerAgent: PlannerAgent;
-  private navigationAgent: NavigationAgent;
-  private knowledgeAgent: KnowledgeAgent;
-  private contextCompressor: ContextCompressorAgent;
   private verificationAgent: VerificationAgent;
   private securityAgent: SecurityAgent;
 
   constructor() {
     super("CoordinatorAgent");
-    this.memoryAgent = new MemoryAgent();
     this.plannerAgent = new PlannerAgent();
-    this.navigationAgent = new NavigationAgent();
-    this.knowledgeAgent = new KnowledgeAgent();
-    this.contextCompressor = new ContextCompressorAgent();
     this.verificationAgent = new VerificationAgent();
     this.securityAgent = new SecurityAgent();
   }
@@ -31,83 +22,104 @@ export class CoordinatorAgent extends BaseAgent {
     try {
       const { projectId, sessionId, payload, userId } = context;
 
-      // 1. Compress raw context
-      const compressedRes = await this.contextCompressor.execute({ projectId, sessionId, payload: payload?.context });
-      const contextGraph = compressedRes.data;
+      if (payload?.resumeExecution) {
+        // RESUME FROM ACTION RESULT
+        const executionId = payload.executionId;
+        const result = payload.actionResult;
+        
+        const [execRecord] = await db.select().from(workflowExecutions).where(eq(workflowExecutions.id, executionId));
+        if (!execRecord) return { success: false, error: "Execution not found" };
 
-      // 2. Retrieve Memory
-      const memoryRes = await this.memoryAgent.execute({ projectId, sessionId });
-      const sessionMemory = memoryRes.data;
-
-      // 3. Verify previous action if applicable
-      let verification = { verified: true, reason: "" };
-      if (sessionMemory?.lastAction) {
-         const verRes = await this.verificationAgent.execute({ projectId, sessionId, payload: { lastAction: sessionMemory.lastAction, currentUrl: contextGraph?.page?.url } });
-         verification = verRes.data;
-      }
-
-      // 4. Retrieve Knowledge
-      const knowRes = await this.knowledgeAgent.execute({ projectId, sessionId });
-      const knowledge = knowRes.data;
-
-      // 5. Build/Update Plan
-      const planRes = await this.plannerAgent.execute({ 
-        projectId, 
-        sessionId, 
-        payload: { intent: payload?.intent, currentUrl: contextGraph?.page?.url, memory: sessionMemory, verification } 
-      });
-      const plan = planRes.data?.plan;
-
-      // 6. Decide Navigation/Execution Step
-      const navRes = await this.navigationAgent.execute({ 
-        projectId, 
-        sessionId, 
-        payload: { plan, graph: contextGraph } 
-      });
-      const action = navRes.data?.action;
-
-      // 7. Security & Permissions Gate
-      let security = { allowed: true, requiresConfirmation: false, reason: "" };
-      if (action && action.type !== 'idle') {
-        const secRes = await this.securityAgent.execute({
-          projectId,
-          sessionId,
-          userId,
-          payload: { proposedAction: action }
+        let status = result.status; // success or failed
+        
+        // 1. Verification Step
+        const verRes = await this.verificationAgent.execute({
+          projectId, sessionId, payload: { result }
         });
-        security = secRes.data;
+        
+        if (!verRes.data.verified) {
+           status = "failed";
+        }
 
-        if (!security.allowed) {
-           action.type = 'blocked';
-           action.reason = security.reason;
-        } else if (security.requiresConfirmation) {
-           action.type = 'pending_confirmation';
-           action.reason = security.reason;
+        const [currentStep] = await db.select().from(executionSteps)
+            .where(eq(executionSteps.id, result.actionId));
+
+        if (status === "failed") {
+            const retryCount = (currentStep?.retryCount || 0) + 1;
+            if (retryCount <= 3) {
+                await db.update(executionSteps).set({ status: "retry", retryCount }).where(eq(executionSteps.id, result.actionId));
+                // In a real system, we might ask planner for alternative selector, but for now we re-issue the same step or generic retry
+                return { success: true, data: { action: { ...currentStep, type: "retry" }, executionId } };
+            } else {
+                await db.update(executionSteps).set({ status: "failed_final" }).where(eq(executionSteps.id, result.actionId));
+                await db.update(workflowExecutions).set({ status: "failed" }).where(eq(workflowExecutions.id, executionId));
+                return { success: true, data: { status: "failed_final" } };
+            }
+        }
+
+        await db.update(executionSteps).set({ status: "success" }).where(eq(executionSteps.id, result.actionId));
+        
+        const nextIndex = execRecord.currentStepIndex + 1;
+        const plan: any = execRecord.plan;
+        
+        if (nextIndex < plan.length) {
+            await db.update(workflowExecutions).set({ currentStepIndex: nextIndex }).where(eq(workflowExecutions.id, executionId));
+            const nextAction = plan[nextIndex];
+            
+            // Security Check for next action
+            const secRes = await this.securityAgent.execute({ projectId, sessionId, userId, payload: { proposedAction: nextAction } });
+            
+            const [newStep] = await db.insert(executionSteps).values({
+               executionId,
+               actionType: nextAction.actionType || nextAction.type,
+               actionTarget: nextAction.actionTarget || nextAction.target,
+               actionValue: nextAction.actionValue || nextAction.value,
+               status: secRes.data.requiresConfirmation ? "pending_approval" : "planned"
+            }).returning();
+
+            return { success: true, data: { action: { ...nextAction, id: newStep.id }, executionId, security: secRes.data } };
+        } else {
+            await db.update(workflowExecutions).set({ status: "completed" }).where(eq(workflowExecutions.id, executionId));
+            return { success: true, data: { status: "workflow_completed" } };
         }
       }
 
-      // 8. Save State
-      await this.memoryAgent.execute({
-        projectId,
-        sessionId,
-        payload: { currentPlan: plan, lastAction: action, lastContext: contextGraph }
-      });
+      // NEW EXECUTION
+      const planRes = await this.plannerAgent.execute({ projectId, sessionId, payload });
+      if (!planRes.success) return planRes;
+      
+      const plan = planRes.data.plan.steps;
+      if (!plan || plan.length === 0) return { success: true, data: { action: null } };
+
+      const [newExec] = await db.insert(workflowExecutions).values({
+          sessionId: sessionId as any,
+          plan,
+          status: "active"
+      }).returning();
+
+      const firstAction = plan[0];
+      const secRes = await this.securityAgent.execute({ projectId, sessionId, userId, payload: { proposedAction: firstAction } });
+      
+      const [newStep] = await db.insert(executionSteps).values({
+          executionId: newExec.id,
+          actionType: firstAction.actionType || firstAction.type,
+          actionTarget: firstAction.actionTarget || firstAction.target,
+          actionValue: firstAction.actionValue || firstAction.value,
+          status: secRes.data.requiresConfirmation ? "pending_approval" : "planned"
+      }).returning();
 
       return {
         success: true,
         data: {
-          plan,
-          action,
-          security,
-          verification,
-          knowledge
+          executionId: newExec.id,
+          action: { ...firstAction, id: newStep.id },
+          security: secRes.data
         }
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error("Coordinator Error:", error);
+      return { success: false, error: error.message };
     }
   }
 }
+

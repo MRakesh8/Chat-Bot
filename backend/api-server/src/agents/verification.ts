@@ -9,16 +9,34 @@ export class VerificationAgent extends BaseAgent {
     try {
       const { payload } = context;
       
-      // Simulates checking if the last action succeeded based on the new context
-      const lastAction = payload?.lastAction;
-      const currentUrl = payload?.currentUrl;
-
+      const result = payload?.result;
+      
       let verified = true;
       let reason = "Action appears successful.";
 
-      if (lastAction && lastAction.type === "navigate" && !currentUrl.includes(lastAction.expectedPath)) {
+      if (!result) {
+         return { success: true, data: { verified: false, reason: "No result provided." } };
+      }
+
+      if (result.status === "failed") {
          verified = false;
-         reason = "Navigation failed; URL did not change to expected path.";
+         reason = result.error || "Action engine reported failure.";
+      } else {
+         // Verify based on action engine verification block
+         if (result.verification) {
+            const { urlChanged, elementFound, domMutated, successToast } = result.verification;
+            if (result.tool === "navigate" && !urlChanged) {
+               verified = false;
+               reason = "Navigation failed; URL did not change.";
+            } else if (result.tool === "click" && !elementFound && !domMutated) {
+               // A click might not mutate DOM immediately, but if it didn't even find the element, it fails
+               verified = false;
+               reason = "Target element not found.";
+            } else if (result.tool === "type" && !elementFound) {
+               verified = false;
+               reason = "Target input not found.";
+            }
+         }
       }
 
       return {

@@ -461,3 +461,39 @@ export const enterpriseAuditLogsRelations = relations(enterpriseAuditLogs, ({ on
 export const websitePermissionsRelations = relations(websitePermissions, ({ one }) => ({
   project: one(projects, { fields: [websitePermissions.projectId], references: [projects.id] }),
 }));
+
+// Aria AI v2 - True Website Agent Executions
+export const workflowExecutions = pgTable("workflow_executions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id").references(() => chatSessions.id, { onDelete: "cascade" }).notNull(),
+  status: varchar("status", { length: 50 }).default("active").notNull(), // active, completed, failed, pending_approval
+  plan: jsonb("plan").$type<any[]>().default([]).notNull(),
+  memory: jsonb("memory").default({}).notNull(),
+  currentStepIndex: integer("current_step_index").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const executionSteps = pgTable("execution_steps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  executionId: uuid("execution_id").references(() => workflowExecutions.id, { onDelete: "cascade" }).notNull(),
+  actionType: varchar("action_type", { length: 100 }).notNull(),
+  actionTarget: text("action_target"),
+  actionValue: text("action_value"),
+  status: varchar("status", { length: 50 }).default("planned").notNull(), // planned, executing, verifying, success, failed, retry, failed_final
+  retryCount: integer("retry_count").default(0).notNull(),
+  verificationResult: jsonb("verification_result").default({}),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const workflowExecutionsRelations = relations(workflowExecutions, ({ one, many }) => ({
+  session: one(chatSessions, { fields: [workflowExecutions.sessionId], references: [chatSessions.id] }),
+  steps: many(executionSteps),
+}));
+
+export const executionStepsRelations = relations(executionSteps, ({ one }) => ({
+  execution: one(workflowExecutions, { fields: [executionSteps.executionId], references: [workflowExecutions.id] }),
+}));
+

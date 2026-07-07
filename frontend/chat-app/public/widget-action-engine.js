@@ -119,61 +119,104 @@
   /**
    * Main execution handler for Agent Actions.
    */
-  AriaActionEngine.prototype.executeAction = function(actionParams) {
+  AriaActionEngine.prototype.executeAction = function(actionParams, widgetToken, executionId, apiBaseUrl) {
     var self = this;
     return new Promise(function(resolve, reject) {
+      var startTime = Date.now();
+      var initialUrl = window.location.href;
+      var domMutated = false;
+      var elementFound = false;
+
+      var postResult = function(status, error, verificationData) {
+        if (!widgetToken || !executionId) return resolve({ status: status, error: error });
+        var payload = {
+           executionId: executionId,
+           actionId: actionParams.id,
+           status: status,
+           tool: actionParams.type,
+           duration: Date.now() - startTime,
+           url: window.location.href,
+           verification: verificationData || {},
+           error: error ? error.message || String(error) : null
+        };
+        fetch((apiBaseUrl || 'http://localhost:3001') + '/api/widget/' + widgetToken + '/action-result', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify(payload)
+        }).then(function() {
+           resolve(payload);
+        }).catch(function(err) {
+           resolve(payload); // Resolve anyway to not block frontend UI
+        });
+      };
+
       try {
-        var actionType = actionParams.type;
-        var locator = actionParams.locator;
+        var actionType = actionParams.type || actionParams.actionType;
+        var locator = actionParams.locator || { css: actionParams.actionTarget, xpath: actionParams.actionTarget }; // Simple mapping if LLM returns just a string target
         
-        if (actionType === 'idle') {
-          return resolve({ success: true, message: 'Idle action completed' });
+        if (actionType === 'idle' || actionType === 'retry') {
+          return postResult('success', null, { urlChanged: false, domMutated: false });
         }
 
         var element = self._findElement(locator);
-        if (!element) {
-          return reject(new Error('Target element not found: ' + JSON.stringify(locator)));
+        if (element) elementFound = true;
+        
+        if (!element && actionType !== 'navigate') {
+          return postResult('failed', new Error('Target element not found: ' + JSON.stringify(locator)), { elementFound: false });
         }
 
         // Highlight element briefly for UX
-        var oldBorder = element.style.border;
-        var oldTransition = element.style.transition;
-        element.style.transition = 'all 0.3s';
-        element.style.border = '2px solid #3b82f6';
+        if (element) {
+          var oldBorder = element.style.border;
+          var oldTransition = element.style.transition;
+          element.style.transition = 'all 0.3s';
+          element.style.border = '2px solid #3b82f6';
+        }
         
         setTimeout(function() {
-          element.style.border = oldBorder;
-          element.style.transition = oldTransition;
+          if (element) {
+            element.style.border = oldBorder;
+            element.style.transition = oldTransition;
+          }
           
           try {
             switch (actionType) {
               case 'click':
-              case 'navigate': // treated as click for DOM navigation
                 self._simulateClick(element);
                 break;
+              case 'navigate':
+                if (actionParams.actionTarget || actionParams.value) {
+                   window.location.href = actionParams.actionTarget || actionParams.value;
+                } else if (element) {
+                   self._simulateClick(element);
+                }
+                break;
               case 'type':
-                self._simulateType(element, actionParams.value || '');
+                self._simulateType(element, actionParams.value || actionParams.actionValue || '');
                 break;
               default:
                 throw new Error('Unsupported action type: ' + actionType);
             }
             
             // Wait for potential DOM mutations (React updates)
-            var observer = new MutationObserver(function() {});
-            observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+            var observer = new MutationObserver(function(mutations) {
+               if (mutations.length > 0) domMutated = true;
+            });
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
             
             setTimeout(function() {
                observer.disconnect();
-               resolve({ success: true, target: locator.css, navigated: window.location.href });
+               var urlChanged = window.location.href !== initialUrl;
+               postResult('success', null, { urlChanged: urlChanged, domMutated: domMutated, elementFound: elementFound });
             }, 800); // 800ms debounce
             
           } catch(e) {
-            reject(e);
+            postResult('failed', e, { elementFound: elementFound });
           }
         }, 500); // Small delay to let user see what is being interacted with
 
       } catch (err) {
-        reject(err);
+        postResult('failed', err, { elementFound: elementFound });
       }
     });
   };

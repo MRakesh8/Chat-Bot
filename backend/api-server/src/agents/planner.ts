@@ -1,4 +1,10 @@
 import { BaseAgent, AgentContext, AgentResult } from "./base";
+import { ai } from "@workspace/integrations-gemini-ai";
+import { db } from "@workspace/db";
+import { projectApiKeys } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+import { crypto } from "@workspace/db";
+import { GoogleGenAI } from "@google/genai";
 
 export class PlannerAgent extends BaseAgent {
   constructor() {
@@ -7,23 +13,79 @@ export class PlannerAgent extends BaseAgent {
 
   async execute(context: AgentContext): Promise<AgentResult> {
     try {
-      const { payload } = context;
-      
-      // In a real environment, this invokes the LLM with the context and previous goals.
-      // For the dry-run, we simulate planning logic based on the user's intent.
+      const { projectId, payload } = context;
       
       const intent = payload?.intent || "Unknown intent";
       const currentUrl = payload?.currentUrl || "";
+      const websiteContext = payload?.context || "No context provided.";
 
-      // Simulate a generic multi-step plan
+      // Fetch primary api key
+      const [keyData] = await db
+        .select()
+        .from(projectApiKeys)
+        .where(eq(projectApiKeys.projectId, projectId));
+        
+      if (!keyData) {
+         return { success: false, error: "No API key found for this project." };
+      }
+
+      const activeKey = crypto.decrypt(keyData.encryptedKey) || keyData.encryptedKey;
+      const directClient = new GoogleGenAI({
+        apiKey: activeKey,
+        httpOptions: { baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
+      });
+
+      const systemPrompt = `You are Aria AI's Planner Agent, an autonomous Website Agent.
+Your job is to translate the user's intent into executable JSON browser actions.
+
+AVAILABLE ACTIONS:
+- {"type": "navigate", "target": "URL"}
+- {"type": "click", "target": "Element Description"}
+- {"type": "type", "target": "Element Description", "value": "text to type"}
+- {"type": "scroll", "target": "down"}
+- {"type": "wait", "duration": 1000}
+
+RULES:
+1. ONLY output a JSON array of action objects. No markdown formatting, no conversational text.
+2. Ensure the actions logically fulfill the user's request based on the current context.
+
+CONTEXT:
+Current URL: ${currentUrl}
+Website Context: ${JSON.stringify(websiteContext)}
+`;
+
+      const response = await directClient.models.generateContent({
+        model: keyData.model || "gemini-2.5-flash",
+        contents: [
+           { role: "user", parts: [{ text: systemPrompt }] },
+           { role: "user", parts: [{ text: `User Intent: ${intent}\n\nGenerate the action plan as a JSON array.` }] }
+        ],
+        config: {
+           responseMimeType: "application/json",
+        }
+      });
+
+      let planSteps = [];
+      try {
+         const textResult = response.text || "[]";
+         planSteps = JSON.parse(textResult);
+         if (!Array.isArray(planSteps)) {
+            planSteps = [planSteps];
+         }
+      } catch (e) {
+         console.error("Failed to parse Planner JSON:", e);
+      }
+
       const plan = {
         goal: intent,
-        steps: [
-          { stepId: 1, action: "analyze_dom", status: "pending" },
-          { stepId: 2, action: "find_element", target: "form", status: "pending" },
-          { stepId: 3, action: "execute_interaction", status: "pending" }
-        ],
-        currentStepId: 1
+        steps: planSteps.map((step: any, index: number) => ({
+           stepId: index + 1,
+           actionType: step.type,
+           actionTarget: step.target,
+           actionValue: step.value,
+           status: "pending"
+        })),
+        currentStepIndex: 0
       };
 
       return {
@@ -32,6 +94,7 @@ export class PlannerAgent extends BaseAgent {
         confidenceScore: 0.95
       };
     } catch (error: any) {
+      console.error("PlannerAgent error:", error);
       return {
         success: false,
         error: error.message

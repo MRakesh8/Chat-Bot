@@ -932,7 +932,12 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         });
         
         if (actionRes.success && actionRes.data?.action && actionRes.data.action.type !== 'idle') {
-           res.write(`data: ${JSON.stringify({ action: actionRes.data.action })}\n\n`);
+           const payload = { 
+              action: actionRes.data.action,
+              executionId: actionRes.data.executionId,
+              security: actionRes.data.security
+           };
+           res.write(`data: ${JSON.stringify(payload)}\n\n`);
            if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       } catch(e) {
@@ -985,6 +990,47 @@ router.post("/:widgetToken/swarm-dryrun", async (req: Request, res: Response): P
     }
   } catch (error: any) {
     console.error("Swarm dryrun error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Action Engine Result Webhook
+import { workflowExecutions, executionSteps } from "@workspace/db/schema";
+
+router.post("/:widgetToken/action-result", async (req: Request, res: Response): Promise<any> => {
+  const { executionId, actionId, status, tool, duration, url, domDelta, verification, error } = req.body;
+  if (!executionId || !actionId) {
+    return res.status(400).json({ error: "Missing executionId or actionId" });
+  }
+
+  try {
+    const projectId = (req as any).projectId;
+    
+    // Update execution steps
+    await db.update(executionSteps)
+      .set({ 
+        status, 
+        verificationResult: verification || {}, 
+        error 
+      })
+      .where(eq(executionSteps.id, actionId));
+
+    // Wake up CoordinatorAgent to continue plan
+    const [execRecord] = await db.select().from(workflowExecutions).where(eq(workflowExecutions.id, executionId));
+    if (execRecord) {
+       setTimeout(() => {
+          const coordinator = new CoordinatorAgent();
+          coordinator.execute({
+            projectId,
+            sessionId: execRecord.sessionId,
+            payload: { resumeExecution: true, executionId, actionResult: req.body }
+          }).catch(console.error);
+       }, 0);
+    }
+    
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Action result error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
