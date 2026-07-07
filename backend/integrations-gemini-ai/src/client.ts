@@ -1,6 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { db, userApiKeys, userApiSettings, projectApiKeys, crypto } from "@workspace/db";
 import { eq, and, isNull, asc } from "drizzle-orm";
+import { OpenAI } from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
 if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
   throw new Error(
@@ -471,13 +473,8 @@ class GeminiFailoverModels {
     let lastError: any = null;
 
     for (const key of keys) {
-      const decryptedKey = crypto.decrypt(key.encryptedKey);
+      const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
       
-      const client = new GoogleGenAI({
-        apiKey: decryptedKey || key.encryptedKey, // Fallback in case it's not encrypted correctly during migration
-        httpOptions: { apiVersion: "", baseUrl: baseUrl }
-      });
-
       let keyFailed = false;
       let allFailuresWereTransient = true;
 
@@ -485,15 +482,129 @@ class GeminiFailoverModels {
         const attemptOptions = { ...options, model: modelToUse };
         
         try {
-          console.log(`[Gemini Routing] Provider: ${key.provider} | Model: ${modelToUse} | Key: ${key.id} (System: ${key.isSystem}) | Status: Trying`);
+          const lowerModel = modelToUse.toLowerCase();
+          const lowerProvider = key.provider.toLowerCase();
           
-          let result;
-          if (method === 'generateContent') {
-            result = await executeWithRetry(() => client.models.generateContent(attemptOptions));
-          } else if (method === 'generateContentStream') {
-            result = await executeWithRetry(() => client.models.generateContentStream(attemptOptions));
-          } else if (method === 'embedContent') {
-            result = await executeWithRetry(() => client.models.embedContent(attemptOptions as any));
+          let isModelValid = true;
+          if (lowerProvider === "gemini" && !lowerModel.includes("gemini") && !lowerModel.includes("learnlm")) {
+            isModelValid = false;
+          } else if (lowerProvider !== "gemini" && lowerProvider !== "claude" && (lowerModel.includes("gemini") || lowerModel.includes("learnlm"))) {
+            isModelValid = false;
+          }
+          
+          if (!isModelValid) {
+            console.error(`[Gemini Routing] Invalid combination: Provider ${key.provider} cannot use model ${modelToUse}. Skipping key.`);
+            allFailuresWereTransient = false;
+            break; // Move to next key
+          }
+
+          let sdkName = "GoogleGenAI";
+          let endpointName = "Google Gemini API";
+          if (lowerProvider === "claude") {
+            sdkName = "Anthropic SDK";
+            endpointName = "api.anthropic.com";
+          } else if (lowerProvider !== "gemini") {
+            sdkName = "OpenAI SDK";
+            if (lowerProvider === "groq") endpointName = "api.groq.com/openai/v1";
+            else if (lowerProvider === "openrouter") endpointName = "openrouter.ai/api/v1";
+            else if (lowerProvider === "deepseek") endpointName = "api.deepseek.com/v1";
+            else endpointName = "api.openai.com/v1";
+          }
+          
+          const keySlot = key.isSystem ? `System API ${key.id.substring(0,4)}` : `User API ${key.id.substring(0,4)}`;
+          
+          console.log(`\n--- Execution Diagnostics ---`);
+          console.log(`Selected Provider: ${key.provider}`);
+          console.log(`Selected Model: ${modelToUse}`);
+          console.log(`Selected SDK: ${sdkName}`);
+          console.log(`Selected Endpoint: ${endpointName}`);
+          console.log(`Selected API Key: ${keySlot}`);
+          console.log(`---------------------------\n`);
+          
+          let result: any;
+          
+          if (lowerProvider === "gemini") {
+            const client = new GoogleGenAI({
+              apiKey: decryptedKey,
+              httpOptions: { apiVersion: "", baseUrl: baseUrl }
+            });
+            if (method === 'generateContent') {
+              result = await executeWithRetry(() => client.models.generateContent(attemptOptions));
+            } else if (method === 'generateContentStream') {
+              result = await executeWithRetry(() => client.models.generateContentStream(attemptOptions));
+            } else if (method === 'embedContent') {
+              result = await executeWithRetry(() => client.models.embedContent(attemptOptions as any));
+            }
+          } else if (lowerProvider === "claude") {
+            if (method === 'embedContent') throw new Error("Anthropic does not support embedding directly in this wrapper");
+            const client = new Anthropic({ apiKey: decryptedKey });
+            const chatMessages = (attemptOptions.contents || []).map((m: any) => ({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.parts?.[0]?.text || m.content || ""
+            }));
+            const systemInst = attemptOptions.config?.systemInstruction?.parts?.[0]?.text;
+            
+            if (method === 'generateContent') {
+              const res = await executeWithRetry(() => client.messages.create({
+                model: modelToUse,
+                system: systemInst,
+                messages: chatMessages,
+                temperature: attemptOptions.config?.temperature ?? 0.7,
+                max_tokens: attemptOptions.config?.maxOutputTokens || 4096
+              }));
+              result = { text: res.content[0]?.type === 'text' ? res.content[0].text : "" };
+            } else {
+              const stream = await executeWithRetry(() => client.messages.create({
+                model: modelToUse,
+                system: systemInst,
+                messages: chatMessages,
+                temperature: attemptOptions.config?.temperature ?? 0.7,
+                max_tokens: attemptOptions.config?.maxOutputTokens || 4096,
+                stream: true
+              }));
+              result = (async function*() {
+                for await (const chunk of stream) {
+                  if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+                    yield { text: chunk.delta.text };
+                  }
+                }
+              })();
+            }
+          } else {
+            if (method === 'embedContent') throw new Error("OpenAI compatible does not support embedding directly in this wrapper");
+            const baseURL = "https://" + endpointName;
+            const client = new OpenAI({ apiKey: decryptedKey, baseURL });
+            const chatMessages = (attemptOptions.contents || []).map((m: any) => ({
+              role: m.role === 'model' ? 'assistant' : 'user',
+              content: m.parts?.[0]?.text || m.content || ""
+            }));
+            const systemInst = attemptOptions.config?.systemInstruction?.parts?.[0]?.text;
+            if (systemInst) chatMessages.unshift({ role: 'system', content: systemInst });
+            
+            if (method === 'generateContent') {
+              const res = await executeWithRetry(() => client.chat.completions.create({
+                model: modelToUse,
+                messages: chatMessages,
+                temperature: attemptOptions.config?.temperature ?? 0.7,
+                max_tokens: attemptOptions.config?.maxOutputTokens
+              }));
+              result = { text: res.choices[0]?.message?.content || "" };
+            } else {
+              const stream = await executeWithRetry(() => client.chat.completions.create({
+                model: modelToUse,
+                messages: chatMessages,
+                temperature: attemptOptions.config?.temperature ?? 0.7,
+                max_tokens: attemptOptions.config?.maxOutputTokens,
+                stream: true
+              }));
+              result = (async function*() {
+                for await (const chunk of stream) {
+                  if (chunk.choices[0]?.delta?.content) {
+                    yield { text: chunk.choices[0].delta.content };
+                  }
+                }
+              })();
+            }
           }
 
           await this._updateKeySuccess(key);

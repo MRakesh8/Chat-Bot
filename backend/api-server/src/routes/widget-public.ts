@@ -364,21 +364,45 @@ async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'ge
 
   // Validate that the selected model belongs to the selected provider
   let isModelValid = true;
-  if (key.rawDbKey?.availableModels && Array.isArray(key.rawDbKey.availableModels)) {
+  const lowerModel = selectedModel.toLowerCase();
+  const lowerProvider = key.provider.toLowerCase();
+
+  // 1. Strict provider-model mismatch rules
+  if (lowerProvider === "gemini" && !lowerModel.includes("gemini") && !lowerModel.includes("learnlm")) {
+    isModelValid = false;
+  } else if (lowerProvider !== "gemini" && lowerProvider !== "claude" && (lowerModel.includes("gemini") || lowerModel.includes("learnlm"))) {
+    isModelValid = false;
+  }
+
+  // 2. Database available models restriction
+  if (isModelValid && key.rawDbKey?.availableModels && Array.isArray(key.rawDbKey.availableModels) && key.rawDbKey.availableModels.length > 0) {
     isModelValid = key.rawDbKey.availableModels.includes(selectedModel);
-  } else if (key.provider === "groq" && selectedModel.includes("gemini")) {
-    isModelValid = false;
-  } else if (key.provider === "gemini" && !selectedModel.includes("gemini") && !selectedModel.includes("learnlm")) {
-    isModelValid = false;
   }
 
   if (!isModelValid) {
     throw new Error(`Invalid model for selected provider.`);
   }
 
-  console.log(`\nSelected Provider: ${key.provider}`);
+  let sdkName = "GoogleGenAI SDK";
+  let endpointName = "Google Gemini API";
+  if (lowerProvider === "claude") {
+    sdkName = "Anthropic SDK";
+    endpointName = "api.anthropic.com";
+  } else if (lowerProvider !== "gemini") {
+    sdkName = "OpenAI SDK";
+    if (lowerProvider === "groq") endpointName = "api.groq.com/openai/v1";
+    else if (lowerProvider === "openrouter") endpointName = "openrouter.ai/api/v1";
+    else if (lowerProvider === "deepseek") endpointName = "api.deepseek.com/v1";
+    else endpointName = "api.openai.com/v1";
+  }
+
+  console.log(`\n--- Execution Diagnostics ---`);
+  console.log(`Selected Provider: ${key.provider}`);
   console.log(`Selected Model: ${selectedModel}`);
+  console.log(`Selected SDK: ${sdkName}`);
+  console.log(`Selected Endpoint: ${endpointName}`);
   console.log(`Selected API Key: ${key.id || 'env'}`);
+  console.log(`---------------------------\n`);
   
   if (key.provider !== 'gemini') {
     const adapter = new UniversalProviderAdapter({
@@ -398,24 +422,18 @@ async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'ge
     }
 
     if (method === 'generateContent') {
-      console.log(`Selected Client: ${key.provider === 'claude' ? 'Anthropic SDK' : 'OpenAI SDK'}`);
-      console.log(`Selected Endpoint: Universal Adapter`);
       const response = await adapter.generateChat({
         messages,
         temperature: 0.7
       });
       return { text: response.content };
     } else {
-      console.log(`Selected Client: ${key.provider === 'claude' ? 'Anthropic SDK' : 'OpenAI SDK'}`);
-      console.log(`Selected Endpoint: Universal Adapter (Stream)`);
       return adapter.generateChatStream({
         messages,
         temperature: 0.7
       });
     }
   } else {
-    console.log(`Selected Client: GoogleGenAI SDK`);
-    console.log(`Selected Endpoint: https://generativelanguage.googleapis.com`);
     return await executeWithFallback(key.decryptedKey, method, { ...options, model: selectedModel });
   }
 }

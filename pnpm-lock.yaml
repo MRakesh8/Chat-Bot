@@ -62,7 +62,7 @@ catalogs:
       version: 4.3.0
     tsx:
       specifier: ^4.21.0
-      version: 4.22.4
+      version: 4.21.0
     vite:
       specifier: ^7.3.2
       version: 7.3.3
@@ -308,6 +308,9 @@ importers:
 
   backend/integrations-gemini-ai:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.110.0
+        version: 0.110.0(zod@3.25.76)
       '@google/genai':
         specifier: ^1.44.0
         version: 1.52.0
@@ -317,6 +320,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
+      openai:
+        specifier: ^6.45.0
+        version: 6.45.0(ws@8.21.0)(zod@3.25.76)
       p-limit:
         specifier: ^7.3.0
         version: 7.3.0
