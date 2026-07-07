@@ -25,7 +25,6 @@ export function ApiKeysSettings() {
   const [loading, setLoading] = useState(true);
   const [newKey, setNewKey] = useState("");
   const [newName, setNewName] = useState("");
-  const [newProvider, setNewProvider] = useState("gemini");
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -101,7 +100,7 @@ export function ApiKeysSettings() {
       const res = await fetch(apiUrl("/api/api-keys"), {
         method: "POST",
         headers,
-        body: JSON.stringify({ name: newName, apiKey: newKey, provider: newProvider }),
+        body: JSON.stringify({ name: newName, apiKey: newKey }),
       });
       if (res.ok) {
         setNewKey("");
@@ -118,7 +117,7 @@ export function ApiKeysSettings() {
     }
   };
 
-  const handleAction = async (id: string, action: string, method: string = "PATCH") => {
+  const handleAction = async (id: string, action: string, method: string = "PATCH", body?: any) => {
     try {
       if (action === "test") setTestingId(id);
       const { data } = await supabase.auth.getSession();
@@ -126,13 +125,21 @@ export function ApiKeysSettings() {
       if (data.session?.access_token) {
         headers.Authorization = `Bearer ${data.session.access_token}`;
       }
-      const url = action === "delete" ? `/api/api-keys/${id}` : `/api/api-keys/${id}/${action}`;
+      let url = `/api/api-keys/${id}/${action}`;
+      if (action === "delete" || action === "update") {
+        url = `/api/api-keys/${id}`;
+      }
+      
       const res = await fetch(apiUrl(url), {
         method,
         headers,
+        ...(body ? { body: JSON.stringify(body) } : {})
       });
       if (res.ok) {
         fetchSettings();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error(`Failed to execute ${action}:`, errorData);
       }
     } catch (err) {
       console.error(`Failed to execute ${action} on key`, err);
@@ -251,8 +258,35 @@ export function ApiKeysSettings() {
                 
                 {/* Actions row */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 pt-2 border-t border-border/50 gap-2">
-                  <div className="text-xs text-muted-foreground break-all">
-                    Provider: <span className="uppercase font-medium">{key.provider}</span>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground w-full sm:w-auto">
+                    <span>Provider: <span className="uppercase font-medium text-foreground">{(key as any).provider}</span></span>
+                    
+                    {(key as any).availableModels && Array.isArray((key as any).availableModels) && (key as any).availableModels.length > 0 ? (
+                      <div className="flex items-center gap-2 ml-2">
+                        <span>Model:</span>
+                        <select 
+                          value={(key as any).model || ""} 
+                          onChange={(e) => handleAction(key.id, "update", "PUT", { model: e.target.value })}
+                          className="h-7 text-xs bg-background border border-border rounded-md px-1"
+                        >
+                          <option value="" disabled>Select model</option>
+                          {(key as any).availableModels.map((m: string) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                        <button 
+                          type="button"
+                          className="h-7 w-7 p-0 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-md" 
+                          onClick={() => handleAction(key.id, "refresh-models", "POST")}
+                          title="Refresh available models"
+                        >
+                          <PlayCircle size={14} className="rotate-90" />
+                        </button>
+                      </div>
+                    ) : (
+                      (key as any).model && <span className="ml-2">| Model: {(key as any).model}</span>
+                    )}
+
                     {key.status !== "HEALTHY" && key.failureReason && <span className="text-red-500 ml-2" title={key.failureReason}>| Error: {key.failureReason.substring(0, 30)}...</span>}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -282,22 +316,12 @@ export function ApiKeysSettings() {
           <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
             {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex flex-col md:flex-row gap-2 md:items-center">
-              <select
-                value={newProvider}
-                onChange={(e) => setNewProvider(e.target.value)}
-                className="w-full md:w-auto bg-background border border-border rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
-              >
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-                <option value="claude">Claude</option>
-                <option value="groq">Groq</option>
-              </select>
               <input
                 type="text"
                 placeholder="Key Name (Optional)"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full md:flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
+                className="w-full md:w-1/4 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
               />
               <input
                 type="text"

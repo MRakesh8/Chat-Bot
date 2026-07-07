@@ -41,15 +41,13 @@ export function ApiKeys({ projectId }: { projectId: string }) {
     enabled: !!projectId,
   });
 
-  const [provider, setProvider] = useState("gemini");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
   const [name, setName] = useState("");
   const [testingId, setTestingId] = useState<string | null>(null);
 
   const addKeyMutation = useMutation({
-    mutationFn: async (data: { provider: string; apiKey: string; model?: string; name?: string }) => {
-      console.debug("API key save started", { provider: data.provider });
+    mutationFn: async (data: { apiKey: string; name?: string }) => {
+      console.debug("API key save started");
       const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/api-keys`), {
         method: "POST",
         body: JSON.stringify(data),
@@ -66,10 +64,10 @@ export function ApiKeys({ projectId }: { projectId: string }) {
       queryClient.setQueryData(["project-api-keys", projectId], (old: any[] | undefined) => {
         const optimisticKey = {
           id: `temp-${Date.now()}`,
-          name: newKey.name || `${newKey.provider.toUpperCase()} Key`,
-          provider: newKey.provider,
+          name: newKey.name || `API Key`,
+          provider: "detecting...",
           maskedKey: newKey.apiKey.substring(0, 5) + "..." + newKey.apiKey.substring(newKey.apiKey.length - 4),
-          model: newKey.model,
+          model: "detecting...",
           createdAt: new Date().toISOString()
         };
         return old ? [...old, optimisticKey] : [optimisticKey];
@@ -83,11 +81,10 @@ export function ApiKeys({ projectId }: { projectId: string }) {
       }
       toast({ title: "Failed to add API key", variant: "destructive" });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       console.debug("API key save completed");
-      toast({ title: "API Key added successfully!" });
+      toast({ title: `Successfully added ${data.provider} key`, description: `Default model: ${data.model}` });
       setApiKey("");
-      setModel("");
       setName("");
     },
     onSettled: () => {
@@ -151,10 +148,48 @@ export function ApiKeys({ projectId }: { projectId: string }) {
     }
   });
 
+  const changeModelMutation = useMutation({
+    mutationFn: async ({ keyId, model }: { keyId: string; model: string }) => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/api-keys/${keyId}`), {
+        method: "PUT",
+        body: JSON.stringify({ model })
+      });
+      if (!res.ok) throw new Error(`Failed to change model`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: `Successfully updated model` });
+      queryClient.invalidateQueries({ queryKey: ["project-api-keys", projectId] });
+    },
+    onError: () => {
+      toast({ title: `Failed to update model`, variant: "destructive" });
+    }
+  });
+
+  const refreshModelsMutation = useMutation({
+    mutationFn: async (keyId: string) => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/api-keys/${keyId}/refresh-models`), {
+        method: "POST"
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(()=>({}));
+        throw new Error(errorData.error || `Failed to refresh models`);
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: `Successfully refreshed models`, description: `Found ${data.models?.length || 0} models.` });
+      queryClient.invalidateQueries({ queryKey: ["project-api-keys", projectId] });
+    },
+    onError: (err: any) => {
+      toast({ title: `Failed to refresh models`, description: err.message, variant: "destructive" });
+    }
+  });
+
   const handleAddKey = (e: React.FormEvent) => {
     e.preventDefault();
     if (!apiKey) return;
-    addKeyMutation.mutate({ provider, apiKey, model, name });
+    addKeyMutation.mutate({ apiKey, name });
   };
 
   const getStatusIcon = (status: string, isEnabled: boolean) => {
@@ -177,7 +212,7 @@ export function ApiKeys({ projectId }: { projectId: string }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleAddKey} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end mb-8 p-4 bg-muted border border-border rounded-lg">
+          <form onSubmit={handleAddKey} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-8 p-4 bg-muted border border-border rounded-lg">
             <div className="space-y-2">
               <label className="text-sm font-medium">Name (Optional)</label>
               <Input 
@@ -187,47 +222,21 @@ export function ApiKeys({ projectId }: { projectId: string }) {
                 className="bg-card"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Provider</label>
-              <Select value={provider} onValueChange={setProvider}>
-                <SelectTrigger className="bg-card">
-                  <SelectValue placeholder="Select Provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gemini">Google Gemini</SelectItem>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="claude">Anthropic Claude</SelectItem>
-                  <SelectItem value="groq">Groq</SelectItem>
-                  <SelectItem value="deepseek">DeepSeek</SelectItem>
-                  <SelectItem value="openrouter">OpenRouter</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Model (Optional)</label>
-              <Input 
-                value={model} 
-                onChange={(e) => setModel(e.target.value)} 
-                placeholder="e.g. gpt-4o" 
-                className="bg-card"
-              />
-            </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium">API Key</label>
               <Input 
                 type="password"
                 value={apiKey} 
                 onChange={(e) => setApiKey(e.target.value)} 
-                placeholder="sk-..." 
+                placeholder="Paste API Key here (Gemini, Groq, OpenAI, Anthropic, OpenRouter)..." 
                 className="bg-card"
               />
             </div>
 
             <Button type="submit" disabled={!apiKey || addKeyMutation.isPending} className="w-full gap-2">
               {addKeyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Add Key
+              Verify & Add
             </Button>
           </form>
 
@@ -263,9 +272,41 @@ export function ApiKeys({ projectId }: { projectId: string }) {
                     
                     {/* Actions row */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 pt-2 border-t border-border/50 gap-2">
-                      <div className="text-xs text-muted-foreground break-all">
-                        Provider: <span className="uppercase font-medium">{key.provider}</span>
-                        {key.model && <span className="ml-2">| Model: {key.model}</span>}
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground w-full sm:w-auto">
+                        <span>Provider: <span className="uppercase font-medium text-foreground">{key.provider}</span></span>
+                        
+                        {key.availableModels && Array.isArray(key.availableModels) && key.availableModels.length > 0 ? (
+                          <div className="flex items-center gap-2 ml-2">
+                            <span>Model:</span>
+                            <Select 
+                              value={key.model || ""} 
+                              onValueChange={(val) => changeModelMutation.mutate({ keyId: key.id, model: val })}
+                            >
+                              <SelectTrigger className="h-7 text-xs bg-background">
+                                <SelectValue placeholder="Select model" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {key.availableModels.map((m: string) => (
+                                  <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-7 w-7 p-0" 
+                              onClick={() => refreshModelsMutation.mutate(key.id)}
+                              title="Refresh available models"
+                              disabled={refreshModelsMutation.isPending}
+                            >
+                              <Loader2 className={`w-3 h-3 ${refreshModelsMutation.isPending ? 'animate-spin' : 'hidden'}`} />
+                              <Server className={`w-3 h-3 ${refreshModelsMutation.isPending ? 'hidden' : ''}`} />
+                            </Button>
+                          </div>
+                        ) : (
+                          key.model && <span className="ml-2">| Model: {key.model}</span>
+                        )}
+
                         {key.status !== "HEALTHY" && key.failureReason && <span className="text-red-500 ml-2" title={key.failureReason}>| Error: {key.failureReason.substring(0, 30)}...</span>}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">

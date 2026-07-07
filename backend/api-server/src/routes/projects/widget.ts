@@ -168,18 +168,26 @@ router.get("/api-keys", async (req: any, res: Response) => {
   }
 });
 
+import { ProviderVerifier } from "../../services/provider-verifier";
+
 router.post("/api-keys", async (req: any, res: Response) => {
   const { projectId } = req.params;
-  const { provider, apiKey, model, name } = req.body;
+  const { apiKey, name } = req.body;
 
-  if (!provider || !apiKey) {
-    return res.status(400).json({ error: "Provider and API Key are required" });
+  if (!apiKey) {
+    return res.status(400).json({ error: "API Key is required" });
   }
 
   try {
-    // Basic masking (e.g., sk-12...abcd)
-    const maskedKey = apiKey.substring(0, 5) + "..." + apiKey.substring(apiKey.length - 4);
+    // Detect provider and fetch models automatically
+    const verified = await ProviderVerifier.verifyAndFetchModels(apiKey);
     
+    // Basic masking (e.g., sk-12...abcd)
+    let maskedKey = apiKey.substring(0, 5) + "..." + apiKey.substring(apiKey.length - 4);
+    if (verified.provider === "gemini") {
+      maskedKey = `AIza****${apiKey.slice(-4)}`;
+    }
+
     // In real implementation, encrypt this with KMS or env secret
     const encryptedKey = dbCrypto.encrypt(apiKey);
 
@@ -187,23 +195,58 @@ router.post("/api-keys", async (req: any, res: Response) => {
       where: eq(projectApiKeys.projectId, projectId)
     });
 
+    // Duplicate detection
+    const isDuplicate = existingKeys.some(k => {
+      try {
+        return dbCrypto.decrypt(k.encryptedKey) === apiKey;
+      } catch { return false; }
+    });
+    if (isDuplicate) return res.status(409).json({ error: "This API key already exists for this project." });
+
     await db.insert(projectApiKeys).values({
       projectId,
-      name: name || `${provider.toUpperCase()} Key ${existingKeys.length + 1}`,
-      provider,
+      name: name || `${verified.provider.toUpperCase()} Key ${existingKeys.length + 1}`,
+      provider: verified.provider,
       encryptedKey,
       maskedKey,
-      model,
+      model: verified.defaultModel,
+      availableModels: verified.models,
       isEnabled: true,
       isPrimary: existingKeys.length === 0,
       status: "HEALTHY",
       lastSuccess: new Date(),
     } as any);
 
-    return res.json({ success: true });
-  } catch (error) {
+    return res.json({ success: true, provider: verified.provider, model: verified.defaultModel });
+  } catch (error: any) {
     console.error("Failed to add project API key:", error);
-    return res.status(500).json({ error: "Failed to add project key" });
+    return res.status(400).json({ error: error.message || "Failed to verify or add project key" });
+  }
+});
+
+router.put("/api-keys/:keyId", async (req: any, res: Response) => {
+  const { projectId, keyId } = req.params;
+  const { model } = req.body;
+  try {
+    const existing = await db.query.projectApiKeys.findFirst({
+      where: and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId))
+    });
+    if (!existing) return res.status(404).json({ error: "Key not found" });
+
+    // Validate if the model is in availableModels
+    if (model && existing.availableModels && Array.isArray(existing.availableModels)) {
+      if (!existing.availableModels.includes(model)) {
+        return res.status(400).json({ error: `Model ${model} is not supported by this API key.` });
+      }
+    }
+
+    await db.update(projectApiKeys).set({ model }).where(and(
+      eq(projectApiKeys.id, keyId as any),
+      eq(projectApiKeys.projectId, projectId)
+    ));
+    res.json({ success: true, message: "Key updated" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update project key" });
   }
 });
 
@@ -220,18 +263,7 @@ router.delete("/api-keys/:keyId", async (req: any, res: Response) => {
   }
 });
 
-import { GoogleGenAI } from "@google/genai";
-
-async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
-  try {
-    const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" } });
-    await client.models.generateContent({ model: "gemini-2.0-flash", contents: "test" });
-    return { success: true, message: "API key verified successfully." };
-  } catch (e: any) {
-    if (e?.status === 429) return { success: false, message: "Quota Exceeded" };
-    return { success: false, message: "Invalid API key." };
-  }
-}
+// The provider verifier is imported at the top of the file
 
 router.post("/api-keys/:keyId/test", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
@@ -242,17 +274,24 @@ router.post("/api-keys/:keyId/test", async (req: any, res: Response) => {
     if (!existing) return res.status(404).json({ error: "Key not found" });
 
     const decryptedKey = dbCrypto.decrypt(existing.encryptedKey);
-    const testRes = await testGeminiKey(decryptedKey || existing.encryptedKey);
-
-    if (testRes.success) {
-      await db.update(projectApiKeys).set({ status: "HEALTHY", isEnabled: true, lastSuccess: new Date(), failureReason: null }).where(eq(projectApiKeys.id, keyId as any));
-      return res.json({ status: "Healthy" });
-    } else {
-      if (testRes.message === "Quota Exceeded") {
-        await db.update(projectApiKeys).set({ status: "QUOTA_EXCEEDED", failureReason: testRes.message }).where(eq(projectApiKeys.id, keyId as any));
+    
+    try {
+      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey || existing.encryptedKey, existing.provider);
+      await db.update(projectApiKeys).set({ 
+        status: "HEALTHY", 
+        isEnabled: true, 
+        lastSuccess: new Date(), 
+        failureReason: null,
+        availableModels: verified.models // auto update models on test
+      }).where(eq(projectApiKeys.id, keyId as any));
+      return res.json({ status: "Healthy", models: verified.models });
+    } catch (e: any) {
+      const msg = e.message || "Invalid API key";
+      if (msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("429")) {
+        await db.update(projectApiKeys).set({ status: "QUOTA_EXCEEDED", failureReason: msg }).where(eq(projectApiKeys.id, keyId as any));
         return res.json({ status: "Quota Exceeded" });
       } else {
-        await db.update(projectApiKeys).set({ status: "INVALID", isEnabled: false, failureReason: testRes.message }).where(eq(projectApiKeys.id, keyId as any));
+        await db.update(projectApiKeys).set({ status: "INVALID", isEnabled: false, failureReason: msg }).where(eq(projectApiKeys.id, keyId as any));
         return res.json({ status: "Invalid" });
       }
     }

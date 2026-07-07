@@ -458,11 +458,16 @@ async function updateKeyFailureWidget(key: WidgetKey, error: any) {
   const is403 = statusStr === '403' || statusStr === 403 || errStr.includes('403') || errStr.includes('permission denied') || errStr.includes('api key not valid');
   const isTimeout = errStr.includes('timeout') || errStr.includes('deadline exceeded');
   const is429 = statusStr === '429' || statusStr === 429 || errStr.includes('429') || errStr.includes('too many requests') || errStr.includes('resource_exhausted') || errStr.includes('quota');
+  const isInvalidModel = statusStr === '400' || statusStr === 400 || statusStr === '404' || statusStr === 404 || errStr.includes('model_not_found') || errStr.includes('does not exist') || errStr.includes('invalid model');
   
   if (is403) {
     status = "INVALID";
     cooldownMinutes = 0;
     isEnabled = false;
+  } else if (isInvalidModel) {
+    status = "INVALID_MODEL";
+    cooldownMinutes = 0;
+    isEnabled = true; // Keep enabled but wait for manual fix
   } else if (is429) {
     status = "QUOTA_EXCEEDED";
     cooldownMinutes = calculateCooldown(error);
@@ -583,10 +588,13 @@ async function executeLlmWithFailover(
       const statusStr = String(status || "").toUpperCase();
       const errMessage = String(err?.message || err?.stack || err).toLowerCase();
       const isQuotaExhausted = status === 429 || statusStr === "RESOURCE_EXHAUSTED" || errMessage.includes("quota") || errMessage.includes("429");
+      const isInvalidModel = statusStr === '400' || statusStr === 400 || statusStr === '404' || statusStr === 404 || errMessage.includes('model_not_found') || errMessage.includes('does not exist') || errMessage.includes('invalid model');
       
       let failureReason = "Unknown error";
       if (isQuotaExhausted) {
         failureReason = "Quota exhausted";
+      } else if (isInvalidModel) {
+        failureReason = "Invalid model name";
       } else {
         failureReason = err.message || err.toString();
       }

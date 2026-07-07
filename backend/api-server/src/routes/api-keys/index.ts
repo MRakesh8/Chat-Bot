@@ -8,13 +8,13 @@ const router = Router();
 
 const AddKeyBody = z.object({
   name: z.string().max(255).optional(),
-  provider: z.string().default("gemini"),
   apiKey: z.string().min(1),
 });
 
 const UpdateKeyBody = z.object({
   name: z.string().max(255).optional(),
   apiKey: z.string().optional(),
+  model: z.string().optional(),
 });
 
 const UpdateSettingsBody = z.object({
@@ -97,6 +97,8 @@ router.get("/", async (req, res): Promise<any> => {
       isPrimary: k.isPrimary,
       isEnabled: k.isEnabled,
       status: k.status,
+      model: k.model,
+      availableModels: k.availableModels,
       lastSuccess: k.lastSuccess,
       lastFailure: k.lastFailure,
       failureReason: k.failureReason,
@@ -136,6 +138,8 @@ router.get("/debug", async (req, res): Promise<any> => {
   }
 });
 
+import { ProviderVerifier } from "../../services/provider-verifier";
+
 // POST /api/api-keys
 // Add a new user API key (max 5)
 router.post("/", async (req, res): Promise<any> => {
@@ -149,13 +153,7 @@ router.post("/", async (req, res): Promise<any> => {
     const existingKeys = await db.select().from(userApiKeys).where(eq(userApiKeys.userId, userId));
     if (existingKeys.length >= 5) return res.status(400).json({ error: "Maximum of 5 user API keys allowed" });
 
-    const testRes = await testGeminiKey(parsed.data.apiKey);
-    if (!testRes.success) return res.status(400).json({ error: testRes.message });
-
-    const encryptedKey = crypto.encrypt(parsed.data.apiKey);
-    const maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
-
-    // Duplicate detection
+    // Duplicate detection based on raw key BEFORE testing
     const isDuplicate = existingKeys.some(k => {
       try {
         const decrypted = crypto.decrypt(k.encryptedKey);
@@ -173,20 +171,33 @@ router.post("/", async (req, res): Promise<any> => {
       });
     }
 
-    await db.insert(userApiKeys).values({
-      userId,
-      name: parsed.data.name || `${parsed.data.provider.toUpperCase()} Key ${existingKeys.length + 1}`,
-      provider: parsed.data.provider,
-      encryptedKey,
-      maskedKey,
-      isSystem: false,
-      isPrimary: existingKeys.length === 0,
-      isEnabled: true,
-      status: "HEALTHY",
-      lastSuccess: new Date(),
-    });
+    try {
+      const verified = await ProviderVerifier.verifyAndFetchModels(parsed.data.apiKey);
 
-    res.status(201).json({ success: true, message: "API key added successfully." });
+      const encryptedKey = crypto.encrypt(parsed.data.apiKey);
+      let maskedKey = parsed.data.apiKey.substring(0, 5) + "..." + parsed.data.apiKey.substring(parsed.data.apiKey.length - 4);
+      if (verified.provider === "gemini") {
+        maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
+      }
+
+      await db.insert(userApiKeys).values({
+        userId,
+        name: parsed.data.name || `${verified.provider.toUpperCase()} Key ${existingKeys.length + 1}`,
+        provider: verified.provider,
+        encryptedKey,
+        maskedKey,
+        availableModels: verified.models,
+        isSystem: false,
+        isPrimary: existingKeys.length === 0,
+        isEnabled: true,
+        status: "HEALTHY",
+        lastSuccess: new Date(),
+      });
+
+      res.status(201).json({ success: true, message: "API key added successfully.", provider: verified.provider, models: verified.models });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message || "Failed to verify API key" });
+    }
   } catch (err: any) {
     res.status(500).json({ error: "Failed to add API key" });
   }
@@ -208,15 +219,32 @@ router.put("/:id", async (req, res): Promise<any> => {
     let updateData: any = {};
     if (parsed.data.name) updateData.name = parsed.data.name;
 
+    if (parsed.data.model) {
+      if (existing[0].availableModels && Array.isArray(existing[0].availableModels)) {
+        if (!existing[0].availableModels.includes(parsed.data.model)) {
+          return res.status(400).json({ error: `Model ${parsed.data.model} is not supported by this API key.` });
+        }
+      }
+      updateData.model = parsed.data.model;
+    }
+
     if (parsed.data.apiKey) {
-      const testRes = await testGeminiKey(parsed.data.apiKey);
-      if (!testRes.success) return res.status(400).json({ error: testRes.message });
-      updateData.encryptedKey = crypto.encrypt(parsed.data.apiKey);
-      updateData.maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
-      updateData.status = "HEALTHY";
-      updateData.lastSuccess = new Date();
-      updateData.isEnabled = true;
-      updateData.failureReason = null;
+      try {
+        const verified = await ProviderVerifier.verifyAndFetchModels(parsed.data.apiKey);
+        updateData.encryptedKey = crypto.encrypt(parsed.data.apiKey);
+        updateData.maskedKey = parsed.data.apiKey.substring(0, 5) + "..." + parsed.data.apiKey.substring(parsed.data.apiKey.length - 4);
+        if (verified.provider === "gemini") {
+          updateData.maskedKey = `AIza****${parsed.data.apiKey.slice(-4)}`;
+        }
+        updateData.status = "HEALTHY";
+        updateData.lastSuccess = new Date();
+        updateData.isEnabled = true;
+        updateData.failureReason = null;
+        updateData.provider = verified.provider;
+        updateData.availableModels = verified.models;
+      } catch (e: any) {
+        return res.status(400).json({ error: e.message || "Failed to verify API key" });
+      }
     }
 
     await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, id));
@@ -253,22 +281,56 @@ router.post("/:id/test", async (req, res): Promise<any> => {
     if (!existing.length) return res.status(404).json({ error: "Key not found" });
 
     const decryptedKey = crypto.decrypt(existing[0].encryptedKey);
-    const testRes = await testGeminiKey(decryptedKey || existing[0].encryptedKey);
-
-    if (testRes.success) {
-      await db.update(userApiKeys).set({ status: "HEALTHY", isEnabled: true, lastSuccess: new Date(), failureReason: null }).where(eq(userApiKeys.id, id));
-      res.json({ status: "Healthy" });
-    } else {
-      if (testRes.message === "Quota Exceeded") {
-        await db.update(userApiKeys).set({ status: "QUOTA_EXCEEDED", failureReason: testRes.message }).where(eq(userApiKeys.id, id));
+    
+    try {
+      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey || existing[0].encryptedKey, existing[0].provider);
+      await db.update(userApiKeys).set({ 
+        status: "HEALTHY", 
+        isEnabled: true, 
+        lastSuccess: new Date(), 
+        failureReason: null,
+        availableModels: verified.models
+      }).where(eq(userApiKeys.id, id));
+      res.json({ status: "Healthy", models: verified.models });
+    } catch (e: any) {
+      const msg = e.message || "Invalid API key";
+      if (msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("429")) {
+        await db.update(userApiKeys).set({ status: "QUOTA_EXCEEDED", failureReason: msg }).where(eq(userApiKeys.id, id));
         res.json({ status: "Quota Exceeded" });
       } else {
-        await db.update(userApiKeys).set({ status: "INVALID", isEnabled: false, failureReason: testRes.message }).where(eq(userApiKeys.id, id));
+        await db.update(userApiKeys).set({ status: "INVALID", isEnabled: false, failureReason: msg }).where(eq(userApiKeys.id, id));
         res.json({ status: "Invalid" });
       }
     }
   } catch (err: any) {
     res.status(500).json({ error: "Failed to test API key" });
+  }
+});
+
+// POST /api/api-keys/:id/refresh-models
+router.post("/:id/refresh-models", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    const { id } = req.params;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const existing = await db.select().from(userApiKeys).where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)));
+    if (!existing.length) return res.status(404).json({ error: "Key not found" });
+
+    const decryptedKey = crypto.decrypt(existing[0].encryptedKey);
+    
+    try {
+      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey || existing[0].encryptedKey, existing[0].provider);
+      await db.update(userApiKeys).set({ 
+        availableModels: verified.models
+      }).where(eq(userApiKeys.id, id));
+      
+      res.json({ success: true, models: verified.models });
+    } catch (e: any) {
+      return res.status(400).json({ error: e.message || "Failed to refresh models." });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: "Server error during model refresh" });
   }
 });
 

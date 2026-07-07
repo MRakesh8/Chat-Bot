@@ -216,6 +216,7 @@ export const userApiKeys = pgTable("user_api_keys", {
   totalFailures: integer("total_failures").default(0).notNull(),
   dailyLimit: integer("daily_limit"), // null = no limit (for user keys), 20 for system keys
   dailyUsed: integer("daily_used").default(0).notNull(),
+  availableModels: jsonb("available_models"),
   lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -337,6 +338,7 @@ export const projectApiKeys = pgTable("project_api_keys", {
   lastFailure: timestamp("last_failure"),
   failureReason: text("failure_reason"),
   cooldownUntil: timestamp("cooldown_until"),
+  availableModels: jsonb("available_models"),
   totalRequests: integer("total_requests").default(0).notNull(),
   totalFailures: integer("total_failures").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
