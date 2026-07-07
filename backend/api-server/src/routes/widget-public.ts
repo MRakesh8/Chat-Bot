@@ -18,23 +18,19 @@ import {
 function isRetryableLlmError(err: any): boolean {
   if (!err) return false;
   const status = err?.status || err?.response?.status || err?.code;
-  if (status === 429 || status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
+  if (status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
     return true;
   }
   const statusStr = String(err?.status || err?.response?.status || err?.code || "").toUpperCase();
-  if (statusStr === "UNAVAILABLE" || statusStr === "RESOURCE_EXHAUSTED" || statusStr === "INTERNAL") {
+  if (statusStr === "INTERNAL") {
     return true;
   }
   const errMessage = String(err?.message || err?.stack || err).toLowerCase();
   
-  // Fast-fail if the quota limit is explicitly 0 (model not available on this tier)
-  if (errMessage.includes("limit: 0")) {
-    return false;
-  }
   const retryableKeywords = [
-    "429", "503", "500", "502", "504",
-    "unavailable", "resource_exhausted", "quota", "timeout", "deadline exceeded",
-    "rate limit", "overloaded", "too many requests", "service unavailable", "internal server error",
+    "503", "500", "502", "504",
+    "timeout", "deadline exceeded",
+    "service unavailable", "internal server error",
     "spikes in demand", "experiencing high demand", "try again later"
   ];
   return retryableKeywords.some(keyword => errMessage.includes(keyword));
@@ -100,7 +96,19 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
         return await executeWithRetry(() => directClient.models.generateContentStream(attemptOptions));
       }
     } catch (err: any) {
-      const isRetryable = isRetryableLlmError(err);
+      const status = err?.status || err?.response?.status || err?.code;
+      const statusStr = String(status || "").toUpperCase();
+      const errMessage = String(err?.message || err?.stack || err).toLowerCase();
+      
+      const isQuotaExhausted = status === 429 || statusStr === "RESOURCE_EXHAUSTED" || errMessage.includes("quota") || errMessage.includes("429");
+      const isModelNotFound = status === 404 || errMessage.includes("not found");
+      
+      if (isQuotaExhausted) {
+        throw err; // Throw upwards to rotate the API key
+      }
+      
+      const isRetryable = isRetryableLlmError(err) || isModelNotFound;
+      
       if (isRetryable && !isLast) {
         console.warn(`Widget API error on model ${attemptModel}, falling back to next model...`);
         continue;
@@ -165,10 +173,12 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
     // 2. User Keys (Project Owner)
     if (userId) {
       userKeysList = await db.query.userApiKeys.findMany({
-        where: and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
+        where: eq(userApiKeys.userId, userId)
       });
 
       for (const key of userKeysList) {
+        if (!key.isEnabled) continue;
+
         let status = key.status;
         if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
           status = "HEALTHY";
@@ -196,10 +206,12 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
   try {
     // 3. System Keys
     systemKeysList = await db.query.userApiKeys.findMany({
-      where: and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true))
+      where: isNull(userApiKeys.userId)
     });
 
     for (const key of systemKeysList) {
+      if (!key.isEnabled) continue;
+
       let status = key.status;
       if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
         status = "HEALTHY";
@@ -297,6 +309,23 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
       decryptedKey: envKey
     });
   });
+
+  // Calculate statistics
+  let totalKeys = projectKeysList.length + userKeysList.length + systemKeysList.length + envKeys.length;
+  let disabledKeys = 0;
+  
+  for (const k of projectKeysList) if (!k.isEnabled) disabledKeys++;
+  for (const k of userKeysList) if (!k.isEnabled) disabledKeys++;
+  for (const k of systemKeysList) if (!k.isEnabled) disabledKeys++;
+  // envKeys are always considered enabled
+  
+  let enabledKeys = totalKeys - disabledKeys;
+
+  console.log(`\n--- API KEY MANAGER ---`);
+  console.log(`Total API keys loaded: ${totalKeys}`);
+  console.log(`Enabled API keys: ${enabledKeys}`);
+  console.log(`Disabled API keys: ${disabledKeys}`);
+  console.log(`-----------------------\n`);
 
   // Sort: Project Keys (primary first) -> User Keys -> System Keys -> Env Keys
   return widgetKeys.sort((a, b) => {
@@ -502,48 +531,67 @@ async function executeLlmWithFailover(
   method: 'generateContent' | 'generateContentStream', 
   options: any
 ): Promise<{ result: any; keyUsed: WidgetKey }> {
-  console.log("ENTER executeLlmWithFailover");
-  let lastError: any = null;
+  console.log(`\nLoaded API Keys: ${keys.length}\n`);
   
-  for (const key of keys) {
+  const failures: string[] = [];
+  
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    console.log(`Trying API Key #${i + 1}`);
+    
     try {
       const attemptOptions = { ...options };
       if (key.model && !attemptOptions.model) {
         attemptOptions.model = key.model;
       }
       
-      console.log("STEP 10: Inside executeLlmWithFailover()");
-      console.log("  - selected provider:", key.provider);
-      console.log("  - selected model:", attemptOptions.model || 'default');
-      console.log("  - api key exists:", !!key.decryptedKey);
-      console.log("  - request payload keys:", Object.keys(attemptOptions));
-      console.log("  - request size bytes:", JSON.stringify(attemptOptions).length);
-      
       const result = await executeKeyRequest(key, method, attemptOptions);
       
       updateKeySuccessWidget(key).catch(e => console.error("Key success update error:", e));
-      console.log("LOG: executeLlmWithFailover returning success from key:", key.provider);
+      
+      console.log(`Success\n`);
+      console.log(`Model: ${attemptOptions.model || 'default'}`);
+      console.log(`API Key ID: ${key.id || 'env'}`);
+      console.log(`Provider: ${key.provider}\n`);
+      
       return { result, keyUsed: key };
     } catch (err: any) {
-      lastError = err;
-      console.error(`[Widget API Failover] Key failed: ${key.id || 'env'} (${key.type}). Error: ${err.message || err}`);
-      
       const status = err?.status || err?.response?.status || err?.code;
+      const statusStr = String(status || "").toUpperCase();
+      const errMessage = String(err?.message || err?.stack || err).toLowerCase();
+      const isQuotaExhausted = status === 429 || statusStr === "RESOURCE_EXHAUSTED" || errMessage.includes("quota") || errMessage.includes("429");
+      
+      let failureReason = "Unknown error";
+      if (isQuotaExhausted) {
+        failureReason = "Quota exhausted";
+      } else {
+        failureReason = err.message || err.toString();
+      }
+      
+      console.log(`${failureReason}\n`);
+      failures.push(`Key #${i + 1} (${key.id || 'env'}): ${failureReason}`);
+      
+      if (i < keys.length - 1) {
+        console.log(`Reason for switching: ${failureReason}`);
+        console.log(`Switching to API Key #${i + 2}\n`);
+      }
+      
       const isTransient = status === 503 || status === 502 || status === 504 || status === 500 ||
-                          err?.message?.includes("503") || err?.message?.includes("502") || 
-                          err?.message?.includes("504") || err?.message?.includes("500") ||
-                          err?.message?.toLowerCase().includes("timeout") ||
-                          err?.message?.toLowerCase().includes("unavailable");
+                          errMessage.includes("timeout") || errMessage.includes("unavailable");
                           
       if (isTransient) {
-        console.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient server-side load/outage.`);
+        console.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient.`);
       } else {
+        // This will correctly mark 429 quota exhausted keys as UNHEALTHY/QUOTA_EXCEEDED in the database
         updateKeyFailureWidget(key, err).catch(e => console.error("Key failure update error:", e));
       }
     }
   }
   
-  throw lastError || new Error("No healthy API keys available to execute the request");
+  console.log("All API keys failed:");
+  failures.forEach(f => console.log(`- ${f}`));
+  
+  throw new Error(`No healthy API keys available to execute the request. Failures: ${failures.join(" | ")}`);
 }
 
 const router = Router();

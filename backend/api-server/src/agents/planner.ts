@@ -84,6 +84,16 @@ Website Context: ${JSON.stringify(websiteContext)}
              break; // Success
          } catch (e: any) {
              lastError = e;
+             const status = e?.status || e?.response?.status || e?.code;
+             const statusStr = String(status || "").toUpperCase();
+             const errMessage = String(e?.message || e?.stack || e).toLowerCase();
+             const isQuotaExhausted = status === 429 || statusStr === "RESOURCE_EXHAUSTED" || errMessage.includes("quota") || errMessage.includes("429");
+             
+             if (isQuotaExhausted) {
+                 console.error(`[PlannerAgent] Model ${attemptModel} failed with Quota Exhausted. Aborting fallback loop.`);
+                 break;
+             }
+             
              console.warn(`[PlannerAgent] Model ${attemptModel} failed:`, e.message);
          }
       }
