@@ -1,8 +1,9 @@
 import { Router, Request, Response } from "express";
 import { db, crypto } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics } from "@workspace/db/schema";
+import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs } from "@workspace/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
+import { minuteCache } from "../services/cache-provider";
 import { GoogleGenAI } from "@google/genai";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { searchProjectKnowledge, saveAutoKnowledgeItem } from "../services/knowledge";
@@ -356,155 +357,7 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
   });
 }
 
-async function updateKeySuccessWidget(key: WidgetKey) {
-  if (key.type === 'env') return;
-  const now = new Date();
-  
-  try {
-    if (key.type === 'project') {
-      await db.update(projectApiKeys).set({
-        lastSuccess: now,
-        status: "HEALTHY",
-        totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
-        failureReason: null
-      }).where(eq(projectApiKeys.id, key.id!));
-    } else {
-      const newUsed = (key.rawDbKey?.dailyUsed || 0) + 1;
-      let status = "HEALTHY";
-      if (key.rawDbKey?.dailyLimit !== null && newUsed >= (key.rawDbKey?.dailyLimit || 20)) {
-        status = "QUOTA_EXCEEDED";
-      }
-      await db.update(userApiKeys).set({
-        dailyUsed: newUsed,
-        lastSuccess: now,
-        totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
-        status,
-        failureReason: null
-      }).where(eq(userApiKeys.id, key.id!));
-    }
-  } catch (err) {
-    console.error("Failed to update widget key success stats:", err);
-  }
-}
-
-function checkIsDailyLimit(error: any): boolean {
-  if (!error) return false;
-  const parts: string[] = [];
-  if (error.message) parts.push(String(error.message));
-  if (error.stack) parts.push(String(error.stack));
-  if (typeof error === 'string') parts.push(error);
-  try {
-    if (error.response) {
-      parts.push(typeof error.response === 'string' ? error.response : JSON.stringify(error.response));
-    }
-    if (error.details) {
-      parts.push(typeof error.details === 'string' ? error.details : JSON.stringify(error.details));
-    }
-    parts.push(JSON.stringify(error));
-  } catch (e) {}
-  
-  const fullErrorText = parts.join(" ").toLowerCase();
-  const hasQuotaExceeded = fullErrorText.includes("quota exceeded") || fullErrorText.includes("quota_exceeded") || fullErrorText.includes("exceeded your current quota");
-  const isDailyOrFreeLimit = 
-    fullErrorText.includes("generaterequestsperday") || 
-    fullErrorText.includes("requestsperday") || 
-    fullErrorText.includes("daily") || 
-    (fullErrorText.includes("free_tier") && fullErrorText.includes("limit: 0")) ||
-    (fullErrorText.includes("free-tier") && fullErrorText.includes("limit: 0")) ||
-    fullErrorText.includes("check your plan and billing details");
-    
-  return hasQuotaExceeded && isDailyOrFreeLimit;
-}
-
-function calculateCooldown(error: any): number {
-  if (checkIsDailyLimit(error)) {
-    return 720; // 12 hours
-  }
-  
-  const errText = String(error?.message || error).toLowerCase();
-  
-  // Try to parse retry delay from error message (e.g. "Please retry in 57.061310034s.")
-  const match = errText.match(/retry\s+in\s+(\d+(?:\.\d+)?)s/i);
-  if (match) {
-    const seconds = parseFloat(match[1]);
-    return Math.max(1, Math.ceil(seconds / 60));
-  }
-  
-  // Check retry-after header if present (commonly returned by proxies/gateways)
-  const retryAfterHeader = error?.response?.headers?.get?.('retry-after');
-  if (retryAfterHeader) {
-    const seconds = parseInt(retryAfterHeader, 10);
-    if (!isNaN(seconds)) {
-      // Cap RPM rate limit cooldown at 2 minutes to prevent starving the key rotation pool
-      return Math.min(2, Math.max(1, Math.ceil(seconds / 60)));
-    }
-  }
-  
-  return 1; // default 1 minute for other 429 rate limits
-}
-
-async function updateKeyFailureWidget(key: WidgetKey, error: any) {
-  if (key.type === 'env') return;
-  const now = new Date();
-  
-  const statusStr = error?.status || error?.response?.status || error?.code || 'unknown';
-  const errMessage = error?.message || String(error);
-  const errStr = errMessage.toLowerCase();
-  
-  let cooldownMinutes = 0;
-  let status = "COOLDOWN";
-  let isEnabled = true;
-  
-  const is403 = statusStr === '403' || statusStr === 403 || errStr.includes('403') || errStr.includes('permission denied') || errStr.includes('api key not valid');
-  const isTimeout = errStr.includes('timeout') || errStr.includes('deadline exceeded');
-  const is429 = statusStr === '429' || statusStr === 429 || errStr.includes('429') || errStr.includes('too many requests') || errStr.includes('resource_exhausted') || errStr.includes('quota');
-  const isInvalidModel = statusStr === '400' || statusStr === 400 || statusStr === '404' || statusStr === 404 || errStr.includes('model_not_found') || errStr.includes('does not exist') || errStr.includes('invalid model');
-  
-  if (is403) {
-    status = "INVALID";
-    cooldownMinutes = 0;
-    isEnabled = false;
-  } else if (isInvalidModel) {
-    status = "INVALID_MODEL";
-    cooldownMinutes = 0;
-    isEnabled = true; // Keep enabled but wait for manual fix
-  } else if (is429) {
-    status = "QUOTA_EXCEEDED";
-    cooldownMinutes = calculateCooldown(error);
-  } else if (isTimeout) {
-    status = "COOLDOWN";
-    cooldownMinutes = 2;
-  } else {
-    status = "UNHEALTHY";
-    cooldownMinutes = 5;
-  }
-
-  const cooldownUntil = cooldownMinutes > 0 ? new Date(now.getTime() + cooldownMinutes * 60000) : null;
-
-  try {
-    if (key.type === 'project') {
-      await db.update(projectApiKeys).set({
-        status,
-        cooldownUntil,
-        failureReason: errMessage,
-        lastFailure: now,
-        isEnabled: isEnabled ? undefined : false
-      }).where(eq(projectApiKeys.id, key.id!));
-    } else {
-      await db.update(userApiKeys).set({
-        status,
-        cooldownUntil,
-        failureReason: errMessage,
-        lastFailure: now,
-        totalFailures: (key.rawDbKey?.totalFailures || 0) + 1,
-        totalRequests: (key.rawDbKey?.totalRequests || 0) + 1,
-        isEnabled: isEnabled ? undefined : false
-      }).where(eq(userApiKeys.id, key.id!));
-    }
-  } catch (err) {
-    console.error("Failed to update widget key failure stats:", err);
-  }
-}
+import { updateKeyStats } from "../services/api-health";
 
 async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
   const selectedModel = options.model || key.model || "gemini-2.0-flash";
@@ -588,50 +441,72 @@ async function executeLlmWithFailover(
     keyUsageStats[statKey].inFlight += 1;
     keyUsageStats[statKey].lastUsed = Date.now();
     
+    const startTime = Date.now();
+    const selectedModel = key.model || options.model || "gemini-2.0-flash";
+    const attemptOptions = { ...options, model: selectedModel };
+
     try {
-      // Overwrite the requested model with the key's native model if one exists.
-      // This prevents passing a hardcoded `gemini-2.0-flash` to a Groq key.
-      const selectedModel = key.model || options.model;
-      const attemptOptions = { ...options, model: selectedModel };
+      // Check rate limit tracker before making network request
+      const rpm = await minuteCache.get(`rpm:${statKey}`);
+      if (rpm >= 30) { // Default safe rate limit estimate if provider headers aren't parsed
+        throw { status: 429, message: "Rate limit estimated exceeded by MinuteCache" };
+      }
+
+      await minuteCache.incrementAndGet(`rpm:${statKey}`, 60, 1);
       
       const result = await executeKeyRequest(key, method, attemptOptions);
       
-      updateKeySuccessWidget(key).catch(e => console.error("Key success update error:", e));
+      const latencyMs = Date.now() - startTime;
+      let promptTokens = 0;
+      let completionTokens = 0;
+      let totalTokens = 0;
+
+      // Extract usage if available
+      if (result && typeof result === 'object' && result.usage) {
+        promptTokens = result.usage.promptTokens || 0;
+        completionTokens = result.usage.completionTokens || 0;
+        totalTokens = result.usage.totalTokens || 0;
+      }
+
+      await updateKeyStats({
+        key,
+        success: true,
+        latencyMs,
+        status: "HEALTHY",
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        model: selectedModel
+      }).catch(e => console.error("Key success update error:", e));
       
-      console.log(`Success\n`);
+      console.log(`Success (${latencyMs}ms)\n`);
       return { result, keyUsed: key };
     } catch (err: any) {
-      const status = err?.status || err?.response?.status || err?.code;
-      const statusStr = String(status || "").toUpperCase();
-      const errMessage = String(err?.message || err?.stack || err).toLowerCase();
-      const isQuotaExhausted = status === 429 || statusStr === "RESOURCE_EXHAUSTED" || errMessage.includes("quota") || errMessage.includes("429");
-      const isInvalidModel = statusStr === '400' || statusStr === 400 || statusStr === '404' || statusStr === 404 || errMessage.includes('model_not_found') || errMessage.includes('does not exist') || errMessage.includes('invalid model');
+      const latencyMs = Date.now() - startTime;
       
-      let failureReason = "Unknown error";
-      if (isQuotaExhausted) {
-        failureReason = "Quota exhausted";
-      } else if (isInvalidModel) {
-        failureReason = "Invalid model name";
+      const isTransient = err?.status === 503 || err?.status === 502 || err?.status === 504 || err?.status === 500 ||
+                          String(err?.message || "").toLowerCase().includes("timeout") || String(err?.message || "").toLowerCase().includes("unavailable");
+                          
+      if (isTransient) {
+        console.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient.`);
       } else {
-        failureReason = err.message || err.toString();
+        await updateKeyStats({
+          key,
+          success: false,
+          latencyMs,
+          status: "UNHEALTHY", // Will be reclassified by classifyError
+          error: err,
+          model: selectedModel
+        }).catch(e => console.error("Key failure update error:", e));
       }
-      
+
+      const failureReason = err?.message || err?.toString() || "Unknown error";
       console.log(`${failureReason}\n`);
       failures.push(`Key #${i + 1} (${key.id || 'env'}): ${failureReason}`);
       
       if (i < keys.length - 1) {
         console.log(`Reason for switching: ${failureReason}`);
         console.log(`Switching to API Key #${i + 2}\n`);
-      }
-      
-      const isTransient = status === 503 || status === 502 || status === 504 || status === 500 ||
-                          errMessage.includes("timeout") || errMessage.includes("unavailable");
-                          
-      if (isTransient) {
-        console.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient.`);
-      } else {
-        // This will correctly mark 429 quota exhausted keys as UNHEALTHY/QUOTA_EXCEEDED in the database
-        updateKeyFailureWidget(key, err).catch(e => console.error("Key failure update error:", e));
       }
     } finally {
       // Always decrement inFlight when request finishes (success or failure)

@@ -377,5 +377,70 @@ router.patch("/:id/primary", async (req, res): Promise<any> => {
     res.status(500).json({ error: "Failed to update primary key" });
   }
 });
+import { ProviderVerifier } from "../../services/provider-verifier";
+import { updateKeyStats } from "../../services/api-health";
+
+// Verify API Key
+router.post("/:id/verify", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const keyId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const key = await db.query.userApiKeys.findFirst({
+      where: and(eq(userApiKeys.id, keyId), eq(userApiKeys.userId, userId))
+    });
+
+    if (!key) {
+      return res.status(404).json({ error: "API Key not found" });
+    }
+
+    const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+    const verifier = new ProviderVerifier(key.provider, decryptedKey);
+    
+    const startTime = Date.now();
+    const result = await verifier.verify();
+    const latencyMs = Date.now() - startTime;
+
+    const keyObj = {
+      id: key.id,
+      type: 'user' as const,
+      provider: key.provider,
+      rawDbKey: key
+    };
+
+    if (result.valid) {
+      await updateKeyStats({
+        key: keyObj,
+        success: true,
+        latencyMs,
+        status: "HEALTHY",
+        model: result.defaultModel || "unknown"
+      });
+      
+      if (result.models && result.models.length > 0) {
+        await db.update(userApiKeys).set({ availableModels: result.models }).where(eq(userApiKeys.id, key.id));
+      }
+
+      res.json({ success: true, models: result.models, defaultModel: result.defaultModel });
+    } else {
+      await updateKeyStats({
+        key: keyObj,
+        success: false,
+        latencyMs,
+        status: "INVALID_API_KEY",
+        error: new Error(result.error),
+        model: "unknown"
+      });
+      res.status(400).json({ error: result.error });
+    }
+  } catch (err: any) {
+    console.error("Failed to verify API key:", err);
+    res.status(500).json({ error: "Failed to verify API key" });
+  }
+});
 
 export default router;

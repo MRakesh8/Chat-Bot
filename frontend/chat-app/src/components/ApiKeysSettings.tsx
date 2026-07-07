@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { apiUrl } from "@/lib/api-url";
-import { Trash2, Plus, Key, CheckCircle, XCircle, AlertCircle, PlayCircle, Star } from "lucide-react";
+import { Trash2, Plus, Key, CheckCircle, XCircle, AlertCircle, PlayCircle, Star, Activity, Clock, RefreshCw, BarChart3, Zap } from "lucide-react";
 
 type ApiKey = {
   id: string;
@@ -11,11 +11,18 @@ type ApiKey = {
   isPrimary: boolean;
   isEnabled: boolean;
   status: string;
+  healthScore: number;
+  latencyMs: number;
+  totalRequests: number;
+  totalFailures: number;
+  tokensToday: number;
   lastSuccess: string | null;
   lastFailure: string | null;
   failureReason: string | null;
-  cooldownRemaining: number;
+  cooldownUntil: string | null;
   createdAt: string;
+  availableModels?: string[];
+  model?: string;
 };
 
 export function ApiKeysSettings() {
@@ -28,6 +35,7 @@ export function ApiKeysSettings() {
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
 
   const fetchSettings = async () => {
     try {
@@ -85,6 +93,8 @@ export function ApiKeysSettings() {
 
   useEffect(() => {
     fetchSettings();
+    const interval = setInterval(fetchSettings, 30000); // Live status updates every 30s
+    return () => clearInterval(interval);
   }, []);
 
   const handleAddKey = async () => {
@@ -119,7 +129,7 @@ export function ApiKeysSettings() {
 
   const handleAction = async (id: string, action: string, method: string = "PATCH", body?: any) => {
     try {
-      if (action === "test") setTestingId(id);
+      if (action === "test" || action === "verify") setTestingId(id);
       const { data } = await supabase.auth.getSession();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (data.session?.access_token) {
@@ -144,15 +154,25 @@ export function ApiKeysSettings() {
     } catch (err) {
       console.error(`Failed to execute ${action} on key`, err);
     } finally {
-      if (action === "test") setTestingId(null);
+      if (action === "test" || action === "verify") setTestingId(null);
     }
   };
 
-  const getStatusIcon = (status: string, isEnabled: boolean) => {
-    if (!isEnabled) return <div className="w-2 h-2 rounded-full bg-gray-500" title="Disabled" />;
-    if (status === "HEALTHY") return <div className="w-2 h-2 rounded-full bg-green-500" title="Healthy" />;
-    if (status === "COOLDOWN" || status === "QUOTA_EXCEEDED") return <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" title="Cooldown / Quota" />;
-    return <div className="w-2 h-2 rounded-full bg-red-500" title="Invalid" />;
+  const getStatusBadge = (status: string, isEnabled: boolean) => {
+    if (!isEnabled) return <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-500/10 text-gray-500 rounded-full text-xs font-medium"><div className="w-2 h-2 rounded-full bg-gray-500" /> DISABLED</div>;
+    if (status === "HEALTHY") return <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 text-green-600 rounded-full text-xs font-medium"><div className="w-2 h-2 rounded-full bg-green-500" /> HEALTHY</div>;
+    if (["RATE_LIMIT", "TOKEN_LIMIT", "COOLDOWN"].includes(status)) return <div className="flex items-center gap-1.5 px-2 py-1 bg-yellow-500/10 text-yellow-600 rounded-full text-xs font-medium"><div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" /> {status.replace("_", " ")}</div>;
+    if (status === "DAILY_QUOTA" || status === "MONTHLY_CREDIT") return <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-500/10 text-orange-600 rounded-full text-xs font-medium"><div className="w-2 h-2 rounded-full bg-orange-500" /> QUOTA EXHAUSTED</div>;
+    if (status === "INVALID_MODEL") return <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 text-blue-600 rounded-full text-xs font-medium"><div className="w-2 h-2 rounded-full bg-blue-500" /> INVALID MODEL</div>;
+    return <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 text-red-600 rounded-full text-xs font-medium"><div className="w-2 h-2 rounded-full bg-red-500" /> {status.replace("_", " ")}</div>;
+  };
+
+  const formatCooldown = (cooldownUntil: string | null) => {
+    if (!cooldownUntil) return null;
+    const diff = new Date(cooldownUntil).getTime() - Date.now();
+    if (diff <= 0) return null;
+    const mins = Math.ceil(diff / 60000);
+    return `${mins}m cooldown`;
   };
 
   if (loading) {
@@ -161,186 +181,235 @@ export function ApiKeysSettings() {
 
   return (
     <section className="space-y-4">
-      <h2 className="text-xl font-medium border-b border-foreground/5 pb-2 text-foreground/80">Multi-Provider API Keys</h2>
-
-      {/* API Key Mode */}
-      <div className="p-4 rounded-xl bg-card/40 border border-foreground/5 backdrop-blur-md shadow-sm space-y-4">
-        <div>
-          <h3 className="font-medium">Routing Mode</h3>
-          <p className="text-sm text-muted-foreground">Choose how the system prioritizes API keys when making requests.</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={() => handleModeChange("auto")}
-            className={`flex-1 p-3 rounded-lg border text-left transition-all ${apiMode === "auto" ? "border-primary bg-primary/5 shadow-[0_0_10px_rgba(var(--primary),0.1)]" : "border-foreground/10 hover:border-foreground/20 hover:bg-foreground/5"}`}
-          >
-            <div className="font-medium text-sm">Auto</div>
-            <div className="text-xs text-muted-foreground mt-1">Smart load balancing</div>
-          </button>
-          <button
-            onClick={() => handleModeChange("user_first")}
-            className={`flex-1 p-3 rounded-lg border text-left transition-all ${apiMode === "user_first" ? "border-primary bg-primary/5 shadow-[0_0_10px_rgba(var(--primary),0.1)]" : "border-foreground/10 hover:border-foreground/20 hover:bg-foreground/5"}`}
-          >
-            <div className="font-medium text-sm">User First</div>
-            <div className="text-xs text-muted-foreground mt-1">Prioritize your custom keys</div>
-          </button>
-          <button
-            onClick={() => handleModeChange("system_first")}
-            className={`flex-1 p-3 rounded-lg border text-left transition-all ${apiMode === "system_first" ? "border-primary bg-primary/5 shadow-[0_0_10px_rgba(var(--primary),0.1)]" : "border-foreground/10 hover:border-foreground/20 hover:bg-foreground/5"}`}
-          >
-            <div className="font-medium text-sm">System First</div>
-            <div className="text-xs text-muted-foreground mt-1">Prioritize system default keys</div>
-          </button>
-        </div>
-
-        <div className="pt-6 border-t border-border mt-8">
-          <div className="mb-4">
-            <h3 className="text-lg font-bold">Chat History Retention</h3>
-            <p className="text-sm text-muted-foreground">Choose how long your normal AI chat sessions are kept before being auto-deleted.</p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { id: 7, label: "7 Days" },
-              { id: 30, label: "30 Days" },
-              { id: 90, label: "90 Days" },
-              { id: -1, label: "Keep Forever" }
-            ].map(opt => (
-              <button
-                key={opt.id}
-                onClick={() => handleRetentionChange(opt.id)}
-                className={`p-3 rounded-xl border text-sm font-medium transition-all ${
-                  chatRetention === opt.id 
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm" 
-                  : "bg-card border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      <div className="flex items-center justify-between border-b border-foreground/5 pb-2">
+        <h2 className="text-xl font-medium text-foreground/80 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-primary" /> Enterprise API Health
+        </h2>
       </div>
-      
+
       {/* Keys List */}
-      <div className="p-4 rounded-xl bg-card/40 border border-foreground/5 backdrop-blur-md shadow-sm space-y-4">
-        <div>
-          <h3 className="font-medium">Your API Keys</h3>
-          <p className="text-sm text-muted-foreground">Add up to 5 custom API keys. The system auto-rotates between healthy keys.</p>
-        </div>
-
+      <div className="space-y-4">
         {keys.length > 0 ? (
-          <div className="space-y-2">
-            {keys.map((key) => (
-              <div key={key.id} className="flex flex-col gap-2 p-3 border border-foreground/5 rounded-lg bg-background/50 backdrop-blur-sm">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-muted rounded-md"><Key size={16} /></div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium truncate">{key.name}</p>
-                        {key.isPrimary && <span title="Primary Key"><Star size={14} className="text-yellow-500 fill-yellow-500 shrink-0" /></span>}
+          <div className="grid gap-4">
+            {keys.map((key) => {
+              const cooldown = formatCooldown(key.cooldownUntil);
+              const isExpanded = expandedKeyId === key.id;
+              
+              return (
+                <div key={key.id} className="flex flex-col border border-foreground/10 rounded-xl bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                  {/* Top Bar: Name, Status, Primary */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 bg-muted/20">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-background border border-foreground/5 rounded-lg shadow-sm">
+                        <Key className="w-5 h-5 text-primary" />
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono truncate">{key.maskedKey}</p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-foreground">{key.name || "Unnamed Key"}</h3>
+                          {key.isPrimary && <Star size={14} className="text-yellow-500 fill-yellow-500" />}
+                          <span className="text-xs uppercase px-2 py-0.5 bg-foreground/5 text-foreground/70 rounded font-medium tracking-wide">
+                            {key.provider}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">{key.maskedKey}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded-full text-xs font-medium whitespace-nowrap">
-                      {getStatusIcon(key.status, key.isEnabled)}
-                      {key.isEnabled ? key.status : "DISABLED"}
-                    </div>
-                    {key.cooldownRemaining > 0 && (
-                      <span className="text-xs text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded-full whitespace-nowrap">
-                        {key.cooldownRemaining}m cooldown
-                      </span>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Actions row */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 pt-2 border-t border-border/50 gap-2">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground w-full sm:w-auto">
-                    <span>Provider: <span className="uppercase font-medium text-foreground">{(key as any).provider}</span></span>
                     
-                    {(key as any).availableModels && Array.isArray((key as any).availableModels) && (key as any).availableModels.length > 0 ? (
-                      <div className="flex items-center gap-2 ml-2">
-                        <span>Model:</span>
-                        <select 
-                          value={(key as any).model || ""} 
-                          onChange={(e) => handleAction(key.id, "update", "PUT", { model: e.target.value })}
-                          className="h-7 text-xs bg-background border border-border rounded-md px-1"
-                        >
-                          <option value="" disabled>Select model</option>
-                          {(key as any).availableModels.map((m: string) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                        <button 
-                          type="button"
-                          className="h-7 w-7 p-0 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-md" 
-                          onClick={() => handleAction(key.id, "refresh-models", "POST")}
-                          title="Refresh available models"
-                        >
-                          <PlayCircle size={14} className="rotate-90" />
-                        </button>
-                      </div>
-                    ) : (
-                      (key as any).model && <span className="ml-2">| Model: {(key as any).model}</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {getStatusBadge(key.status, key.isEnabled)}
+                      {cooldown && (
+                        <span className="text-xs font-medium text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded-full flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {cooldown}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                    {key.status !== "HEALTHY" && key.failureReason && <span className="text-red-500 ml-2" title={key.failureReason}>| Error: {key.failureReason.substring(0, 30)}...</span>}
+                  {/* Metrics Row */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-foreground/5 border-t border-foreground/5 bg-background/50">
+                    <div className="p-3 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Health Score</span>
+                      <div className="flex items-end gap-2">
+                        <span className={`text-xl font-light ${key.healthScore >= 95 ? 'text-green-500' : key.healthScore >= 80 ? 'text-yellow-500' : 'text-red-500'}`}>
+                          {key.healthScore ?? 100}
+                        </span>
+                        <span className="text-xs text-muted-foreground mb-1">/ 100</span>
+                      </div>
+                    </div>
+                    <div className="p-3 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Avg Latency</span>
+                      <div className="flex items-end gap-2">
+                        <span className="text-xl font-light text-foreground">{key.latencyMs ?? 0}</span>
+                        <span className="text-xs text-muted-foreground mb-1">ms</span>
+                      </div>
+                    </div>
+                    <div className="p-3 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Success Rate</span>
+                      <div className="flex items-end gap-2">
+                        <span className="text-xl font-light text-foreground">
+                          {key.totalRequests > 0 ? Math.round(((key.totalRequests - key.totalFailures) / key.totalRequests) * 100) : 100}%
+                        </span>
+                        <span className="text-xs text-muted-foreground mb-1">({key.totalRequests} reqs)</span>
+                      </div>
+                    </div>
+                    <div className="p-3 flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Tokens Today</span>
+                      <div className="flex items-end gap-2">
+                        <span className="text-xl font-light text-foreground">{(key.tokensToday || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => handleAction(key.id, "primary")} className="p-1.5 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10 rounded-md transition-colors" title="Set as Primary">
-                      <Star size={14} />
-                    </button>
-                    <button onClick={() => handleAction(key.id, "test", "POST")} disabled={testingId === key.id} className="p-1.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-md transition-colors" title="Test Key">
-                      <PlayCircle size={14} className={testingId === key.id ? "animate-spin" : ""} />
-                    </button>
-                    <button onClick={() => handleAction(key.id, key.isEnabled ? "disable" : "enable")} className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors" title={key.isEnabled ? "Disable Key" : "Enable Key"}>
-                      {key.isEnabled ? <XCircle size={14} /> : <CheckCircle size={14} />}
-                    </button>
-                    <button onClick={() => handleAction(key.id, "delete", "DELETE")} className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors" title="Delete Key">
-                      <Trash2 size={14} />
-                    </button>
+
+                  {/* Actions & Diagnostics Toggle */}
+                  <div className="p-3 border-t border-foreground/5 flex items-center justify-between bg-muted/10">
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setExpandedKeyId(isExpanded ? null : key.id)}
+                        className="text-xs font-medium text-primary hover:text-primary/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-primary/5 transition-colors"
+                      >
+                        <BarChart3 className="w-3 h-3" /> 
+                        {isExpanded ? "Hide Diagnostics" : "View Diagnostics"}
+                      </button>
+                      
+                      {key.status !== "HEALTHY" && key.failureReason && !isExpanded && (
+                        <span className="text-xs text-red-500 ml-2 max-w-[200px] truncate" title={key.failureReason}>
+                          Error: {key.failureReason}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => handleAction(key.id, "primary")} className="p-1.5 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10 rounded-md transition-colors" title="Set as Primary">
+                        <Star size={16} />
+                      </button>
+                      <button onClick={() => handleAction(key.id, "verify", "POST")} disabled={testingId === key.id} className="p-1.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-500/10 rounded-md transition-colors flex items-center gap-1" title="Active Health Check">
+                        <RefreshCw size={14} className={testingId === key.id ? "animate-spin text-blue-500" : ""} />
+                        <span className="text-xs hidden sm:inline-block">Check Health</span>
+                      </button>
+                      <button onClick={() => handleAction(key.id, key.isEnabled ? "disable" : "enable")} className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors" title={key.isEnabled ? "Disable Key" : "Enable Key"}>
+                        {key.isEnabled ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                      </button>
+                      <button onClick={() => handleAction(key.id, "delete", "DELETE")} className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md transition-colors" title="Delete Key">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Expanded Diagnostics Panel */}
+                  {isExpanded && (
+                    <div className="p-4 bg-foreground/[0.02] border-t border-foreground/5 grid gap-4 md:grid-cols-2 text-sm">
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Configuration</h4>
+                        <div className="grid grid-cols-3 gap-2 items-center">
+                          <span className="text-muted-foreground">Default Model</span>
+                          <div className="col-span-2 flex items-center gap-2">
+                            <select 
+                              value={key.model || ""} 
+                              onChange={(e) => handleAction(key.id, "update", "PUT", { model: e.target.value })}
+                              className="w-full text-xs bg-background border border-border rounded px-2 py-1.5 outline-none focus:border-primary"
+                            >
+                              <option value="" disabled>Select model</option>
+                              {key.availableModels?.map((m: string) => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <span className="text-muted-foreground">Created</span>
+                          <span className="col-span-2 font-mono text-xs">{new Date(key.createdAt).toLocaleString()}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <span className="text-muted-foreground">Total Usage</span>
+                          <span className="col-span-2 font-mono text-xs">{key.totalRequests} reqs / {key.totalFailures} fails</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Health Status</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                          <span className="text-muted-foreground">Last Success</span>
+                          <span className="col-span-2 font-mono text-xs text-green-500">{key.lastSuccess ? new Date(key.lastSuccess).toLocaleString() : "Never"}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <span className="text-muted-foreground">Last Failure</span>
+                          <span className="col-span-2 font-mono text-xs text-red-500">{key.lastFailure ? new Date(key.lastFailure).toLocaleString() : "Never"}</span>
+                        </div>
+                        {key.failureReason && (
+                          <div className="mt-2 p-2 rounded bg-red-500/10 border border-red-500/20 text-red-600 text-xs font-mono break-all">
+                            {key.failureReason}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground italic px-2 py-4">No custom keys added. Using System fallback limits (20 req/day).</div>
+          <div className="p-8 text-center rounded-xl border border-dashed border-foreground/20 text-muted-foreground">
+            <Key className="w-8 h-8 mx-auto mb-3 opacity-20" />
+            <p>No API keys configured.</p>
+            <p className="text-sm mt-1">Add a key below to enable intelligent routing and health monitoring.</p>
+          </div>
         )}
 
         {/* Add Key Form */}
-        {keys.length < 5 && (
-          <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-            {error && <p className="text-xs text-red-500">{error}</p>}
-            <div className="flex flex-col md:flex-row gap-2 md:items-center">
+        {keys.length < 10 && (
+          <div className="p-4 rounded-xl border border-foreground/10 bg-card mt-6">
+            <h3 className="font-medium mb-4 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-primary" /> Add New Provider
+            </h3>
+            {error && <div className="mb-3 p-2 bg-red-500/10 text-red-500 text-sm rounded border border-red-500/20 flex items-center gap-2"><AlertCircle size={14}/>{error}</div>}
+            <div className="flex flex-col md:flex-row gap-3">
               <input
                 type="text"
-                placeholder="Key Name (Optional)"
+                placeholder="Key Name (e.g. Production OpenAI)"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full md:w-1/4 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
+                className="w-full md:w-1/3 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
               <input
-                type="text"
-                placeholder="API Key (AIza... or sk-...)"
+                type="password"
+                placeholder="Paste API Key (sk-...)"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
-                className="w-full md:flex-[2] bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-[38px]"
+                className="w-full md:flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary font-mono"
               />
               <button 
                 onClick={handleAddKey}
                 disabled={adding || !newKey.trim()}
-                className="w-full md:w-auto justify-center bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2 h-[38px]"
+                className="w-full md:w-auto justify-center bg-primary text-primary-foreground px-6 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
               >
-                <Plus size={16} />
-                {adding ? "Testing..." : "Add"}
+                {adding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                {adding ? "Verifying..." : "Add Key"}
               </button>
             </div>
+            <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1.5">
+              <AlertCircle className="w-3 h-3" /> The provider and available models will be automatically detected.
+            </p>
           </div>
         )}
+      </div>
+
+      {/* Global Routing Settings */}
+      <div className="mt-8 pt-6 border-t border-border">
+        <h3 className="font-medium mb-3">Routing Priority Mode</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button onClick={() => handleModeChange("auto")} className={`p-4 rounded-xl border text-left transition-all ${apiMode === "auto" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-foreground/10 hover:bg-foreground/5"}`}>
+            <div className="font-medium text-sm text-foreground">Auto-Balancing</div>
+            <div className="text-xs text-muted-foreground mt-1">Smart load balancing based on health and limits</div>
+          </button>
+          <button onClick={() => handleModeChange("user_first")} className={`p-4 rounded-xl border text-left transition-all ${apiMode === "user_first" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-foreground/10 hover:bg-foreground/5"}`}>
+            <div className="font-medium text-sm text-foreground">Custom First</div>
+            <div className="text-xs text-muted-foreground mt-1">Prioritize your personal API keys</div>
+          </button>
+          <button onClick={() => handleModeChange("system_first")} className={`p-4 rounded-xl border text-left transition-all ${apiMode === "system_first" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-foreground/10 hover:bg-foreground/5"}`}>
+            <div className="font-medium text-sm text-foreground">System First</div>
+            <div className="text-xs text-muted-foreground mt-1">Prioritize system default keys</div>
+          </button>
+        </div>
       </div>
     </section>
   );

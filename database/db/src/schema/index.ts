@@ -207,15 +207,21 @@ export const userApiKeys = pgTable("user_api_keys", {
   isPrimary: boolean("is_primary").default(false).notNull(),
   isEnabled: boolean("is_enabled").default(true).notNull(),
   isSystem: boolean("is_system").default(false).notNull(), // Preserved for system keys
-  status: varchar("status", { length: 50 }).default("HEALTHY").notNull(), // HEALTHY, COOLDOWN, QUOTA_EXCEEDED, INVALID, UNHEALTHY
+  status: varchar("status", { length: 50 }).default("HEALTHY").notNull(), // HEALTHY, RATE_LIMIT, TOKEN_LIMIT, DAILY_QUOTA, MONTHLY_CREDIT, INVALID_API_KEY, INVALID_MODEL, PROVIDER_DOWN, NETWORK_ERROR, DISABLED, UNHEALTHY
+  healthScore: integer("health_score").default(100).notNull(), // 0 to 100
+  latencyMs: integer("latency_ms").default(0).notNull(), // Moving average latency
+  region: varchar("region", { length: 50 }),
+  providerInfo: jsonb("provider_info"), // Store vision, streaming, json mode, context window, quotas
   lastSuccess: timestamp("last_success"),
   lastFailure: timestamp("last_failure"),
+  lastUsed: timestamp("last_used"),
   failureReason: text("failure_reason"),
   cooldownUntil: timestamp("cooldown_until"),
   totalRequests: integer("total_requests").default(0).notNull(),
   totalFailures: integer("total_failures").default(0).notNull(),
   dailyLimit: integer("daily_limit"), // null = no limit (for user keys), 20 for system keys
   dailyUsed: integer("daily_used").default(0).notNull(),
+  tokensToday: integer("tokens_today").default(0).notNull(),
   availableModels: jsonb("available_models"),
   lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -333,14 +339,20 @@ export const projectApiKeys = pgTable("project_api_keys", {
   model: varchar("model", { length: 255 }), // Default model to use for this project & provider
   isPrimary: boolean("is_primary").default(false).notNull(),
   isEnabled: boolean("is_enabled").default(true).notNull(),
-  status: varchar("status", { length: 50 }).default("HEALTHY").notNull(), // HEALTHY, COOLDOWN, QUOTA_EXCEEDED, INVALID, UNHEALTHY
+  status: varchar("status", { length: 50 }).default("HEALTHY").notNull(), // HEALTHY, RATE_LIMIT, TOKEN_LIMIT, DAILY_QUOTA, MONTHLY_CREDIT, INVALID_API_KEY, INVALID_MODEL, PROVIDER_DOWN, NETWORK_ERROR, DISABLED, UNHEALTHY
+  healthScore: integer("health_score").default(100).notNull(), // 0 to 100
+  latencyMs: integer("latency_ms").default(0).notNull(), // Moving average latency
+  region: varchar("region", { length: 50 }),
+  providerInfo: jsonb("provider_info"), // Store vision, streaming, json mode, context window, quotas
   lastSuccess: timestamp("last_success"),
   lastFailure: timestamp("last_failure"),
+  lastUsed: timestamp("last_used"),
   failureReason: text("failure_reason"),
   cooldownUntil: timestamp("cooldown_until"),
   availableModels: jsonb("available_models"),
   totalRequests: integer("total_requests").default(0).notNull(),
   totalFailures: integer("total_failures").default(0).notNull(),
+  tokensToday: integer("tokens_today").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -501,3 +513,30 @@ export const executionStepsRelations = relations(executionSteps, ({ one }) => ({
   execution: one(workflowExecutions, { fields: [executionSteps.executionId], references: [workflowExecutions.id] }),
 }));
 
+export const apiLogs = pgTable("api_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  keyId: uuid("key_id"), // Not a hard FK so logs survive key deletion
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  model: varchar("model", { length: 255 }).notNull(),
+  latencyMs: integer("latency_ms").notNull(),
+  success: boolean("success").notNull(),
+  failureReason: text("failure_reason"),
+  httpCode: integer("http_code"),
+  retryCount: integer("retry_count").default(0),
+  promptTokens: integer("prompt_tokens").default(0),
+  completionTokens: integer("completion_tokens").default(0),
+  totalTokens: integer("total_tokens").default(0),
+  cost: varchar("cost", { length: 50 }).default("0").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  keyIdIdx: index("api_logs_key_id_idx").on(table.keyId),
+  projectIdIdx: index("api_logs_project_id_idx").on(table.projectId),
+  userIdIdx: index("api_logs_user_id_idx").on(table.userId),
+}));
+
+export const apiLogsRelations = relations(apiLogs, ({ one }) => ({
+  user: one(users, { fields: [apiLogs.userId], references: [users.id] }),
+  project: one(projects, { fields: [apiLogs.projectId], references: [projects.id] }),
+}));
