@@ -16,7 +16,6 @@ import {
   FolderOpen,
   Settings2,
   Save,
-  Loader2
   Loader2,
   Upload
 } from "lucide-react";
