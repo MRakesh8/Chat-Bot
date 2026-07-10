@@ -103,6 +103,8 @@ router.get("/global-settings", async (req, res) => {
 
 const updateGlobalSettingsSchema = z.object({
   NORMAL_AI_PROMPT: z.string().optional(),
+  PAYMENT_UPI_ID: z.string().optional(),
+  PAYMENT_QR_CODE_URL: z.string().optional(),
 });
 
 // PATCH /api/super-admin/global-settings
@@ -115,13 +117,16 @@ router.patch("/global-settings", async (req, res) => {
   }
   
   try {
-    if (parsed.data.NORMAL_AI_PROMPT !== undefined) {
-      await db.insert(globalSettings)
-        .values({ id: "NORMAL_AI_PROMPT", value: parsed.data.NORMAL_AI_PROMPT })
-        .onConflictDoUpdate({
-          target: globalSettings.id,
-          set: { value: parsed.data.NORMAL_AI_PROMPT, updatedAt: new Date() }
-        });
+    const entries = Object.entries(parsed.data);
+    for (const [key, value] of entries) {
+      if (value !== undefined) {
+        await db.insert(globalSettings)
+          .values({ id: key, value })
+          .onConflictDoUpdate({
+            target: globalSettings.id,
+            set: { value, updatedAt: new Date() }
+          });
+      }
     }
     console.log("DB update success");
     res.json({ success: true });
