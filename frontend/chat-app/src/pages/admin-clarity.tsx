@@ -566,16 +566,23 @@ export default function AdminConsolePage() {
                               const fileName = `qr_config_${Date.now()}.${ext}`;
                               const filePath = `payments/${fileName}`;
                               
-                              const { error: uploadError } = await supabase.storage
-                                .from('project-files')
-                                .upload(filePath, file);
+                              const formData = new FormData();
+                              formData.append("file", file);
+                              formData.append("storagePath", filePath);
 
-                              if (uploadError) throw uploadError;
+                              const token = session?.access_token;
+                              const res = await fetch(apiUrl("/api/files/upload-public"), {
+                                method: "POST",
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                                body: formData
+                              });
 
-                              const { data } = supabase.storage
-                                .from('project-files')
-                                .getPublicUrl(filePath);
+                              if (!res.ok) {
+                                const errData = await res.json().catch(() => ({}));
+                                throw new Error(errData.error || "Upload failed");
+                              }
 
+                              const data = await res.json();
                               setGlobalQrCodeUrl(data.publicUrl);
                               toast({ title: "QR Code Uploaded", description: "Remember to save settings." });
                             } catch (err: any) {

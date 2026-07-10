@@ -80,6 +80,55 @@ async function categoryBelongsToProject(categoryId: string, projectId: string) {
   return Boolean(category);
 }
 
+// POST /files/upload-public - Upload file securely via backend using Service Role Key
+router.post("/upload-public", (req, res, next) => {
+  upload.single("file")(req, res, (err: any) => {
+    if (err) return res.status(400).json({ error: err.message || "File upload failed" });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const { storagePath } = req.body;
+    const userId = (req as any).auth?.userId;
+
+    if (!userId) {
+      if (req.file?.path) fs.unlinkSync(req.file.path);
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (!req.file || !storagePath) {
+      if (req.file?.path) fs.unlinkSync(req.file.path);
+      res.status(400).json({ error: "File and storagePath are required" });
+      return;
+    }
+
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("project-files")
+      .upload(storagePath, fileBuffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
+      });
+
+    fs.unlinkSync(req.file.path);
+
+    if (uploadError) {
+      req.log.error({ err: uploadError }, "Admin upload failed");
+      res.status(500).json({ error: "Upload failed: " + uploadError.message });
+      return;
+    }
+
+    const { data: publicUrlData } = supabaseAdmin.storage
+      .from("project-files")
+      .getPublicUrl(storagePath);
+
+    res.json({ publicUrl: publicUrlData.publicUrl });
+  } catch (err: any) {
+    if (req.file?.path) fs.unlinkSync(req.file.path);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // POST /files/upload - Upload file as knowledge source
 router.post("/upload", (req, res, next) => {
   upload.single("file")(req, res, (err: any) => {

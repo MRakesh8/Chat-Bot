@@ -602,7 +602,7 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   
   const queryClient = useQueryClient();
-  const { dbUser } = useAuth();
+  const { dbUser, session } = useAuth();
   
   const { data: paymentInfo, isLoading: isCheckingPayment } = useQuery({
     queryKey: ["payment-status", projectId],
@@ -671,17 +671,24 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
       const fileName = `payment_proof_${projectId}_${Date.now()}.${fileExt}`;
       const filePath = `payments/${fileName}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('project-files')
-        .upload(filePath, screenshotFile);
+      const formData = new FormData();
+      formData.append("file", screenshotFile);
+      formData.append("storagePath", filePath);
 
-      if (uploadError) throw new Error("Failed to upload screenshot: " + uploadError.message);
+      const token = session?.access_token;
+      const uploadRes = await fetch(apiUrl("/api/files/upload-public"), {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData
+      });
 
-      const { data: publicUrlData } = supabase.storage
-        .from('project-files')
-        .getPublicUrl(filePath);
+      if (!uploadRes.ok) {
+        const errData = await uploadRes.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to upload screenshot");
+      }
 
-      const screenshotUrl = publicUrlData.publicUrl;
+      const uploadData = await uploadRes.json();
+      const screenshotUrl = uploadData.publicUrl;
 
       // 2. Submit payment record
       const res = await authFetch(apiUrl("/api/payments/manual"), {
