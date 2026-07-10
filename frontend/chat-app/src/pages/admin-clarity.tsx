@@ -16,10 +16,11 @@ import {
   FolderOpen,
   Settings2,
   Save,
-  Loader2,
   Upload,
-  CreditCard
+  CreditCard,
+  Loader2
 } from "lucide-react";
+import { TableSkeleton } from "@/components/ui/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -414,7 +415,7 @@ export default function AdminConsolePage() {
           <div className="max-w-7xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold">Platform Users</h2>
             {usersLoading ? (
-              <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
+              <TableSkeleton rows={8} />
             ) : (
               <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <table className="w-full text-left text-sm whitespace-nowrap">
@@ -483,7 +484,7 @@ export default function AdminConsolePage() {
           <div className="max-w-7xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold">Global Projects</h2>
             {projectsLoading ? (
-              <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
+              <TableSkeleton rows={8} />
             ) : (
               <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <table className="w-full text-left text-sm whitespace-nowrap">
@@ -606,7 +607,7 @@ export default function AdminConsolePage() {
               </div>
             )}
             {paymentsLoading ? (
-              <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
+              <TableSkeleton rows={8} />
             ) : (
               <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <table className="w-full text-left text-sm">

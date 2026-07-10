@@ -23,6 +23,16 @@ async function start() {
     logger.error(err, "Failed to run migrations on startup");
   }
 
+  // Hotfix: Add missing columns to database since Drizzle push wasn't run
+  try {
+    const { pool } = await import("@workspace/db");
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "deployment_paid" boolean DEFAULT false;`);
+    await pool.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "features" jsonb DEFAULT '{"canCreateProject":true,"canUseWidgetStudio":false,"canUseContextEngine":false}'::jsonb NOT NULL;`);
+    logger.info("Hotfix: Added deployment_paid and features columns successfully.");
+  } catch (err: any) {
+    logger.error(err, "Hotfix: Failed to add columns. (They may already exist or DB error)");
+  }
+
   try {
     const executablePath = await puppeteer.executablePath();
     if (!fs.existsSync(executablePath)) {

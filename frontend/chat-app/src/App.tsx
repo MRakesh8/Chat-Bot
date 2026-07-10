@@ -3,6 +3,7 @@ import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { GlobalLoadingScreen } from "@/components/ui/global-loading";
 
 import { DashboardLayout } from "./components/layout/dashboard-layout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -42,7 +43,7 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return <GlobalLoadingScreen />;
   if (!user) return <Home />;
   
   return <>{children}</>;
@@ -51,7 +52,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { user, dbUser, isLoading } = useAuth();
   
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return <GlobalLoadingScreen />;
   if (!user || !dbUser || dbUser.role !== "super_admin") return <Home />;
   
   return <>{children}</>;
@@ -64,7 +65,7 @@ export default function App() {
         <AuthProvider>
           <ThemeProvider defaultTheme="dark">
             <TooltipProvider>
-              <Suspense fallback={<div className="flex items-center justify-center h-screen w-screen text-muted-foreground">Loading...</div>}>
+              <Suspense fallback={<GlobalLoadingScreen />}>
                 <Switch>
                   <Route path="/" component={Home} />
                   <Route path="/sign-in"><AuthPage /></Route>

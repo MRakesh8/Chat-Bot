@@ -32,9 +32,11 @@ import {
   Volume2,
   VolumeX,
   MessageCircleQuestion,
+  Square,
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import { RotatingStatus } from "@/components/rotating-status";
+import { MessageSkeleton } from "@/components/ui/skeletons";
 import { ArtifactViewer } from "@/components/ArtifactViewer";
 import { followUpService } from "@/lib/follow-up-service";
 
@@ -876,9 +878,10 @@ export function ChatArea() {
             </div>
             
             {isLoading ? (
-              <div className="flex h-32 w-full items-center justify-center">
-                <Loader2 className="h-6 h-6 animate-spin text-primary" />
-                <span className="ml-2 text-sm text-muted-foreground">Loading chat history...</span>
+              <div className="space-y-6">
+                <MessageSkeleton role="assistant" />
+                <MessageSkeleton role="user" />
+                <MessageSkeleton role="assistant" />
               </div>
             ) : (
               (filteredMessages as any[])?.map((msg: any) => (
