@@ -118,14 +118,58 @@ router.post("/upload-public", (req, res, next) => {
       return;
     }
 
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from("project-files")
-      .getPublicUrl(storagePath);
+    const baseUrl = process.env.API_URL || (req.protocol + '://' + req.get('host'));
+    const publicUrl = `${baseUrl}/api/files/public/${storagePath}`;
 
-    res.json({ publicUrl: publicUrlData.publicUrl });
+    res.json({ publicUrl });
   } catch (err: any) {
     if (req.file?.path) fs.unlinkSync(req.file.path);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /files/public/* - Proxy file from private bucket securely
+router.get("/public/*", async (req, res) => {
+  try {
+    const storagePath = req.params[0];
+    if (!storagePath) {
+      res.status(400).json({ error: "Storage path required" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.storage
+      .from("project-files")
+      .download(storagePath);
+
+    if (error || !data) {
+      req.log.error({ err: error }, "Failed to proxy file");
+      res.status(404).send("Not found");
+      return;
+    }
+
+    const arrayBuffer = await data.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    const ext = path.extname(storagePath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.svg': 'image/svg+xml',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.pdf': 'application/pdf'
+    };
+    
+    if (mimeTypes[ext]) {
+      res.setHeader('Content-Type', mimeTypes[ext]);
+    }
+    
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(buffer);
+  } catch (err: any) {
+    req.log.error({ err }, "Error proxying file");
+    res.status(500).send("Internal Error");
   }
 });
 
