@@ -141,7 +141,7 @@ export default function AdminConsolePage() {
       if (!res.ok) throw new Error("Failed to load global settings");
       return res.json() as Promise<Record<string, string>>;
     },
-    enabled: isAdmin && activeTab === "settings",
+    enabled: isAdmin && (activeTab === "settings" || activeTab === "payments"),
   });
 
   useEffect(() => {
@@ -525,6 +525,79 @@ export default function AdminConsolePage() {
         {activeTab === "payments" && (
           <div className="max-w-7xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold">Manual Payments</h2>
+            {settingsLoading ? (
+              <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-4 mb-6">
+                <div>
+                  <h3 className="text-lg font-bold mb-1">Manual Payment Configuration</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Configure the UPI ID and QR code image shown on the Deployment Paywall.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase">UPI ID</label>
+                      <Input 
+                        value={globalUpiId}
+                        onChange={(e) => setGlobalUpiId(e.target.value)}
+                        placeholder="e.g. yourname@okaxis"
+                        className="font-mono bg-background"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase">QR Code Image</label>
+                      <div className="flex items-center gap-3">
+                        {globalQrCodeUrl && (
+                          <div className="w-12 h-12 rounded-lg border border-border bg-white overflow-hidden flex-none">
+                            <img src={globalQrCodeUrl} className="w-full h-full object-contain" alt="QR Code preview" />
+                          </div>
+                        )}
+                        <Input 
+                          type="file" 
+                          accept="image/*" 
+                          disabled={isUploadingQr}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setIsUploadingQr(true);
+                            try {
+                              const ext = file.name.split('.').pop();
+                              const fileName = `qr_config_${Date.now()}.${ext}`;
+                              const filePath = `payments/${fileName}`;
+                              
+                              const { error: uploadError } = await supabase.storage
+                                .from('project-files')
+                                .upload(filePath, file);
+
+                              if (uploadError) throw uploadError;
+
+                              const { data } = supabase.storage
+                                .from('project-files')
+                                .getPublicUrl(filePath);
+
+                              setGlobalQrCodeUrl(data.publicUrl);
+                              toast({ title: "QR Code Uploaded", description: "Remember to save settings." });
+                            } catch (err: any) {
+                              toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+                            } finally {
+                              setIsUploadingQr(false);
+                            }
+                          }}
+                          className="cursor-pointer bg-background"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-4 border-t border-border mt-4">
+                  <Button onClick={updateGlobalSettings} disabled={savingSettings} className="gap-2">
+                    {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Payment Config
+                  </Button>
+                </div>
+              </div>
+            )}
             {paymentsLoading ? (
               <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
             ) : (
@@ -936,67 +1009,7 @@ export default function AdminConsolePage() {
                   />
                 </div>
                 
-                <div className="border-t border-border pt-6 mt-6">
-                  <h3 className="text-lg font-bold mb-1">Manual Payment Configuration</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Configure the UPI ID and QR code image shown on the Deployment Paywall.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground uppercase">UPI ID</label>
-                      <Input 
-                        value={globalUpiId}
-                        onChange={(e) => setGlobalUpiId(e.target.value)}
-                        placeholder="e.g. yourname@okaxis"
-                        className="font-mono bg-background"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground uppercase">QR Code Image</label>
-                      <div className="flex items-center gap-3">
-                        {globalQrCodeUrl && (
-                          <div className="w-12 h-12 rounded-lg border border-border bg-white overflow-hidden flex-none">
-                            <img src={globalQrCodeUrl} className="w-full h-full object-contain" alt="QR Code preview" />
-                          </div>
-                        )}
-                        <Input 
-                          type="file" 
-                          accept="image/*" 
-                          disabled={isUploadingQr}
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setIsUploadingQr(true);
-                            try {
-                              const ext = file.name.split('.').pop();
-                              const fileName = `qr_config_${Date.now()}.${ext}`;
-                              const filePath = `payments/${fileName}`;
-                              
-                              const { error: uploadError } = await supabase.storage
-                                .from('project-files')
-                                .upload(filePath, file);
 
-                              if (uploadError) throw uploadError;
-
-                              const { data } = supabase.storage
-                                .from('project-files')
-                                .getPublicUrl(filePath);
-
-                              setGlobalQrCodeUrl(data.publicUrl);
-                              toast({ title: "QR Code Uploaded", description: "Remember to save settings." });
-                            } catch (err: any) {
-                              toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
-                            } finally {
-                              setIsUploadingQr(false);
-                            }
-                          }}
-                          className="cursor-pointer bg-background"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
                 <div className="flex justify-end">
                   <Button onClick={updateGlobalSettings} disabled={savingSettings} className="gap-2">
                     {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
