@@ -17,7 +17,8 @@ import {
   Settings2,
   Save,
   Loader2,
-  Upload
+  Upload,
+  CreditCard
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
