@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain } from "lucide-react";
+import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
 import { Deployment } from "../components/project/deployment";
 import { ApiKeys } from "../components/project/api-keys";
 import { Analytics } from "../components/project/analytics";
 import { ContextSettings } from "../components/project/context-settings";
+import { supabase } from "@/lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiUrl } from "@/lib/api-url";
@@ -413,7 +414,7 @@ export default function AdminProjectEditPage() {
                               className="border-border bg-card hover:bg-muted text-foreground"
                               onClick={() => window.open(report.contentUrl, "_blank")}
                             >
-                              Download PDF
+                              Download Report
                             </Button>
                           </div>
                         ))}
@@ -474,7 +475,7 @@ export default function AdminProjectEditPage() {
                   <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can deploy the widget.</p>
                 </div>
               ) : (
-                <Deployment projectId={projectId!} />
+                <DeploymentPaywall projectId={projectId!} isAdmin={isAdmin} authFetch={authFetch} toast={toast} />
               )}
             </TabsContent>
 
@@ -593,5 +594,243 @@ export default function AdminProjectEditPage() {
         )}
       </div>
     </>
+  );
+}
+
+// --- Deployment Paywall Component ---
+function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
+  projectId: string;
+  isAdmin: boolean;
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  toast: (opts: any) => void;
+}) {
+  const [isPaying, setIsPaying] = useState(false);
+  const [method, setMethod] = useState("Google Pay");
+  const [utr, setUtr] = useState("");
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  
+  const queryClient = useQueryClient();
+  const { dbUser } = useAuth();
+  
+  const { data: paymentInfo, isLoading: isCheckingPayment } = useQuery({
+    queryKey: ["payment-status", projectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/payments/status/${projectId}`));
+      if (!res.ok) throw new Error("Failed to check payment status");
+      return res.json() as Promise<{ status: string, licenseStatus: string, upiId?: string, qrCodeUrl?: string }>;
+    },
+    enabled: !!projectId,
+  });
+
+  const hasActiveLicense = paymentInfo?.licenseStatus === "active";
+  const isPending = paymentInfo?.status === "pending";
+  const isRejected = paymentInfo?.status === "rejected";
+  
+  const upiId = paymentInfo?.upiId || "rakesh837m@okaxis";
+  const qrCodeUrl = paymentInfo?.qrCodeUrl || "/qr-code.png";
+
+  if (isAdmin || hasActiveLicense) {
+    return <Deployment projectId={projectId} />;
+  }
+
+  if (isCheckingPayment) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+      </div>
+    );
+  }
+  
+  if (isPending) {
+    return (
+      <div className="mt-8 flex items-center justify-center">
+        <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl p-8 space-y-6 text-center shadow-lg shadow-violet-500/10">
+          <div className="mx-auto w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+          </div>
+          <h3 className="text-2xl font-bold text-foreground">Pending Verification</h3>
+          <p className="text-muted-foreground text-sm">
+            Your payment is currently being verified by an admin. Once approved, deployment will be permanently unlocked for this project.
+          </p>
+          <div className="p-4 bg-muted rounded-xl text-sm font-medium border border-border">
+            <p className="text-muted-foreground">Urgent? Contact Admin:</p>
+            <p className="text-foreground text-lg mt-1 font-bold tracking-wider">9787191443</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!utr.trim()) {
+      toast({ title: "UTR Required", description: "Please enter the UTR or Transaction ID.", variant: "destructive" });
+      return;
+    }
+    if (!screenshotFile) {
+      toast({ title: "Screenshot Required", description: "Please upload the payment screenshot.", variant: "destructive" });
+      return;
+    }
+
+    setIsPaying(true);
+    try {
+      // 1. Upload screenshot to Supabase
+      const fileExt = screenshotFile.name.split('.').pop();
+      const fileName = `payment_proof_${projectId}_${Date.now()}.${fileExt}`;
+      const filePath = `payments/${fileName}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('project-files')
+        .upload(filePath, screenshotFile);
+
+      if (uploadError) throw new Error("Failed to upload screenshot: " + uploadError.message);
+
+      const { data: publicUrlData } = supabase.storage
+        .from('project-files')
+        .getPublicUrl(filePath);
+
+      const screenshotUrl = publicUrlData.publicUrl;
+
+      // 2. Submit payment record
+      const res = await authFetch(apiUrl("/api/payments/manual"), {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          utrTransactionId: utr,
+          method,
+          screenshotUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to submit payment");
+      }
+
+      toast({ title: "Payment Submitted", description: "Your payment is now pending verification." });
+      queryClient.invalidateQueries({ queryKey: ["payment-status", projectId] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to submit payment.", variant: "destructive" });
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  return (
+    <div className="mt-8 flex items-center justify-center">
+      <div className="relative w-full max-w-4xl grid md:grid-cols-2 gap-8">
+        
+        {/* Left Side: Info & QR Code */}
+        <div className="relative bg-card border border-border rounded-2xl p-8 space-y-6 flex flex-col justify-center items-center shadow-lg">
+          <div className="absolute -inset-1 bg-gradient-to-br from-violet-600/20 via-indigo-600/20 to-transparent rounded-2xl blur-lg -z-10" />
+          
+          <div className="text-center space-y-2">
+            <h3 className="text-2xl font-bold text-foreground">Deploy to Your Website</h3>
+            <p className="text-muted-foreground text-sm max-w-[280px] mx-auto">
+              Each project requires a one-time lifetime license fee of ₹499. No recurring charges.
+            </p>
+          </div>
+
+          <div className="text-center py-2">
+            <div className="flex items-baseline justify-center gap-1">
+              <span className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-500">₹499</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 uppercase font-semibold tracking-wider">Lifetime License</p>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-zinc-200 inline-block">
+            <img src={qrCodeUrl} alt="Payment QR Code" className="w-48 h-48 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = 'https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg' }} />
+          </div>
+          
+          <div className="text-center bg-muted/50 w-full py-3 rounded-lg border border-border">
+            <p className="text-xs text-muted-foreground mb-1">Scan to pay or use UPI ID</p>
+            <p className="font-mono font-bold text-foreground tracking-wide">{upiId}</p>
+          </div>
+        </div>
+
+        {/* Right Side: Form */}
+        <div className="relative bg-card border border-border rounded-2xl p-8 space-y-6 shadow-lg shadow-violet-500/5">
+          <div className="space-y-1">
+            <h3 className="text-xl font-bold">Confirm Payment</h3>
+            <p className="text-sm text-muted-foreground">Submit your transaction details below.</p>
+            {isRejected && (
+              <p className="text-sm font-medium text-destructive mt-2 bg-destructive/10 p-2 rounded-md">
+                Your previous submission was rejected. Please try again or contact admin.
+              </p>
+            )}
+          </div>
+
+          <form onSubmit={handlePaymentSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase">Name</label>
+                <Input value={dbUser?.name || ''} disabled className="bg-muted/50" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase">Email</label>
+                <Input value={dbUser?.email || ''} disabled className="bg-muted/50" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Amount Paid</label>
+              <Input value="₹499 (One-Time)" disabled className="bg-muted/50 font-bold text-violet-500" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Payment Method</label>
+              <select 
+                className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+              >
+                <option value="Google Pay">Google Pay</option>
+                <option value="PhonePe">PhonePe</option>
+                <option value="Paytm">Paytm</option>
+                <option value="BHIM">BHIM</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-foreground flex items-center gap-1 uppercase">
+                UTR / Transaction ID <span className="text-destructive">*</span>
+              </label>
+              <Input 
+                required 
+                placeholder="e.g. 312345678901" 
+                value={utr}
+                onChange={(e) => setUtr(e.target.value)}
+                className="font-mono"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-foreground flex items-center gap-1 uppercase">
+                Payment Screenshot <span className="text-destructive">*</span>
+              </label>
+              <Input 
+                type="file" 
+                accept="image/*" 
+                required
+                onChange={(e) => setScreenshotFile(e.target.files?.[0] || null)}
+                className="cursor-pointer file:cursor-pointer file:bg-violet-500 file:text-white file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3 hover:file:bg-violet-600 file:transition-colors"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isPaying}
+              className="w-full mt-6 py-6 text-base rounded-xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-lg shadow-violet-500/25 flex items-center justify-center gap-2"
+            >
+              {isPaying ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Submitting...</>
+              ) : (
+                <><CheckCircle2 className="w-5 h-5" /> I Have Completed Payment</>
+              )}
+            </Button>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -17,14 +17,19 @@ import {
   Settings2,
   Save,
   Loader2
+  Loader2,
+  Upload
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiUrl } from "@/lib/api-url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { useLocation } from "wouter";
+import { supabase } from "@/lib/supabase";
 import {
   Dialog,
   DialogContent,
@@ -92,11 +97,14 @@ export default function AdminConsolePage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings" | "errors" | "supabase">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings" | "errors" | "supabase" | "payments">("users");
   
   // System Settings state
   const [globalAiPrompt, setGlobalAiPrompt] = useState("");
+  const [globalUpiId, setGlobalUpiId] = useState("");
+  const [globalQrCodeUrl, setGlobalQrCodeUrl] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [isUploadingQr, setIsUploadingQr] = useState(false);
   
   // System Keys state
   const [loadingKeys, setLoadingKeys] = useState(true);
@@ -140,6 +148,16 @@ export default function AdminConsolePage() {
     if (globalSettings?.NORMAL_AI_PROMPT !== undefined) {
       setGlobalAiPrompt(globalSettings.NORMAL_AI_PROMPT);
     }
+    if (globalSettings?.PAYMENT_UPI_ID !== undefined) {
+      setGlobalUpiId(globalSettings.PAYMENT_UPI_ID);
+    } else {
+      setGlobalUpiId("rakesh837m@okaxis"); // default fallback
+    }
+    if (globalSettings?.PAYMENT_QR_CODE_URL !== undefined) {
+      setGlobalQrCodeUrl(globalSettings.PAYMENT_QR_CODE_URL);
+    } else {
+      setGlobalQrCodeUrl("/qr-code.png");
+    }
   }, [globalSettings, activeTab]);
 
   // System Errors Fetch
@@ -152,6 +170,17 @@ export default function AdminConsolePage() {
     },
     enabled: isAdmin && activeTab === "errors",
     refetchInterval: activeTab === "errors" ? 5000 : false,
+  });
+
+  // Fetch Payments
+  const { data: payments, isLoading: paymentsLoading } = useQuery({
+    queryKey: ["super-admin-payments"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/super-admin/payments"));
+      if (!res.ok) throw new Error("Failed to load payments");
+      return res.json() as Promise<any[]>;
+    },
+    enabled: isAdmin && activeTab === "payments",
   });
 
   // Supabase Stats Fetch
@@ -189,7 +218,11 @@ export default function AdminConsolePage() {
     try {
       const res = await authFetch(apiUrl("/api/super-admin/global-settings"), {
         method: "PATCH",
-        body: JSON.stringify({ NORMAL_AI_PROMPT: globalAiPrompt }),
+        body: JSON.stringify({ 
+          NORMAL_AI_PROMPT: globalAiPrompt,
+          PAYMENT_UPI_ID: globalUpiId,
+          PAYMENT_QR_CODE_URL: globalQrCodeUrl
+        }),
       });
       if (!res.ok) throw new Error("Failed to update settings");
       toast({ title: "Settings saved successfully" });
@@ -337,6 +370,7 @@ export default function AdminConsolePage() {
           {[
             { id: "users", label: "Users & Roles", icon: Users },
             { id: "projects", label: "Global Projects", icon: LayoutDashboard },
+            { id: "payments", label: "Payments", icon: CreditCard },
             { id: "settings", label: "System Settings", icon: Settings2 },
             { id: "keys", label: "System Keys Health", icon: Key },
             { id: "errors", label: "System Errors", icon: AlertCircle },
@@ -477,6 +511,60 @@ export default function AdminConsolePage() {
                           <Button variant="outline" size="sm" className="gap-2 h-8" onClick={() => setLocation(`/admin/projects/${p.id}/edit`)}>
                             <FolderOpen className="w-3.5 h-3.5" /> Open
                           </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PAYMENTS TAB */}
+        {activeTab === "payments" && (
+          <div className="max-w-7xl mx-auto space-y-6">
+            <h2 className="text-2xl font-bold">Manual Payments</h2>
+            {paymentsLoading ? (
+              <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground border-b border-border">
+                    <tr>
+                      <th className="p-4 font-medium">Date</th>
+                      <th className="p-4 font-medium">User</th>
+                      <th className="p-4 font-medium">Amount</th>
+                      <th className="p-4 font-medium">UTR</th>
+                      <th className="p-4 font-medium">Status</th>
+                      <th className="p-4 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {payments?.map((p) => (
+                      <tr key={p.id} className="hover:bg-muted/30">
+                        <td className="p-4">{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td className="p-4">{p.user?.email}</td>
+                        <td className="p-4 font-bold">₹{p.amount / 100}</td>
+                        <td className="p-4 font-mono text-xs">{p.utrTransactionId || "N/A"}</td>
+                        <td className="p-4">
+                          <Badge variant={p.status === 'verified' ? 'default' : p.status === 'rejected' ? 'destructive' : 'secondary'}>
+                            {p.status}
+                          </Badge>
+                        </td>
+                        <td className="p-4 gap-2 flex">
+                          {p.status === 'pending' && (
+                            <>
+                              <Button size="sm" onClick={async () => {
+                                await authFetch(apiUrl(`/api/super-admin/payments/${p.id}/approve`), { method: 'POST' });
+                                queryClient.invalidateQueries({ queryKey: ["super-admin-payments"] });
+                              }}>Approve</Button>
+                              <Button size="sm" variant="destructive" onClick={async () => {
+                                await authFetch(apiUrl(`/api/super-admin/payments/${p.id}/reject`), { method: 'POST' });
+                                queryClient.invalidateQueries({ queryKey: ["super-admin-payments"] });
+                              }}>Reject</Button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -846,6 +934,68 @@ export default function AdminConsolePage() {
                     className="min-h-[300px] font-mono text-sm bg-background border-border"
                     placeholder="Enter global system instructions..."
                   />
+                </div>
+                
+                <div className="border-t border-border pt-6 mt-6">
+                  <h3 className="text-lg font-bold mb-1">Manual Payment Configuration</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Configure the UPI ID and QR code image shown on the Deployment Paywall.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase">UPI ID</label>
+                      <Input 
+                        value={globalUpiId}
+                        onChange={(e) => setGlobalUpiId(e.target.value)}
+                        placeholder="e.g. yourname@okaxis"
+                        className="font-mono bg-background"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase">QR Code Image</label>
+                      <div className="flex items-center gap-3">
+                        {globalQrCodeUrl && (
+                          <div className="w-12 h-12 rounded-lg border border-border bg-white overflow-hidden flex-none">
+                            <img src={globalQrCodeUrl} className="w-full h-full object-contain" alt="QR Code preview" />
+                          </div>
+                        )}
+                        <Input 
+                          type="file" 
+                          accept="image/*" 
+                          disabled={isUploadingQr}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setIsUploadingQr(true);
+                            try {
+                              const ext = file.name.split('.').pop();
+                              const fileName = `qr_config_${Date.now()}.${ext}`;
+                              const filePath = `payments/${fileName}`;
+                              
+                              const { error: uploadError } = await supabase.storage
+                                .from('project-files')
+                                .upload(filePath, file);
+
+                              if (uploadError) throw uploadError;
+
+                              const { data } = supabase.storage
+                                .from('project-files')
+                                .getPublicUrl(filePath);
+
+                              setGlobalQrCodeUrl(data.publicUrl);
+                              toast({ title: "QR Code Uploaded", description: "Remember to save settings." });
+                            } catch (err: any) {
+                              toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+                            } finally {
+                              setIsUploadingQr(false);
+                            }
+                          }}
+                          className="cursor-pointer bg-background"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex justify-end">
                   <Button onClick={updateGlobalSettings} disabled={savingSettings} className="gap-2">

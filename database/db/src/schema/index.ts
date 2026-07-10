@@ -39,6 +39,47 @@ export const users = pgTable("users", {
   role: varchar("role", { length: 50 }).default("user").notNull(), // super_admin, admin, user, client
   features: jsonb("features").$type<{
     canCreateProject: boolean;
+/**
+ * @file index.ts (Schema)
+ * @description Declares the PostgreSQL database schema using Drizzle ORM, defining tables for users, projects, knowledge base categories, items (sources), chunks, chat sessions, messages, and feedback.
+ */
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  boolean,
+  uuid,
+  varchar,
+  jsonb,
+  vector,
+  index,
+} from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+
+export const globalSettings = pgTable("global_settings", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const systemErrors = pgTable("system_errors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  source: varchar("source", { length: 100 }).notNull(), // 'chatbot', 'system', 'render'
+  message: text("message").notNull(),
+  stack: text("stack"),
+  context: jsonb("context"),
+  isResolved: boolean("is_resolved").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Enums and Custom Types (represented as text for simplicity or pgEnum)
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  role: varchar("role", { length: 50 }).default("user").notNull(), // super_admin, admin, user, client
+  features: jsonb("features").$type<{
+    canCreateProject: boolean;
     canUseWidgetStudio: boolean;
     canUseContextEngine: boolean;
   }>().default({ canCreateProject: true, canUseWidgetStudio: false, canUseContextEngine: false }).notNull(),
@@ -56,6 +97,7 @@ export const projects = pgTable("projects", {
   shareToken: varchar("share_token", { length: 50 }),
   isActive: boolean("is_active").default(true),
   tags: jsonb("tags").$type<string[]>().default([]).notNull(),
+  deploymentPaid: boolean("deployment_paid").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("projects_user_id_idx").on(table.userId),
@@ -539,4 +581,75 @@ export const apiLogs = pgTable("api_logs", {
 export const apiLogsRelations = relations(apiLogs, ({ one }) => ({
   user: one(users, { fields: [apiLogs.userId], references: [users.id] }),
   project: one(projects, { fields: [apiLogs.projectId], references: [projects.id] }),
+}));
+
+// --- Billing & Licensing Schema ---
+
+export const plans = pgTable("plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 100 }).notNull(),
+  price: integer("price").notNull(), // in paise
+  currency: varchar("currency", { length: 10 }).default("INR").notNull(),
+  interval: varchar("interval", { length: 50 }).default("lifetime").notNull(), // lifetime, monthly, yearly
+  features: jsonb("features").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const projectLicenses = pgTable("project_licenses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  planId: uuid("plan_id").references(() => plans.id, { onDelete: "set null" }),
+  licenseStatus: varchar("license_status", { length: 50 }).default("inactive").notNull(), // active, inactive
+  paymentStatus: varchar("payment_status", { length: 50 }).default("pending").notNull(), // pending, paid, failed
+  paymentDate: timestamp("payment_date"),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("project_licenses_project_id_idx").on(table.projectId),
+}));
+
+export const payments = pgTable("payments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default("INR").notNull(),
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, verified, rejected, failed
+  method: varchar("method", { length: 50 }).notNull(), // manual_upi, razorpay, stripe
+  utrTransactionId: varchar("utr_transaction_id", { length: 255 }),
+  screenshotUrl: text("screenshot_url"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("payments_project_id_idx").on(table.projectId),
+  userIdIdx: index("payments_user_id_idx").on(table.userId),
+}));
+
+export const paymentLogs = pgTable("payment_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "cascade" }).notNull(),
+  action: varchar("action", { length: 100 }).notNull(), // submitted, verified, rejected
+  performedBy: uuid("performed_by").references(() => users.id, { onDelete: "set null" }), // User or Admin ID
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Relations
+export const projectLicensesRelations = relations(projectLicenses, ({ one }) => ({
+  project: one(projects, { fields: [projectLicenses.projectId], references: [projects.id] }),
+  plan: one(plans, { fields: [projectLicenses.planId], references: [plans.id] }),
+  approver: one(users, { fields: [projectLicenses.approvedBy], references: [users.id] }),
+}));
+
+export const paymentsRelations = relations(payments, ({ one, many }) => ({
+  project: one(projects, { fields: [payments.projectId], references: [projects.id] }),
+  user: one(users, { fields: [payments.userId], references: [users.id] }),
+  logs: many(paymentLogs),
+}));
+
+export const paymentLogsRelations = relations(paymentLogs, ({ one }) => ({
+  payment: one(payments, { fields: [paymentLogs.paymentId], references: [payments.id] }),
+  performer: one(users, { fields: [paymentLogs.performedBy], references: [users.id] }),
 }));

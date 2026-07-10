@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, desc, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { users, projects, globalSettings, systemErrors } from "@workspace/db";
+import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs } from "@workspace/db";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 
@@ -210,6 +210,121 @@ router.get("/supabase-stats", async (req, res) => {
   } catch (err: any) {
     req.log.error({ err }, "Error fetching supabase stats");
     res.status(500).json({ error: "Internal server error fetching stats" });
+  }
+});
+
+// GET /api/super-admin/payments
+router.get("/payments", async (req, res) => {
+  try {
+    const allPayments = await db
+      .select({
+        id: payments.id,
+        amount: payments.amount,
+        currency: payments.currency,
+        status: payments.status,
+        method: payments.method,
+        utrTransactionId: payments.utrTransactionId,
+        screenshotUrl: payments.screenshotUrl,
+        createdAt: payments.createdAt,
+        project: {
+          id: projects.id,
+          name: projects.name,
+        },
+        user: {
+          id: users.id,
+          email: users.email,
+        }
+      })
+      .from(payments)
+      .innerJoin(projects, eq(payments.projectId, projects.id))
+      .innerJoin(users, eq(payments.userId, users.id))
+      .orderBy(desc(payments.createdAt));
+
+    res.json(allPayments);
+  } catch (err: any) {
+    req.log.error({ err }, "Error fetching payments for admin");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/super-admin/payments/:id/approve
+router.post("/payments/:id/approve", async (req, res) => {
+  try {
+    const paymentId = req.params.id;
+    const adminId = (req as any).auth?.userId;
+
+    const [payment] = await db.select().from(payments).where(eq(payments.id, paymentId));
+    if (!payment) {
+      res.status(404).json({ error: "Payment not found" });
+      return;
+    }
+
+    // 1. Update payment status
+    await db.update(payments).set({ status: "verified" }).where(eq(payments.id, paymentId));
+
+    // 2. Log action
+    await db.insert(paymentLogs).values({
+      paymentId: paymentId,
+      action: "verified",
+      performedBy: adminId,
+      notes: "Approved manually by Super Admin",
+    });
+
+    // 3. Update project license to active
+    await db.update(projectLicenses)
+      .set({ 
+        licenseStatus: "active", 
+        paymentStatus: "paid", 
+        approvedBy: adminId, 
+        approvedAt: new Date(),
+        paymentDate: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(projectLicenses.projectId, payment.projectId));
+
+    res.json({ success: true });
+  } catch (err: any) {
+    req.log.error({ err }, "Error approving payment");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/super-admin/payments/:id/reject
+router.post("/payments/:id/reject", async (req, res) => {
+  try {
+    const paymentId = req.params.id;
+    const adminId = (req as any).auth?.userId;
+    const { reason } = req.body;
+
+    const [payment] = await db.select().from(payments).where(eq(payments.id, paymentId));
+    if (!payment) {
+      res.status(404).json({ error: "Payment not found" });
+      return;
+    }
+
+    // 1. Update payment status
+    await db.update(payments).set({ status: "rejected" }).where(eq(payments.id, paymentId));
+
+    // 2. Log action
+    await db.insert(paymentLogs).values({
+      paymentId: paymentId,
+      action: "rejected",
+      performedBy: adminId,
+      notes: reason || "Rejected manually by Super Admin",
+    });
+
+    // 3. Update project license to failed (if currently pending)
+    await db.update(projectLicenses)
+      .set({ 
+        paymentStatus: "failed", 
+        updatedAt: new Date()
+      })
+      .where(and(eq(projectLicenses.projectId, payment.projectId), eq(projectLicenses.paymentStatus, "pending")));
+
+    res.json({ success: true });
+  } catch (err: any) {
+    req.log.error({ err }, "Error rejecting payment");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

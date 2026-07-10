@@ -8,6 +8,7 @@ import reportsRouter from "./reports";
 import categoriesRouter from "./categories";
 import apiKeysRouter from "./api-keys";
 import servicesRouter from "./services";
+import paymentsRouter from "./payments";
 
 import systemRouter from "./system";
 import superAdminRouter from "./super-admin";
@@ -22,6 +23,7 @@ router.use("/reports", reportsRouter);
 router.use("/categories", categoriesRouter);
 router.use("/api-keys", apiKeysRouter);
 router.use("/services", servicesRouter);
+router.use("/payments", paymentsRouter);
 router.use("/system", systemRouter);
 router.use("/super-admin", superAdminRouter);
 

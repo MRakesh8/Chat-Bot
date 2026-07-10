@@ -66,34 +66,13 @@ router.post("/generate", async (req, res) => {
         markdownContent = markdownContent.replace(/^```markdown\n?/, "").replace(/```$/, "");
     }
 
-    // Convert MD to PDF
-    let pdf: any;
-    try {
-      const { mdToPdf } = await import("md-to-pdf");
-      pdf = await mdToPdf(
-        { content: markdownContent },
-        {
-          launch_options: {
-            args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-          },
-        }
-      );
-      if (!pdf || !pdf.content) {
-         throw new Error("Empty PDF generated");
-      }
-    } catch (err: any) {
-      req.log.error({ err }, "md-to-pdf or puppeteer failed");
-      res.json({ success: false, reason: "Chrome not installed" });
-      return;
-    }
-
     // Upload to Supabase Storage
-    const fileName = `reports/${projectId}/${randomUUID()}.pdf`;
+    const fileName = `reports/${projectId}/${randomUUID()}.md`;
     const { data, error } = await supabaseAdmin
       .storage
       .from("project-files")
-      .upload(fileName, pdf.content, {
-        contentType: "application/pdf",
+      .upload(fileName, markdownContent, {
+        contentType: "text/markdown",
         upsert: false
       });
 
