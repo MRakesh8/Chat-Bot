@@ -437,15 +437,7 @@ export default function AdminProjectEditPage() {
                   <h3 className="text-xl font-medium mb-1">Widget Studio</h3>
                   <p className="text-white/60 text-sm">Customize the appearance and behavior of your chatbot widget.</p>
                 </div>
-                {dbUser?.features?.canUseWidgetStudio === false && !isAdmin ? (
-                  <div className="text-center py-16 bg-muted/50 border border-border rounded-xl mt-8">
-                    <Paintbrush className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium text-foreground mb-2">Premium Feature Locked</h3>
-                    <p className="text-muted-foreground max-w-md mx-auto">Contact Admin (rakesh837m@gmail.com) to enable this feature. For more detail about admin ask chatbot.</p>
-                  </div>
-                ) : (
-                  projectId && <WidgetStudio projectId={projectId} />
-                )}
+                {projectId && <WidgetStudio projectId={projectId} />}
               </div>
             </TabsContent>
 
