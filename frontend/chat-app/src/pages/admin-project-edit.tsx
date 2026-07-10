@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles } from "lucide-react";
+import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
 import { Deployment } from "../components/project/deployment";
@@ -600,6 +600,7 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
   const [method, setMethod] = useState("Google Pay");
   const [utr, setUtr] = useState("");
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
   
   const queryClient = useQueryClient();
   const { dbUser, session } = useAuth();
@@ -620,6 +621,55 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
   
   const upiId = paymentInfo?.upiId || "rakesh837m@okaxis";
   const qrCodeUrl = paymentInfo?.qrCodeUrl || "/qr-code.png";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(upiId);
+      setIsCopied(true);
+      toast({ title: "Copied!", description: "UPI ID copied to clipboard." });
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to copy UPI ID.", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadQr = async () => {
+    try {
+      const response = await fetch(qrCodeUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "aria_ai_qr_code.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to download QR code.", variant: "destructive" });
+    }
+  };
+
+  const handleShareQr = async () => {
+    try {
+      if (navigator.share) {
+        const response = await fetch(qrCodeUrl);
+        const blob = await response.blob();
+        const file = new File([blob], "qr_code.png", { type: blob.type });
+        await navigator.share({
+          title: "Payment QR Code",
+          text: "Scan this QR code to make the payment.",
+          files: [file]
+        });
+      } else {
+        toast({ title: "Not Supported", description: "Web Share API not supported in this browser." });
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+         toast({ title: "Error", description: "Failed to share QR code.", variant: "destructive" });
+      }
+    }
+  };
 
   if (isAdmin || hasActiveLicense) {
     return <Deployment projectId={projectId} />;
@@ -736,13 +786,27 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
             <p className="text-xs text-muted-foreground mt-1 uppercase font-semibold tracking-wider">Lifetime License</p>
           </div>
 
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-zinc-200 inline-block">
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-zinc-200 inline-block relative group">
             <img src={qrCodeUrl} alt="Payment QR Code" className="w-48 h-48 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = 'https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg' }} />
           </div>
           
-          <div className="text-center bg-muted/50 w-full py-3 rounded-lg border border-border">
+          <div className="flex gap-2 justify-center w-full max-w-[240px]">
+            <Button variant="outline" size="sm" className="w-full gap-2 text-xs h-8" onClick={handleDownloadQr}>
+              <Download className="w-3.5 h-3.5" /> Download
+            </Button>
+            <Button variant="outline" size="sm" className="w-full gap-2 text-xs h-8" onClick={handleShareQr}>
+              <Share2 className="w-3.5 h-3.5" /> Share
+            </Button>
+          </div>
+          
+          <div className="text-center bg-muted/50 w-full py-3 rounded-lg border border-border mt-2">
             <p className="text-xs text-muted-foreground mb-1">Scan to pay or use UPI ID</p>
-            <p className="font-mono font-bold text-foreground tracking-wide">{upiId}</p>
+            <div className="flex items-center justify-center gap-2">
+              <p className="font-mono font-bold text-foreground tracking-wide">{upiId}</p>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={handleCopy}>
+                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              </Button>
+            </div>
           </div>
         </div>
 
