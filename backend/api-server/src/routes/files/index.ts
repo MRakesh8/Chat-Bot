@@ -129,7 +129,7 @@ router.post("/upload-public", (req, res, next) => {
 });
 
 // GET /files/public/* - Proxy file from private bucket securely
-router.get("/public/*", async (req, res) => {
+router.get("/public/(.*)", async (req, res) => {
   try {
     const storagePath = req.params[0];
     if (!storagePath) {
