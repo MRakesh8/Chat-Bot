@@ -621,6 +621,7 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
   
   const upiId = paymentInfo?.upiId || "rakesh837m@okaxis";
   const qrCodeUrl = paymentInfo?.qrCodeUrl || "/qr-code.png";
+  const defaultQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=Admin&am=499&cu=INR`)}`;
 
   const handleCopy = async () => {
     try {
@@ -635,7 +636,10 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
 
   const handleDownloadQr = async () => {
     try {
-      const response = await fetch(qrCodeUrl);
+      let response = await fetch(qrCodeUrl);
+      if (!response.ok) {
+        response = await fetch(defaultQrUrl);
+      }
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -653,9 +657,17 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
   const handleShareQr = async () => {
     try {
       if (navigator.share) {
-        const response = await fetch(qrCodeUrl);
+        let response = await fetch(qrCodeUrl);
+        if (!response.ok) {
+          response = await fetch(defaultQrUrl);
+        }
         const blob = await response.blob();
-        const file = new File([blob], "qr_code.png", { type: blob.type });
+        
+        // Ensure the file is a valid image type for sharing
+        let fileType = blob.type;
+        if (!fileType.startsWith('image/')) fileType = 'image/png';
+        
+        const file = new File([blob], "qr_code.png", { type: fileType });
         await navigator.share({
           title: "Payment QR Code",
           text: "Scan this QR code to make the payment.",

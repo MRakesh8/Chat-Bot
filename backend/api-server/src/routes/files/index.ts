@@ -131,10 +131,18 @@ router.post("/upload-public", (req, res, next) => {
 // GET /files/public/* - Proxy file from private bucket securely
 router.get("/public/*storagePath", async (req, res) => {
   try {
-    const storagePath = req.params.storagePath;
-    if (!storagePath) {
+    let storagePathParam = req.params.storagePath;
+    if (!storagePathParam) {
       res.status(400).json({ error: "Storage path required" });
       return;
+    }
+    
+    let storagePath = Array.isArray(storagePathParam) 
+      ? storagePathParam.join("/") 
+      : String(storagePathParam);
+      
+    if (storagePath.startsWith("/")) {
+      storagePath = storagePath.substring(1);
     }
 
     const { data, error } = await supabaseAdmin.storage
