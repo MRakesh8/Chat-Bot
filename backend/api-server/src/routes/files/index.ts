@@ -129,9 +129,9 @@ router.post("/upload-public", (req, res, next) => {
 });
 
 // GET /files/public/* - Proxy file from private bucket securely
-router.get("/public/(.*)", async (req, res) => {
+router.get("/public/*storagePath", async (req, res) => {
   try {
-    const storagePath = req.params[0];
+    const storagePath = req.params.storagePath;
     if (!storagePath) {
       res.status(400).json({ error: "Storage path required" });
       return;
