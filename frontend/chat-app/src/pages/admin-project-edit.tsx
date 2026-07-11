@@ -787,7 +787,10 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
           </div>
 
           <div className="bg-white p-4 rounded-xl shadow-sm border border-zinc-200 inline-block relative group">
-            <img src={qrCodeUrl} alt="Payment QR Code" className="w-48 h-48 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = 'https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg' }} />
+            <img src={qrCodeUrl} alt="Payment QR Code" className="w-48 h-48 object-contain" onError={(e) => { 
+              (e.target as HTMLImageElement).onerror = null; 
+              (e.target as HTMLImageElement).src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=Admin&am=499&cu=INR`)}`; 
+            }} />
           </div>
           
           <div className="flex gap-2 justify-center w-full max-w-[240px]">
