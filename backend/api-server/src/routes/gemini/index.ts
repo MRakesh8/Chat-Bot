@@ -18,6 +18,7 @@ import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
 import { logger, logSystemError } from "../../lib/logger";
+import { llmResponseCache } from "../../services/cache-provider";
 import {
   CreateGeminiConversationBody,
   UpdateGeminiConversationBody,
@@ -646,11 +647,16 @@ router.post("/conversations/:id/messages", async (req, res) => {
          let text = m.content || "";
          text = text.replace(/^(Understood!|I will|Here's|Let's)[^\n]*\n/gi, "").trim();
          text = text.replace(/^Project Structure:?\s*\n/gi, "").trim();
+         // Smart Token Compression: Strip redundant whitespaces
+         text = text.replace(/\s{2,}/g, " ");
          return { ...m, content: text };
        }
        if (m.sender === "user") {
          // Strip the [__files__:...]\n metadata prefix if present
-         return { ...m, content: stripFilesMeta(m.content || "") };
+         let text = stripFilesMeta(m.content || "");
+         // Smart Token Compression: Strip redundant whitespaces
+         text = text.replace(/\s{2,}/g, " ");
+         return { ...m, content: text };
        }
        return m;
     });
@@ -702,6 +708,8 @@ router.post("/conversations/:id/messages", async (req, res) => {
           req.log.info(`[PERFORMANCE] Retrieval time: ${(performance.now() - retrievalStartTime).toFixed(2)}ms`);
           
           ragContext = res?.contextString || "";
+          // Smart Token Compression: Strip redundant whitespaces from RAG
+          ragContext = ragContext.replace(/\s{2,}/g, " ");
           retrievedIds = res?.retrievedIds || [];
           
           if (cacheKey && (ragContext || retrievedIds.length > 0)) {
@@ -985,6 +993,25 @@ ${liveContext}`;
 
     req.log.info("[GEMINI_REQUEST] calling generateContentStream");
     
+    // Check LLM Response Cache (Duplicate Prompt Removal)
+    const llmPromptHash = crypto.createHash("sha256").update(JSON.stringify(chatMessages)).digest("hex");
+    const cachedLlmResponse = await llmResponseCache.get(llmPromptHash);
+    
+    if (cachedLlmResponse) {
+      req.log.info("[LLM_CACHE_HIT] Duplicate prompt detected, returning cached response");
+      res.write(`data: ${JSON.stringify({ content: cachedLlmResponse })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      
+      // Save assistant message to DB
+      await db.insert(messages).values({
+        sessionId: conversationId as any,
+        sender: "assistant",
+        content: cachedLlmResponse,
+      });
+      return;
+    }
+    
     let stream;
     let retries = 0;
     let streamStarted = false;
@@ -1042,6 +1069,11 @@ ${liveContext}`;
            throw err;
         }
       }
+    }
+    
+    if (fullResponse) {
+      // Save to LLM Response Cache for 1 hour
+      await llmResponseCache.set(llmPromptHash, fullResponse, 3600);
     }
     
     req.log.info(`[PERFORMANCE] Gemini generation time: ${(performance.now() - generationStartTime).toFixed(2)}ms`);

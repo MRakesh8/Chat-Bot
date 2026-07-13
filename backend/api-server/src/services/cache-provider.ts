@@ -42,3 +42,23 @@ export class MemoryCacheProvider implements CacheProvider {
 
 // Singleton instance to be used across the app. In the future, this can be swapped with RedisCacheProvider.
 export const minuteCache = new MemoryCacheProvider();
+
+export class StringMemoryCacheProvider {
+  private cache: Map<string, { value: string; expiresAt: number }> = new Map();
+
+  async get(key: string): Promise<string | null> {
+    const now = Date.now();
+    const existing = this.cache.get(key);
+
+    if (existing && existing.expiresAt > now) {
+      return existing.value;
+    }
+    return null;
+  }
+
+  async set(key: string, value: string, ttlSeconds: number): Promise<void> {
+    this.cache.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+  }
+}
+
+export const llmResponseCache = new StringMemoryCacheProvider();

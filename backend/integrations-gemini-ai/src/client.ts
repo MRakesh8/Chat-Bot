@@ -78,6 +78,9 @@ interface RoutingKey {
   totalRequests?: number;
   totalFailures?: number;
   lastResetAt?: Date;
+  healthScore: number;
+  latencyMs: number;
+  lastUsed?: Date | null;
   rawDbKey: any;
 }
 
@@ -242,6 +245,11 @@ class GeminiFailoverModels {
       isSystem: false,
       status: k.status,
       cooldownUntil: k.cooldownUntil,
+      healthScore: k.healthScore || 100,
+      latencyMs: k.latencyMs || 0,
+      totalRequests: k.totalRequests || 0,
+      totalFailures: k.totalFailures || 0,
+      lastUsed: k.lastUsed || null,
       rawDbKey: k
     }));
 
@@ -257,9 +265,12 @@ class GeminiFailoverModels {
       cooldownUntil: k.cooldownUntil,
       dailyLimit: k.dailyLimit,
       dailyUsed: k.dailyUsed,
-      totalRequests: k.totalRequests,
-      totalFailures: k.totalFailures,
+      totalRequests: k.totalRequests || 0,
+      totalFailures: k.totalFailures || 0,
       lastResetAt: k.lastResetAt,
+      healthScore: k.healthScore || 100,
+      latencyMs: k.latencyMs || 0,
+      lastUsed: k.lastUsed || null,
       rawDbKey: k
     }));
 
@@ -275,9 +286,12 @@ class GeminiFailoverModels {
       cooldownUntil: k.cooldownUntil,
       dailyLimit: k.dailyLimit,
       dailyUsed: k.dailyUsed,
-      totalRequests: k.totalRequests,
-      totalFailures: k.totalFailures,
+      totalRequests: k.totalRequests || 0,
+      totalFailures: k.totalFailures || 0,
       lastResetAt: k.lastResetAt,
+      healthScore: k.healthScore || 100,
+      latencyMs: k.latencyMs || 0,
+      lastUsed: k.lastUsed || null,
       rawDbKey: k
     }));
 
@@ -293,24 +307,40 @@ class GeminiFailoverModels {
       availableKeys = allMappedKeys.filter(k => k.isEnabled && k.status !== "INVALID");
     }
 
-    // Sort based on type, primary status, and mode
+    // Sort based on health, type, primary status, and least-used (True Round-Robin)
     availableKeys.sort((a, b) => {
-      // Prioritize Project keys -> User keys -> System keys
+      // 1. Prioritize Health Score (Higher is better)
+      if (a.healthScore !== b.healthScore) {
+        return b.healthScore - a.healthScore;
+      }
+      
+      // 2. Prioritize Project keys -> User keys -> System keys
       const typePriority = { project: 1, user: 2, system: 3 };
       if (typePriority[a.type] !== typePriority[b.type]) {
         return typePriority[a.type] - typePriority[b.type];
       }
 
-      // Prioritize Primary keys
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      
-      // Fallback sorting based on API mode settings for user vs system
+      // 3. Fallback sorting based on API mode settings for user vs system
       if (mode === "auto" || mode === "user_first") {
-        return (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1);
+        if (a.isSystem !== b.isSystem) return a.isSystem ? 1 : -1;
       } else if (mode === "system_first") {
-        return (a.isSystem === b.isSystem ? 0 : a.isSystem ? -1 : 1);
+        if (a.isSystem !== b.isSystem) return a.isSystem ? -1 : 1;
       }
-      return 0;
+
+      // 4. Prioritize Primary keys
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+
+      // 5. True Round-Robin (Least-Used Key Selection)
+      const aUsage = a.totalRequests || 0;
+      const bUsage = b.totalRequests || 0;
+      if (aUsage !== bUsage) {
+        return aUsage - bUsage;
+      }
+
+      // 6. Last Used (Oldest used key goes first if usage count is same)
+      const aTime = a.lastUsed ? a.lastUsed.getTime() : 0;
+      const bTime = b.lastUsed ? b.lastUsed.getTime() : 0;
+      return aTime - bTime;
     });
 
     return availableKeys;
@@ -404,6 +434,8 @@ class GeminiFailoverModels {
 
     const cooldownUntil = cooldownMinutes > 0 ? new Date(now.getTime() + cooldownMinutes * 60000) : null;
     
+    const newHealthScore = Math.max(0, key.healthScore - 15); // Drop health significantly on failure
+    
     try {
       if (key.type === 'project') {
         await db.update(projectApiKeys).set({
@@ -411,7 +443,9 @@ class GeminiFailoverModels {
           cooldownUntil,
           isEnabled,
           failureReason: errMessage,
-          lastFailure: now
+          lastFailure: now,
+          totalFailures: (key.totalFailures || 0) + 1,
+          healthScore: newHealthScore
         }).where(eq(projectApiKeys.id, key.id));
       } else {
         await db.update(userApiKeys).set({
@@ -422,6 +456,7 @@ class GeminiFailoverModels {
           lastFailure: now,
           totalFailures: (key.totalFailures || 0) + 1,
           totalRequests: (key.totalRequests || 0) + 1,
+          healthScore: newHealthScore
         }).where(eq(userApiKeys.id, key.id));
       }
     } catch (err) {
@@ -429,15 +464,24 @@ class GeminiFailoverModels {
     }
   }
 
-  private async _updateKeySuccess(key: RoutingKey) {
+  private async _updateKeySuccess(key: RoutingKey, startTimeMs: number) {
     const now = new Date();
+    const elapsedMs = Date.now() - startTimeMs;
+    const newHealthScore = Math.min(100, key.healthScore + 2); // Slowly recover health
+    
+    // Calculate new moving average latency (alpha = 0.3)
+    const newLatencyMs = key.latencyMs === 0 ? elapsedMs : Math.round(key.latencyMs * 0.7 + elapsedMs * 0.3);
     
     try {
       if (key.type === 'project') {
         await db.update(projectApiKeys).set({
           lastSuccess: now,
+          lastUsed: now,
           status: "HEALTHY",
-          failureReason: null
+          failureReason: null,
+          totalRequests: (key.totalRequests || 0) + 1,
+          healthScore: newHealthScore,
+          latencyMs: newLatencyMs
         }).where(eq(projectApiKeys.id, key.id));
       } else {
         const newUsed = (key.dailyUsed || 0) + 1;
@@ -450,9 +494,12 @@ class GeminiFailoverModels {
         await db.update(userApiKeys).set({
           dailyUsed: newUsed,
           lastSuccess: now,
+          lastUsed: now,
           totalRequests: (key.totalRequests || 0) + 1,
           status,
-          failureReason: null
+          failureReason: null,
+          healthScore: newHealthScore,
+          latencyMs: newLatencyMs
         }).where(eq(userApiKeys.id, key.id));
       }
     } catch (err) {
@@ -521,6 +568,7 @@ class GeminiFailoverModels {
           console.log(`Selected API Key: ${keySlot}`);
           console.log(`---------------------------\n`);
           
+          const startTimeMs = Date.now();
           let result: any;
           
           if (lowerProvider === "gemini") {
@@ -607,7 +655,7 @@ class GeminiFailoverModels {
             }
           }
 
-          await this._updateKeySuccess(key);
+          await this._updateKeySuccess(key, startTimeMs);
           return result;
         } catch (err: any) {
           lastError = err;
