@@ -400,11 +400,7 @@ router.post("/:id/verify", async (req, res): Promise<any> => {
     }
 
     const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-    const verifier = new ProviderVerifier(key.provider, decryptedKey);
-    
     const startTime = Date.now();
-    const result = await verifier.verify();
-    const latencyMs = Date.now() - startTime;
 
     const keyObj = {
       id: key.id,
@@ -413,30 +409,34 @@ router.post("/:id/verify", async (req, res): Promise<any> => {
       rawDbKey: key
     };
 
-    if (result.valid) {
+    try {
+      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey, key.provider);
+      const latencyMs = Date.now() - startTime;
+
       await updateKeyStats({
         key: keyObj,
         success: true,
         latencyMs,
         status: "HEALTHY",
-        model: result.defaultModel || "unknown"
+        model: verified.defaultModel || "unknown"
       });
       
-      if (result.models && result.models.length > 0) {
-        await db.update(userApiKeys).set({ availableModels: result.models }).where(eq(userApiKeys.id, key.id));
+      if (verified.models && verified.models.length > 0) {
+        await db.update(userApiKeys).set({ availableModels: verified.models }).where(eq(userApiKeys.id, key.id));
       }
 
-      res.json({ success: true, models: result.models, defaultModel: result.defaultModel });
-    } else {
+      res.json({ success: true, models: verified.models, defaultModel: verified.defaultModel });
+    } catch (e: any) {
+      const latencyMs = Date.now() - startTime;
       await updateKeyStats({
         key: keyObj,
         success: false,
         latencyMs,
         status: "INVALID_API_KEY",
-        error: new Error(result.error),
+        error: e,
         model: "unknown"
       });
-      res.status(400).json({ error: result.error });
+      res.status(400).json({ error: e.message || "Failed to verify API key" });
     }
   } catch (err: any) {
     console.error("Failed to verify API key:", err);

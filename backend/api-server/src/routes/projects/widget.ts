@@ -169,6 +169,7 @@ router.get("/api-keys", async (req: any, res: Response) => {
 });
 
 import { ProviderVerifier } from "../../services/provider-verifier";
+import { updateKeyStats } from "../../services/api-health";
 
 router.post("/api-keys", async (req: any, res: Response) => {
   const { projectId } = req.params;
@@ -264,6 +265,58 @@ router.delete("/api-keys/:keyId", async (req: any, res: Response) => {
 });
 
 // The provider verifier is imported at the top of the file
+
+router.post("/api-keys/:keyId/verify", async (req: any, res: Response) => {
+  const { projectId, keyId } = req.params;
+  try {
+    const key = await db.query.projectApiKeys.findFirst({
+      where: and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId))
+    });
+    if (!key) return res.status(404).json({ error: "Key not found" });
+
+    const decryptedKey = dbCrypto.decrypt(key.encryptedKey) || key.encryptedKey;
+    const startTime = Date.now();
+
+    const keyObj = {
+      id: key.id,
+      type: 'project' as const,
+      provider: key.provider,
+      rawDbKey: key
+    };
+
+    try {
+      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey, key.provider);
+      const latencyMs = Date.now() - startTime;
+
+      await updateKeyStats({
+        key: keyObj,
+        success: true,
+        latencyMs,
+        status: "HEALTHY",
+        model: verified.defaultModel || "unknown"
+      });
+      
+      if (verified.models && verified.models.length > 0) {
+        await db.update(projectApiKeys).set({ availableModels: verified.models }).where(eq(projectApiKeys.id, key.id as any));
+      }
+
+      return res.json({ success: true, models: verified.models, defaultModel: verified.defaultModel });
+    } catch (e: any) {
+      const latencyMs = Date.now() - startTime;
+      await updateKeyStats({
+        key: keyObj,
+        success: false,
+        latencyMs,
+        status: "INVALID_API_KEY",
+        error: e,
+        model: "unknown"
+      });
+      return res.status(400).json({ error: e.message || "Failed to verify API key" });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to verify API key" });
+  }
+});
 
 router.post("/api-keys/:keyId/test", async (req: any, res: Response) => {
   const { projectId, keyId } = req.params;
