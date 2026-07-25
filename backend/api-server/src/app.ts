@@ -71,24 +71,46 @@ app.use(
   }),
 );
 
-// Rate Limiting
-const limiter = rateLimit({
+// Global API Rate Limiting (Fallback)
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   skip: (req) => {
-    if (req.method === "OPTIONS") return true; // Always bypass OPTIONS preflights
-    const p = req.originalUrl.split('?')[0]; // Ignore query params
+    if (req.method === "OPTIONS") return true;
+    const p = req.originalUrl.split('?')[0];
     return p === '/api/healthz' || 
            p.startsWith('/api/webhooks/') || 
            p.startsWith('/api/widget/') || 
            p.startsWith('/api/public/') || 
-           p.startsWith('/api/auth/callback/');
+           p.startsWith('/api/auth/callback/') ||
+           p.startsWith('/gemini/conversations/');
   }
 });
-app.use("/api", limiter);
-app.use("/gemini", limiter);
+app.use("/api", globalLimiter);
+app.use("/gemini", globalLimiter);
+
+// Strict LLM API Rate Limiter
+const geminiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests to the AI model. Please try again later." },
+});
+// Apply to message endpoints specifically
+app.use("/gemini/conversations/:id/messages", geminiLimiter);
+
+// Strict Widget API Rate Limiter
+const widgetLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // 30 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests to the widget API. Please try again later." },
+});
+app.use("/api/widget", widgetLimiter);
 
 import { databaseHealthMiddleware } from "./middlewares/databaseHealth";
 app.use(databaseHealthMiddleware);

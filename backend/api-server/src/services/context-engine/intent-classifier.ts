@@ -5,6 +5,8 @@
  */
 import type { UserIntent } from "./types";
 import { GoogleGenAI } from "@google/genai";
+import nodeCrypto from "crypto";
+import { llmResponseCache } from "../cache-provider";
 
 export class IntentClassifier {
   /**
@@ -16,6 +18,20 @@ export class IntentClassifier {
     apiKey: string;
   }): Promise<UserIntent> {
     try {
+      const validIntents: UserIntent[] = [
+        "Website Question", "Knowledge Question", "General Question", 
+        "Navigation Help", "Dashboard Analysis", "Form Assistance", 
+        "Table Analysis", "Greeting", "Pricing", "Contact"
+      ];
+
+      // Global Intent Cache based on exact user message (24h TTL)
+      const intentHash = nodeCrypto.createHash("sha256").update(params.userMessage.trim().toLowerCase()).digest("hex");
+      const cachedIntent = await llmResponseCache.get(`global_intent_${intentHash}`);
+
+      if (cachedIntent && validIntents.includes(cachedIntent as UserIntent)) {
+        return cachedIntent as UserIntent;
+      }
+
       const client = new GoogleGenAI({ apiKey: params.apiKey });
 
       const prompt = `Classify the following user message into exactly ONE of these intents. 
@@ -49,13 +65,8 @@ Intent:`;
       let intentText = (response.text?.trim() || "") as string;
       intentText = intentText.replace(/^["']|["']$/g, '');
       
-      const validIntents: UserIntent[] = [
-        "Website Question", "Knowledge Question", "General Question", 
-        "Navigation Help", "Dashboard Analysis", "Form Assistance", 
-        "Table Analysis", "Greeting", "Pricing", "Contact"
-      ];
-
       if (validIntents.includes(intentText as UserIntent)) {
+        await llmResponseCache.set(`global_intent_${intentHash}`, intentText, 86400); // 24 hours
         return intentText as UserIntent;
       }
       

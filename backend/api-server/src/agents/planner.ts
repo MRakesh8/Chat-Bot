@@ -5,6 +5,8 @@ import { projectApiKeys } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { crypto } from "@workspace/db";
 import { GoogleGenAI } from "@google/genai";
+import nodeCrypto from "crypto";
+import { llmResponseCache } from "../services/cache-provider";
 
 export class PlannerAgent extends BaseAgent {
   constructor() {
@@ -58,7 +60,26 @@ Current URL: ${currentUrl}
 Website Context: ${JSON.stringify(websiteContext)}
 `;
 
-      const FALLBACK_MODELS = [
+      const plannerHash = nodeCrypto.createHash("sha256").update(systemPrompt + intent).digest("hex");
+      const cachedPlannerResult = await llmResponseCache.get(`planner_${plannerHash}`);
+      
+      let planSteps = [];
+      let usedCache = false;
+
+      if (cachedPlannerResult) {
+         try {
+             planSteps = JSON.parse(cachedPlannerResult);
+             if (!Array.isArray(planSteps)) {
+                 planSteps = [planSteps];
+             }
+             usedCache = true;
+         } catch (e) {
+             // Fall through
+         }
+      }
+
+      if (!usedCache) {
+          const FALLBACK_MODELS = [
         keyData.model || "gemini-2.0-flash", 
         "gemini-2.0-flash-lite", 
         "gemini-1.5-pro",
@@ -102,16 +123,17 @@ Website Context: ${JSON.stringify(websiteContext)}
          throw lastError || new Error("All fallback models failed for PlannerAgent");
       }
 
-      let planSteps = [];
       try {
          const textResult = response.text || "[]";
          planSteps = JSON.parse(textResult);
          if (!Array.isArray(planSteps)) {
             planSteps = [planSteps];
          }
+         await llmResponseCache.set(`planner_${plannerHash}`, JSON.stringify(planSteps), 300); // 5 minutes
       } catch (e) {
          console.error("Failed to parse Planner JSON:", e);
       }
+      } // end !usedCache block
 
       const plan = {
         goal: intent,

@@ -18,6 +18,7 @@ import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { supabaseAdmin } from "../../lib/supabase";
 import { logger, logSystemError } from "../../lib/logger";
+import { detectPromptInjection } from "../../middlewares/prompt-firewall";
 import { llmResponseCache } from "../../services/cache-provider";
 import {
   CreateGeminiConversationBody,
@@ -510,6 +511,12 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
     if (!content.trim() && (!fileIds || fileIds.length === 0)) {
       res.status(400).json({ error: "Message content or file required" });
+      return;
+    }
+
+    if (detectPromptInjection(content)) {
+      req.log.warn({ content }, "[SECURITY] Prompt injection blocked");
+      res.status(403).json({ error: "Security Policy Violation: Malicious prompt detected." });
       return;
     }
 
@@ -1036,7 +1043,14 @@ ${liveContext}`;
         for await (const chunk of stream) {
           streamStarted = true;
           chunkCount++;
-          const text = chunk.text;
+          let text = chunk.text;
+          
+          // Security: Strip potential XSS vectors from LLM output
+          if (text) {
+             text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+             text = text.replace(/javascript:/gi, "javascript_BLOCKED:");
+             text = text.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "");
+          }
           
           if (chunkCount === 1 && (!text || !text.trim())) {
              isFirstChunkWhitespace = true;

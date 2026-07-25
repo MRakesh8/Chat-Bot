@@ -3,7 +3,8 @@ import { db, crypto } from "@workspace/db";
 import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs } from "@workspace/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
-import { minuteCache } from "../services/cache-provider";
+import { minuteCache, llmResponseCache } from "../services/cache-provider";
+import nodeCrypto from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { searchProjectKnowledge, saveAutoKnowledgeItem } from "../services/knowledge";
@@ -730,13 +731,25 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         
         Respond with only "YES" or "NO".`;
         
-        const { result: confirmRes } = await executeLlmWithFailover(keys, 'generateContent', {
-          model: "gemini-2.0-flash",
-          contents: confirmPrompt
-        });
-        
-        if (confirmRes.text?.trim().toUpperCase() === "YES") {
-          userIsPointingOutMistake = true;
+        const mistakeHash = nodeCrypto.createHash("sha256").update(confirmPrompt).digest("hex");
+        const cachedMistake = await llmResponseCache.get(mistakeHash);
+
+        if (cachedMistake) {
+          if (cachedMistake.trim().toUpperCase() === "YES") {
+            userIsPointingOutMistake = true;
+          }
+        } else {
+          const { result: confirmRes } = await executeLlmWithFailover(keys, 'generateContent', {
+            model: "gemini-2.0-flash",
+            contents: confirmPrompt
+          });
+          
+          if (confirmRes.text) {
+            await llmResponseCache.set(mistakeHash, confirmRes.text, 86400); // 24 hours
+            if (confirmRes.text?.trim().toUpperCase() === "YES") {
+              userIsPointingOutMistake = true;
+            }
+          }
         }
       } catch (err) {
         console.error("Error confirming correction:", err);
@@ -923,19 +936,27 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       
       Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;
 
-      const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
-        model: "gemini-2.0-flash",
-        contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
-        config: { responseMimeType: "application/json" }
-      });
-      
-      try {
-        const parsed = JSON.parse(intentRes.text || "{}");
-        if (parsed.intent) {
-          intentType = parsed.intent;
+      const intentHash = nodeCrypto.createHash("sha256").update(intentPrompt).digest("hex");
+      const cachedIntent = await llmResponseCache.get(intentHash);
+
+      if (cachedIntent) {
+        intentType = cachedIntent;
+      } else {
+        const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
+          model: "gemini-2.0-flash",
+          contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
+          config: { responseMimeType: "application/json" }
+        });
+        
+        try {
+          const parsed = JSON.parse(intentRes.text || "{}");
+          if (parsed.intent) {
+            intentType = parsed.intent;
+            await llmResponseCache.set(intentHash, intentType, 86400); // 24 hours
+          }
+        } catch (e) {
+          console.error("Failed to parse intent JSON", e);
         }
-      } catch (e) {
-        console.error("Failed to parse intent JSON", e);
       }
     } catch (e) {
       console.error("Intent detection failed, defaulting to GENERAL_QUESTION", e);
@@ -976,16 +997,31 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       }
 
       // OTHERWISE, normal conversational flow
-      const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
-        contents: chatMessages as any
-      });
-      
+      const llmPromptHash = nodeCrypto.createHash("sha256").update(JSON.stringify(chatMessages)).digest("hex");
+      const cachedResponse = await llmResponseCache.get(llmPromptHash);
+
       let fullResponseText = "";
-      for await (const chunk of stream) {
-        if (chunk.text) {
-          fullResponseText += chunk.text;
-          res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
-          if (typeof (res as any).flush === 'function') (res as any).flush();
+
+      if (cachedResponse) {
+        console.log("[LLM_CACHE_HIT] Widget duplicate prompt detected, returning cached response");
+        res.write(`data: ${JSON.stringify({ content: cachedResponse })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+        fullResponseText = cachedResponse;
+      } else {
+        const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
+          contents: chatMessages as any
+        });
+        
+        for await (const chunk of stream) {
+          if (chunk.text) {
+            fullResponseText += chunk.text;
+            res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
+          }
+        }
+        
+        if (fullResponseText) {
+          await llmResponseCache.set(llmPromptHash, fullResponseText, 300); // 5 minutes
         }
       }
 

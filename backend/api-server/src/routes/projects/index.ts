@@ -4,7 +4,7 @@
  */
 import { Router } from "express";
 import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import crypto, { randomUUID } from "crypto";
 import fs from "fs";
 import { db } from "@workspace/db";
 import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, projectSettings, projectWidgetSettings } from "@workspace/db";
@@ -12,6 +12,7 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { searchProjectKnowledge } from "../../services/knowledge";
+import { llmResponseCache } from "../../services/cache-provider";
 import { z } from "zod";
 
 const createProjectSchema = z.object({
@@ -630,6 +631,25 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
     let streamStarted = false;
     let retries = 0;
 
+    // Check Exact Match LLM Response Cache
+    const llmPromptHash = crypto.createHash("sha256").update(JSON.stringify(chatMessages)).digest("hex");
+    const cachedLlmResponse = await llmResponseCache.get(llmPromptHash);
+
+    if (cachedLlmResponse) {
+      req.log.info("[LLM_CACHE_HIT] Exact match duplicate prompt detected, returning cached response");
+      res.write(`data: ${JSON.stringify({ content: cachedLlmResponse })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      
+      // Save assistant message to DB
+      await db.insert(messages).values({
+        sessionId: convId as any,
+        sender: "assistant",
+        content: cachedLlmResponse,
+      });
+      return;
+    }
+
     while (retries < 4 && !streamStarted) {
       try {
         const stream = await ai.models.generateContentStream(project.userId, {
@@ -699,6 +719,8 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
     // Save assistant message if there was a response
     if (fullResponse) {
       await db.insert(messages).values({ sessionId: convId as any, sender: "assistant", content: fullResponse });
+      // Cache for 5 minutes (300 seconds)
+      await llmResponseCache.set(llmPromptHash, fullResponse, 300);
     }
 
 

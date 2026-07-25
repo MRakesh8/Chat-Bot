@@ -10,6 +10,8 @@ import { and, eq, inArray, isNotNull, sql, or, ilike } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { extractYouTubeId, fetchYouTubeTranscriptText } from "../lib/youtube";
 import { isIP } from "node:net";
+import nodeCrypto from "crypto";
+import { llmResponseCache } from "./cache-provider";
 
 const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000, 720 * 60_000];
 const MAX_RETRY_COUNT = RETRY_DELAYS_MS.length;
@@ -62,6 +64,28 @@ function chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
     index = end - overlap;
   }
   return chunks.filter((c) => c.length > 0);
+}
+
+// Security: Mask sensitive information before saving to DB
+export function maskSecrets(content: string): string {
+  if (!content) return content;
+  
+  let masked = content;
+  
+  // Mask generic API keys (sk-..., AIza...)
+  masked = masked.replace(/sk-[a-zA-Z0-9]{32,}/g, "[REDACTED_API_KEY]");
+  masked = masked.replace(/AIza[0-9A-Za-z-_]{35}/g, "[REDACTED_API_KEY]");
+  
+  // Mask basic credit card patterns (13-19 digits, possibly with spaces or dashes)
+  masked = masked.replace(/(?:\d[ -]*?){13,16}/g, (match) => {
+    const stripped = match.replace(/[ -]/g, "");
+    if (stripped.length >= 13 && stripped.length <= 19) {
+      return "[REDACTED_CREDIT_CARD]";
+    }
+    return match; // False positive, return original
+  });
+
+  return masked;
 }
 
 function assertPublicHttpUrl(rawUrl: string | null | undefined) {
@@ -319,6 +343,9 @@ export async function saveAutoKnowledgeItem(params: {
   userId: string | null;
   content: string;
 }) {
+  // Apply data sanitization
+  params.content = maskSecrets(params.content);
+  
   const analysis = await analyzeKnowledgeContent(params);
   const category = await ensureKnowledgeCategory(params.projectId, analysis.categoryName);
 
@@ -480,6 +507,20 @@ export async function searchProjectKnowledge(params: {
   limit?: number;
 }): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
   if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
+
+  // Global RAG Cache (5m TTL)
+  const queryHash = nodeCrypto.createHash("sha256").update(params.projectIds.join(",") + ":" + params.query.trim().toLowerCase()).digest("hex");
+  const cachedResultStr = await llmResponseCache.get(`rag_search_${queryHash}`);
+  if (cachedResultStr) {
+    try {
+      const parsed = JSON.parse(cachedResultStr);
+      if (parsed && parsed.contextString !== undefined) {
+        return parsed;
+      }
+    } catch (e) {
+      // Ignore parse error and proceed with search
+    }
+  }
 
   // 1. Candidate Generation
   const fetchLimit = 10;
@@ -685,11 +726,16 @@ export async function searchProjectKnowledge(params: {
     currentChars += itemStr.length;
   }
 
-  return {
+  const finalResult = {
     contextString: finalItems.join("\n\n---\n\n"),
     retrievedIds: Array.from(retrievedIdsSet),
     candidates: topCandidates
   };
+
+  // Save to cache for 5 minutes
+  await llmResponseCache.set(`rag_search_${queryHash}`, JSON.stringify(finalResult), 300);
+
+  return finalResult;
 }
 
 export async function extractSourceContent(params: { sourceType: string, sourceUrl?: string | null, fileBuffer?: Buffer, filename?: string, userId?: string | null, projectId?: string | null }): Promise<string> {

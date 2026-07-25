@@ -52,6 +52,7 @@ export const projects = pgTable("projects", {
   shareToken: varchar("share_token", { length: 50 }),
   isActive: boolean("is_active").default(true),
   tags: jsonb("tags").$type<string[]>().default([]).notNull(),
+  allowedDomains: jsonb("allowed_domains").$type<string[]>().default(["*"]).notNull(),
   deploymentPaid: boolean("deployment_paid").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({

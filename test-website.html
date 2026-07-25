@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Aria Agent Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #f4f4f5; }
+    .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; margin-bottom: 2rem; }
+    button { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+    input { padding: 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    .success-msg { display: none; color: green; margin-top: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Welcome to the Aria Agent Test Site</h1>
+  
+  <div class="card">
+    <h2>Update Your Profile</h2>
+    <form id="profile-form">
+      <label for="username">Username</label>
+      <input type="text" id="username" placeholder="Enter your username">
+      
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="Enter your email">
+      
+      <button type="button" id="save-btn" onclick="document.getElementById('success').style.display='block';">Save Profile</button>
+      <p id="success" class="success-msg">Profile saved successfully!</p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Subscription</h2>
+    <p>Current Plan: Basic</p>
+    <button id="upgrade-btn" onclick="alert('Upgrade modal opened!')">Upgrade to Pro</button>
+  </div>
+
+  <!-- Note: Using the Render backend and Vercel frontend since we know they are running -->
+  <script 
+    src="https://chatbot-rakesh.vercel.app/widget.js?v=2"
+    data-widget-token="2ca32dba01a94b00f29c3aabe5c9e7e54213e461b4fc08482e796ccd9fc8c24b"
+    data-api-url="https://chat-bot-api-ns81.onrender.com">
+  </script>
+</body>
+</html>
