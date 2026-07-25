@@ -25,7 +25,8 @@ export class IntentClassifier {
       ];
 
       // Global Intent Cache based on exact user message (24h TTL)
-      const intentHash = nodeCrypto.createHash("sha256").update(params.userMessage.trim().toLowerCase()).digest("hex");
+      const safeMessage = (params.userMessage || "").trim().toLowerCase();
+      const intentHash = nodeCrypto.createHash("sha256").update(safeMessage).digest("hex");
       const cachedIntent = await llmResponseCache.get(`global_intent_${intentHash}`);
 
       if (cachedIntent && validIntents.includes(cachedIntent as UserIntent)) {
