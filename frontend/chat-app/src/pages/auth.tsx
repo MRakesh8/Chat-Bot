@@ -16,7 +16,7 @@ export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState("");
-  const { user } = useAuth();
+  const { user, loginAsDemo } = useAuth();
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -29,7 +29,30 @@ export default function AuthPage() {
     try {
       setIsLoading(true);
       setError("");
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       
+      // Reachability test to detect paused Supabase or ERR_QUIC_PROTOCOL_ERROR before navigating
+      let isReachable = true;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        await fetch(`${supabaseUrl}/auth/v1/health`, {
+          method: "GET",
+          signal: controller.signal,
+          mode: "no-cors",
+        });
+        clearTimeout(timeoutId);
+      } catch (checkErr) {
+        isReachable = false;
+      }
+
+      if (!isReachable) {
+        throw new Error(
+          "Authentication server (Supabase) is currently unreachable. The Supabase project may be paused (free tier), or your browser network is blocking QUIC protocol (ERR_QUIC_PROTOCOL_ERROR)."
+        );
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -218,8 +241,9 @@ export default function AuthPage() {
                   <motion.div 
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
-                    className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center"
+                    className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs leading-relaxed text-left"
                   >
+                    <p className="font-semibold text-red-400 mb-1">Connection Issue Detected</p>
                     {error}
                   </motion.div>
                 )}
@@ -251,6 +275,19 @@ export default function AuthPage() {
                     </span>
                   )}
                 </motion.button>
+
+                <div className="mt-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      loginAsDemo();
+                      setLocation("/chat");
+                    }}
+                    className="w-full py-3 px-4 text-xs font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                  >
+                    Continue as Demo User / Guest
+                  </button>
+                </div>
                 
                 <p className="mt-6 text-center text-xs text-slate-500 leading-relaxed">
                   By continuing, you agree to Aria's <br className="hidden sm:block"/>

@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startCleanupTask } from "./lib/cleanup";
 import { startApiKeyHealthCheckTask } from "./lib/apiKeyHealthCheck";
+import { startSupabaseKeepAliveTask } from "./lib/supabaseKeepAlive";
 import { runMigrations } from "./lib/migrate";
 import { validateDatabaseSchema } from "./middlewares/databaseHealth";
 import puppeteer from "puppeteer";
@@ -117,6 +118,7 @@ async function start() {
     logger.info("[STARTUP] HEALTH_ENDPOINT_READY");
     startCleanupTask();
     startApiKeyHealthCheckTask();
+    startSupabaseKeepAliveTask();
     
     // Background validation
     validateDatabaseSchema().catch((err) => {

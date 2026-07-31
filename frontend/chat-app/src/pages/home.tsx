@@ -26,6 +26,26 @@ export default function Home() {
   const handleGoogleAuth = async () => {
     try {
       setIsAuthenticating(true);
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+      let isReachable = true;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        await fetch(`${supabaseUrl}/auth/v1/health`, {
+          method: "GET",
+          signal: controller.signal,
+          mode: "no-cors",
+        });
+        clearTimeout(timeoutId);
+      } catch {
+        isReachable = false;
+      }
+
+      if (!isReachable) {
+        throw new Error("Supabase auth server is unreachable (project paused or QUIC network blocked).");
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -33,11 +53,11 @@ export default function Home() {
         },
       });
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       setIsAuthenticating(false);
       toast({
         title: "Authentication failed",
-        description: "Please try again.",
+        description: error.message || "Please check network or Supabase connection.",
         variant: "destructive",
       });
     }

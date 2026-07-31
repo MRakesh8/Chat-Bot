@@ -22,6 +22,29 @@ type AuthContextType = {
   session: Session | null;
   isLoading: boolean;
   signOut: () => Promise<void>;
+  loginAsDemo: () => void;
+};
+
+const DEMO_USER: User = {
+  id: "00000000-0000-4000-8000-000000000001",
+  app_metadata: {},
+  user_metadata: { full_name: "Demo User", avatar_url: "" },
+  aud: "authenticated",
+  created_at: new Date().toISOString(),
+  email: "demo@example.com",
+  role: "authenticated",
+  updated_at: new Date().toISOString(),
+};
+
+const DEMO_DB_USER: DbUser = {
+  id: "00000000-0000-4000-8000-000000000001",
+  email: "demo@example.com",
+  role: "super_admin",
+  features: {
+    canCreateProject: true,
+    canUseWidgetStudio: true,
+    canUseContextEngine: true,
+  },
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -30,6 +53,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   isLoading: true,
   signOut: async () => {},
+  loginAsDemo: () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -38,6 +62,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const loginAsDemo = () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("aria_demo_session", "true");
+    }
+    setUser(DEMO_USER);
+    setDbUser(DEMO_DB_USER);
+    setIsLoading(false);
+  };
 
   const fetchDbUser = async (accessToken: string) => {
     try {
@@ -58,32 +91,55 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     setBaseUrl(apiBaseUrl);
     setAuthTokenGetter(async () => {
-      const { data } = await supabase.auth.getSession();
-      return data.session?.access_token ?? null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token ?? null;
+      } catch {
+        return null;
+      }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.access_token) {
-        fetchDbUser(session.access_token).finally(() => setIsLoading(false));
-      } else {
+    const isDemo = typeof window !== "undefined" && sessionStorage.getItem("aria_demo_session") === "true";
+    if (isDemo) {
+      setUser(DEMO_USER);
+      setDbUser(DEMO_DB_USER);
+      setIsLoading(false);
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session) {
+        setSession(data.session);
+        setUser(data.session.user ?? null);
+        fetchDbUser(data.session.access_token).finally(() => setIsLoading(false));
+      } else if (!isDemo) {
         setDbUser(null);
         setIsLoading(false);
-        queryClient.clear(); // Ensure cache is clear if initially unauthenticated
+        queryClient.clear();
+      }
+    }).catch(() => {
+      if (!isDemo) {
+        setIsLoading(false);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.access_token) {
+        if (session) {
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("aria_demo_session");
+          }
+          setSession(session);
+          setUser(session.user ?? null);
           fetchDbUser(session.access_token).finally(() => setIsLoading(false));
         } else {
-          setDbUser(null);
-          setIsLoading(false);
-          queryClient.clear(); // Clear cache when auth state changes to logged out
+          const checkDemo = typeof window !== "undefined" && sessionStorage.getItem("aria_demo_session") === "true";
+          if (!checkDemo) {
+            setSession(null);
+            setUser(null);
+            setDbUser(null);
+            setIsLoading(false);
+            queryClient.clear();
+          }
         }
       }
     );
@@ -92,12 +148,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("aria_demo_session");
+    }
     queryClient.clear();
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Ignore network errors during signout
+    }
+    setUser(null);
+    setDbUser(null);
+    setSession(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, dbUser, session, isLoading, signOut }}>
+    <AuthContext.Provider value={{ user, dbUser, session, isLoading, signOut, loginAsDemo }}>
       {children}
     </AuthContext.Provider>
   );
