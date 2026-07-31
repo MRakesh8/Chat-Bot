@@ -32,28 +32,27 @@ export default function AuthPage() {
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       
-      // Reachability test to detect paused Supabase or ERR_QUIC_PROTOCOL_ERROR before navigating
+      // Reachability test to detect direct connection issues (e.g. QUIC/ISP block)
       let isReachable = true;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         await fetch(`${supabaseUrl}/auth/v1/health`, {
           method: "GET",
           signal: controller.signal,
           mode: "no-cors",
         });
         clearTimeout(timeoutId);
-      } catch (checkErr) {
+      } catch {
         isReachable = false;
       }
 
-      if (!isReachable) {
-        throw new Error(
-          "Authentication server (Supabase) is currently unreachable. The Supabase project may be paused (free tier), or your browser network is blocking QUIC protocol (ERR_QUIC_PROTOCOL_ERROR)."
-        );
-      }
+      // Automatically use Vercel proxy client if direct connection is blocked by browser/ISP network
+      const client = isReachable 
+        ? supabase 
+        : createProxySupabaseClient(window.location.origin);
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { error } = await client.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: window.location.origin,

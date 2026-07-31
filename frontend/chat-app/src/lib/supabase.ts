@@ -1,14 +1,27 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!rawSupabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase env vars");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabaseUrl = rawSupabaseUrl;
+
+export const supabase = createClient(rawSupabaseUrl, supabaseAnonKey, {
   auth: {
     storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+    flowType: "pkce",
   },
 });
+
+export const createProxySupabaseClient = (originUrl: string) => {
+  const proxyUrl = `${originUrl}/supabase-proxy`;
+  return createClient(proxyUrl, supabaseAnonKey, {
+    auth: {
+      storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+      flowType: "pkce",
+    },
+  });
+};

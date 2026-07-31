@@ -9,6 +9,10 @@
   "outputDirectory": "frontend/chat-app/dist/public",
   "rewrites": [
     {
+      "source": "/supabase-proxy/:path*",
+      "destination": "https://dirvyhkvyplwtnenbuqo.supabase.co/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

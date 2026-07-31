@@ -3,7 +3,7 @@ import { Link, Redirect, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { ArrowRight, BrainCircuit, Zap, Lock, Sparkles, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createProxySupabaseClient } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
@@ -31,7 +31,7 @@ export default function Home() {
       let isReachable = true;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         await fetch(`${supabaseUrl}/auth/v1/health`, {
           method: "GET",
           signal: controller.signal,
@@ -42,11 +42,11 @@ export default function Home() {
         isReachable = false;
       }
 
-      if (!isReachable) {
-        throw new Error("Supabase auth server is unreachable (project paused or QUIC network blocked).");
-      }
+      const client = isReachable 
+        ? supabase 
+        : createProxySupabaseClient(window.location.origin);
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { error } = await client.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}${basePath}/chat`,
