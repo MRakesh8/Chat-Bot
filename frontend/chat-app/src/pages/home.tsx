@@ -26,25 +26,11 @@ export default function Home() {
   const handleGoogleAuth = async () => {
     try {
       setIsAuthenticating(true);
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-      let isReachable = true;
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        await fetch(`${supabaseUrl}/auth/v1/health`, {
-          method: "GET",
-          signal: controller.signal,
-          mode: "no-cors",
-        });
-        clearTimeout(timeoutId);
-      } catch {
-        isReachable = false;
-      }
-
-      const client = isReachable 
-        ? supabase 
-        : createProxySupabaseClient(window.location.origin);
+      const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+      const client = !isLocalhost 
+        ? createProxySupabaseClient(window.location.origin) 
+        : supabase;
 
       const { error } = await client.auth.signInWithOAuth({
         provider: "google",

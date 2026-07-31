@@ -30,27 +30,10 @@ export default function AuthPage() {
       setIsLoading(true);
       setError("");
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
-      // Reachability test to detect direct connection issues (e.g. QUIC/ISP block)
-      let isReachable = true;
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        await fetch(`${supabaseUrl}/auth/v1/health`, {
-          method: "GET",
-          signal: controller.signal,
-          mode: "no-cors",
-        });
-        clearTimeout(timeoutId);
-      } catch {
-        isReachable = false;
-      }
-
-      // Automatically use Vercel proxy client if direct connection is blocked by browser/ISP network
-      const client = isReachable 
-        ? supabase 
-        : createProxySupabaseClient(window.location.origin);
+      const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+      const client = !isLocalhost 
+        ? createProxySupabaseClient(window.location.origin) 
+        : supabase;
 
       const { error } = await client.auth.signInWithOAuth({
         provider: "google",
