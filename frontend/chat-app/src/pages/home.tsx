@@ -3,7 +3,7 @@ import { Link, Redirect, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { ArrowRight, BrainCircuit, Zap, Lock, Sparkles, Loader2 } from "lucide-react";
-import { supabase, createProxySupabaseClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
@@ -27,12 +27,11 @@ export default function Home() {
     try {
       setIsAuthenticating(true);
 
-      const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-      const client = !isLocalhost 
-        ? createProxySupabaseClient(window.location.origin) 
-        : supabase;
-
-      const { error } = await client.auth.signInWithOAuth({
+      // IMPORTANT: Always use the direct supabase client (never the proxy) for OAuth.
+      // PKCE requires the same client instance to initiate and complete the flow.
+      // The proxy client stores the code_verifier under a different storage key,
+      // causing 400/422 errors on /auth/v1/token?grant_type=pkce.
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}${basePath}/chat`,

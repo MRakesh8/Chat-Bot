@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../contexts/AuthContext";
-import { supabase, createProxySupabaseClient } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { Loader2, MessageSquare, Database, Search, Bot } from "lucide-react";
 
 const features = [
@@ -30,12 +30,12 @@ export default function AuthPage() {
       setIsLoading(true);
       setError("");
 
-      const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-      const client = !isLocalhost 
-        ? createProxySupabaseClient(window.location.origin) 
-        : supabase;
-
-      const { error } = await client.auth.signInWithOAuth({
+      // IMPORTANT: Always use the direct supabase client (never the proxy) for OAuth.
+      // PKCE flow stores a code_verifier in sessionStorage during signInWithOAuth,
+      // and the same client instance must be used when the browser returns from Google
+      // (handled by AuthContext's onAuthStateChange). Using a proxy client creates a
+      // different storage key, causing 400/422 errors on token exchange.
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: window.location.origin,

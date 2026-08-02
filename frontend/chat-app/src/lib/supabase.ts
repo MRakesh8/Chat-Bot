@@ -11,7 +11,11 @@ export const supabaseUrl = rawSupabaseUrl;
 
 export const supabase = createClient(rawSupabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+    // Use localStorage (not sessionStorage) for PKCE OAuth flows.
+    // sessionStorage can be unreliable across OAuth redirects (browser navigates
+    // away to Google and back), causing the PKCE code_verifier to be lost,
+    // which results in 400/422 errors on /auth/v1/token?grant_type=pkce.
+    storage: typeof window !== "undefined" ? window.localStorage : undefined,
     flowType: "pkce",
   },
 });
@@ -20,7 +24,7 @@ export const createProxySupabaseClient = (originUrl: string) => {
   const proxyUrl = `${originUrl}/supabase-proxy`;
   return createClient(proxyUrl, supabaseAnonKey, {
     auth: {
-      storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
       flowType: "pkce",
     },
   });
