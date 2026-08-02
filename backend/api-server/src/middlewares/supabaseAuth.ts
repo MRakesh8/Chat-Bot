@@ -4,10 +4,13 @@ import { db, users } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const supabaseUrl = process.env.SUPABASE_URL || "";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+// Use the service role key on the backend for server-side token verification.
+// The anon key is for client-side use only and will cause getUser() to fail
+// with 401 when used in a server-to-server context.
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 const LOCAL_DEMO_USER_ID = "00000000-0000-4000-8000-000000000001";
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export const supabaseAuthMiddleware = async (
   req: Request,

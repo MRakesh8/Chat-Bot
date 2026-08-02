@@ -11,8 +11,13 @@ export function startSupabaseKeepAliveTask() {
       logger.info("[SUPABASE_KEEP_ALIVE] Database heartbeat ping successful.");
 
       // 2. Keep Auth/REST API endpoints active
+      // The /auth/v1/health endpoint requires the apikey header, otherwise Supabase returns 401
       if (supabaseUrl) {
-        await fetch(`${supabaseUrl}/auth/v1/health`, { method: "GET" }).catch(() => {});
+        const anonKey = process.env.SUPABASE_ANON_KEY || "";
+        await fetch(`${supabaseUrl}/auth/v1/health`, {
+          method: "GET",
+          headers: { apikey: anonKey },
+        }).catch(() => {});
       }
     } catch (err: any) {
       logger.warn({ err: err?.message }, "[SUPABASE_KEEP_ALIVE] Heartbeat ping warning");

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../contexts/AuthContext";
-import { supabase } from "../lib/supabase";
+import { supabase, createProxySupabaseClient } from "../lib/supabase";
 import { Loader2, MessageSquare, Database, Search, Bot } from "lucide-react";
 
 const features = [
