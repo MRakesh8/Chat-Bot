@@ -1130,10 +1130,9 @@ ${liveContext}`;
     const isQuotaError = err?.type === "quota_exceeded";
     const status = err?.status || err?.response?.status;
     const isBusy = isQuotaError || status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
-    
+
     const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
 
-    console.log("BACKEND_ERROR_SENT");
 
     if (!res.headersSent) {
       res.setHeader("Content-Type", "text/event-stream");

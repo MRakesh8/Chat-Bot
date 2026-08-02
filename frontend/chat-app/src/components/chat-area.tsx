@@ -312,16 +312,7 @@ export function ChatArea() {
     },
   });
 
-  useEffect(() => {
-    console.log("Component mounted");
-  }, []);
-
   const isLoading = !!conversationId && (isConvPending || isMessagesPending);
-
-  useEffect(() => {
-    console.log("Loading state:", isLoading);
-    console.log("API response:", { conversation, messages });
-  }, [isLoading, conversation, messages]);
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
@@ -343,9 +334,12 @@ export function ChatArea() {
     queryKey: ["admin-projects"],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/projects"));
-      if (!res.ok) throw new Error("Failed to load projects");
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
       return res.json() as Promise<Project[]>;
     },
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+    staleTime: 30000,
   });
 
   const selectedProjectIds = useMemo(

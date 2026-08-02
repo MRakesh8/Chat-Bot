@@ -123,8 +123,40 @@ export function useChatStream() {
                 fullContent += json.content;
                 setStreamingContent((prev) => prev + json.content);
               } else if (json.error) {
-                throw new Error(json.error);
+                // Show the error as an assistant message in the chat (not a thrown error)
+                const errMsg = json.error as string;
+                const isQuotaErr = errMsg.toLowerCase().includes("quota") || errMsg.toLowerCase().includes("busy") || errMsg.toLowerCase().includes("rate limit");
+                const displayMsg = isQuotaErr
+                  ? "⚠️ The AI service is temporarily busy due to high demand. Please try again in a moment."
+                  : `⚠️ ${errMsg}`;
+
+                queryClient.setQueryData(getListGeminiMessagesQueryKey(conversationId), (old: any) => {
+                  const errorMessage = {
+                    id: "error-" + Date.now(),
+                    role: "assistant",
+                    content: displayMsg,
+                    createdAt: new Date().toISOString(),
+                  };
+                  const userMsg = {
+                    id: optimisticUserMessageId || "optimistic-user-" + Date.now(),
+                    role: "user",
+                    content: content,
+                    filesMeta: filesMeta && filesMeta.length > 0 ? { files: filesMeta } : null,
+                    createdAt: new Date().toISOString(),
+                  };
+                  if (!old) return [userMsg, errorMessage];
+                  const filtered = old.filter((m: any) =>
+                    !m.id.toString().startsWith("optimistic-")
+                  );
+                  const existingUser = old.find((m: any) => m.id === userMsg.id);
+                  return [...filtered, existingUser || userMsg, errorMessage];
+                });
+                setStreamingContent("");
+                setIsStreaming(false);
+                abortControllerRef.current = null;
+                return; // Don't throw — handled gracefully
               }
+
             } catch (e: unknown) {
               if (e instanceof SyntaxError) {
                 console.error("Failed to parse SSE JSON", e);
@@ -140,19 +172,21 @@ export function useChatStream() {
         return;
       }
       console.error("Error streaming message:", error);
-      console.log("FRONTEND_ERROR_RECEIVED");
       setIsStreaming(false);
-      console.log("UI_LOADING_CLEARED");
       setStreamingContent("");
       abortControllerRef.current = null;
+
+      const errText = error instanceof Error ? error.message : "Unknown error";
+      const isQuota = errText.includes("429") || errText.includes("quota") || errText.includes("busy");
       
       queryClient.setQueryData(getListGeminiMessagesQueryKey(conversationId), (old: any) => {
         const errorMsg = {
           id: "error-" + Date.now(),
-          sender: "ai",
-          content: "AI service temporarily unavailable. Please try again later.",
+          role: "assistant",
+          content: isQuota
+            ? "⚠️ The AI service is temporarily busy due to high demand. Please try again in a moment."
+            : "⚠️ Something went wrong. Please try sending your message again.",
           createdAt: new Date().toISOString(),
-          isError: true
         };
         if (!old) return [errorMsg];
         return [...old, errorMsg];

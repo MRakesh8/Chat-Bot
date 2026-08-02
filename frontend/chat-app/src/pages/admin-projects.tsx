@@ -102,9 +102,12 @@ export default function AdminProjectsPage() {
     queryKey: ["admin-projects"],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/projects"));
-      if (!res.ok) throw new Error("Failed to load projects");
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
       return res.json() as Promise<Project[]>;
     },
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+    staleTime: 30000,
   });
 
   const deleteMutation = useMutation({
@@ -273,7 +276,29 @@ export default function AdminProjectsPage() {
               <CardSkeleton key={i} />
             ))}
           </div>
-        ) : (isError || (isFetching && !projectList?.length)) ? (
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-red-500/20 rounded-xl bg-red-500/5">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-foreground font-medium mb-1">Failed to load projects</p>
+              <p className="text-muted-foreground text-sm max-w-xs">
+                Could not connect to the server. Please check your connection and try again.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-projects"] })}
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <Loader2 className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </div>
+        ) : isFetching && !projectList?.length ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
             <div className="w-16 h-16 rounded-2xl bg-card/40 border border-foreground/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -285,6 +310,7 @@ export default function AdminProjectsPage() {
               </p>
             </div>
           </div>
+
         ) : !projectList?.length ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
             <div className="w-16 h-16 rounded-2xl bg-card/40 border border-foreground/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
