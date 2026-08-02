@@ -20,18 +20,20 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const isRetryableError = (err: any): boolean => {
   if (!err) return false;
   const status = err?.status || err?.response?.status || err?.code;
-  if (status === 429 || status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
+  // Note: 429 and RESOURCE_EXHAUSTED are NOT here. They should bubble up immediately
+  // to the router so it can failover to the next available API key.
+  if (status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
     return true;
   }
   const statusStr = String(err?.status || err?.response?.status || err?.code || "").toUpperCase();
-  if (statusStr === "UNAVAILABLE" || statusStr === "RESOURCE_EXHAUSTED" || statusStr === "INTERNAL") {
+  if (statusStr === "UNAVAILABLE" || statusStr === "INTERNAL") {
     return true;
   }
   const errMessage = String(err?.message || err?.stack || err).toLowerCase();
   const retryableKeywords = [
-    "429", "503", "500", "502", "504",
-    "unavailable", "resource_exhausted", "quota", "timeout", "deadline exceeded",
-    "rate limit", "overloaded", "too many requests", "service unavailable", "internal server error",
+    "503", "500", "502", "504",
+    "unavailable", "timeout", "deadline exceeded",
+    "overloaded", "service unavailable", "internal server error",
     "spikes in demand", "experiencing high demand", "try again later"
   ];
   return retryableKeywords.some(keyword => errMessage.includes(keyword));
@@ -299,13 +301,6 @@ class GeminiFailoverModels {
 
     // Filter available
     let availableKeys = allMappedKeys.filter(k => k.status === "HEALTHY");
-
-    // Fallback: If no fully HEALTHY keys are available, fall back to trying all enabled keys
-    // that are not explicitly marked as INVALID.
-    if (availableKeys.length === 0) {
-      console.warn("[Gemini Routing] No HEALTHY keys available. Falling back to trying all enabled keys in cooldown/quota status.");
-      availableKeys = allMappedKeys.filter(k => k.isEnabled && k.status !== "INVALID");
-    }
 
     // Sort based on health, type, primary status, and least-used (True Round-Robin)
     availableKeys.sort((a, b) => {

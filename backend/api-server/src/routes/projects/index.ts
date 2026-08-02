@@ -688,7 +688,9 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
       } catch (err: any) {
         retries++;
         const status = err?.status || err?.response?.status;
-        const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503") || err?.message?.includes("Validation failed");
+        // Do NOT retry 429 here. The ai.models router already handles smart failover. 
+        // If it throws 429, all keys are exhausted.
+        const isBusy = status === 503 || err?.message?.includes("503") || err?.message?.includes("Validation failed");
         
         if (isBusy && retries < 4 && !streamStarted) {
           const backoff = retries === 1 ? 2000 : retries === 2 ? 5000 : 10000;
@@ -740,17 +742,20 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
     req.log.error({ err }, "Error in shared chat stream");
     
     const status = err?.status || err?.response?.status;
-    const isRateLimited = status === 429 || err?.message?.includes("429");
+    const isQuotaError = err?.type === "quota_exceeded" || err?.code === "QUOTA_EXCEEDED" || err?.code === "NO_HEALTHY_KEYS";
+    const isRateLimited = isQuotaError || status === 429 || err?.message?.includes("429");
 
     if (!res.headersSent) {
       if (isRateLimited) {
-        res.status(429).json({ error: "AI service is busy. Please try again later." });
+        const errorMessage = isQuotaError ? (err?.message || "AI service quota exhausted.") : "AI service is busy. Please try again later.";
+        res.status(429).json({ error: errorMessage });
       } else {
         res.status(500).json({ error: "Internal server error" });
       }
     } else {
       if (isRateLimited) {
-        res.write(`data: ${JSON.stringify({ error: "AI service is busy. Please try again later." })}\n\n`);
+        const errorMessage = isQuotaError ? (err?.message || "AI service quota exhausted.") : "AI service is busy. Please try again later.";
+        res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
       }

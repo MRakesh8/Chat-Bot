@@ -239,63 +239,8 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
     console.error("Widget public router: failed to load system keys:", err);
   }
 
-  // Fallback: If no fully HEALTHY keys are available in the database, fall back to trying all enabled keys
-  // that are not explicitly marked as INVALID (meaning cooldown/quota status but still enabled).
-  // This matches the self-healing behavior in integrations-gemini-ai/src/client.ts.
-  if (widgetKeys.length === 0) {
-    console.warn("[Widget Routing] No HEALTHY keys available. Falling back to trying all enabled keys in cooldown/quota status.");
-    
-    // Project keys fallback
-    for (const key of projectKeysList) {
-      if (key.isEnabled && key.status !== "INVALID") {
-        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-        if (decrypted) {
-          widgetKeys.push({
-            id: key.id,
-            type: 'project',
-            provider: key.provider,
-            model: key.model || undefined,
-            decryptedKey: decrypted,
-            rawDbKey: key
-          });
-        }
-      }
-    }
-    
-    // User keys fallback
-    if (userId) {
-      for (const key of userKeysList) {
-        if (key.isEnabled && key.status !== "INVALID") {
-          const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-          if (decrypted) {
-            widgetKeys.push({
-              id: key.id,
-              type: 'user',
-              provider: key.provider,
-              decryptedKey: decrypted,
-              rawDbKey: key
-            });
-          }
-        }
-      }
-    }
-    
-    // System keys fallback
-    for (const key of systemKeysList) {
-      if (key.isEnabled && key.status !== "INVALID") {
-        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-        if (decrypted) {
-          widgetKeys.push({
-            id: key.id,
-            type: 'system',
-            provider: key.provider,
-            decryptedKey: decrypted,
-            rawDbKey: key
-          });
-        }
-      }
-    }
-  }
+  // Note: The previous fallback logic that retried keys marked as QUOTA_EXCEEDED has been removed.
+  // When no HEALTHY keys are available, it is better to fail-fast than to spam rate-limited keys.
 
   // 4. Env fallback keys
   const envKeys = Array.from(new Set([

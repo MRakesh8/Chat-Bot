@@ -1073,7 +1073,9 @@ ${liveContext}`;
       } catch (err: any) {
         retries++;
         const status = err?.status || err?.response?.status;
-        const isBusy = status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503") || err?.message?.includes("Validation failed");
+        // Do NOT retry 429 here. The ai.models router already handles smart failover. 
+        // If it throws 429, all keys are exhausted.
+        const isBusy = status === 503 || err?.message?.includes("503") || err?.message?.includes("Validation failed");
         
         if (isBusy && retries < 4 && !streamStarted) {
           const backoff = retries === 1 ? 2000 : retries === 2 ? 5000 : 10000;
@@ -1127,9 +1129,9 @@ ${liveContext}`;
     req.log.error({ err, currentStep }, `Error in streaming message at step: ${currentStep}`);
     logSystemError("chatbot", err, { currentStep, conversationId: req.params.id, text: (req.body as any)?.content || "unknown" });
     
-    const isQuotaError = err?.type === "quota_exceeded";
+    const isQuotaError = err?.type === "quota_exceeded" || err?.code === "QUOTA_EXCEEDED" || err?.code === "NO_HEALTHY_KEYS" || err?.status === 429 || err?.message?.includes("429");
     const status = err?.status || err?.response?.status;
-    const isBusy = isQuotaError || status === 429 || status === 503 || err?.message?.includes("429") || err?.message?.includes("503");
+    const isBusy = isQuotaError || status === 503 || err?.message?.includes("503");
 
     const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
 
