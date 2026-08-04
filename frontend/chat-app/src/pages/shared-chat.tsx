@@ -543,7 +543,6 @@ export default function SharedChatPage() {
                   <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeHighlight]}
                       components={{
                         a({ node, children, href, ...props }: any) {
                           return (

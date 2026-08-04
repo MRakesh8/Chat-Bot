@@ -650,6 +650,7 @@ export function ChatArea() {
           onKeyDown={handleKeyDown}
           placeholder="How can I help you today?"
           rows={1}
+          disabled={createConversation.isPending}
           className="min-h-[60px] w-full resize-none bg-transparent px-4 py-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         />
         <div className="flex items-center justify-between px-3 pb-3">
@@ -658,6 +659,7 @@ export function ChatArea() {
             <Button
               variant="ghost"
               size="icon"
+              disabled={createConversation.isPending}
               className="h-9 w-9 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               title="Attach file"
               onClick={() => document.getElementById("file-upload")?.click()}
@@ -667,6 +669,7 @@ export function ChatArea() {
             <Button
               variant="ghost"
               size="icon"
+              disabled={createConversation.isPending}
               className={cn(
                 "h-9 w-9 rounded-full transition-colors",
                 isRecording
@@ -687,7 +690,7 @@ export function ChatArea() {
           ) : (
             <Button
               onClick={handleSend}
-              disabled={!input.trim() && files.length === 0}
+              disabled={(!input.trim() && files.length === 0) || createConversation.isPending}
               size="icon"
               className={cn(
                 "h-9 w-9 rounded-full transition-all",
@@ -697,7 +700,11 @@ export function ChatArea() {
               )}
               title="Send message"
             >
-              <Send className="h-4 w-4" />
+              {createConversation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </Button>
           )}
         </div>
@@ -924,7 +931,6 @@ export function ChatArea() {
                       <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted relative">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight, rehypeSanitize]}
                           components={{
                             a({ node, children, href, ...props }: any) {
                               return (
