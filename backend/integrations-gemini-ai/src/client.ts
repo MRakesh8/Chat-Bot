@@ -707,9 +707,10 @@ class GeminiFailoverModels {
             keyFailed = true;
             break; // Move to next key
           } else if (
-            status === 503 || status === 404 || status === 500 || status === 502 || status === 504 ||
-            err?.message?.includes("503") || err?.message?.includes("404") ||
-            err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("504")
+            status === 503 || status === 404 || status === 500 || status === 502 || status === 504 || status === 400 || status === 422 ||
+            err?.message?.includes("503") || err?.message?.includes("404") || err?.message?.includes("400") ||
+            err?.message?.includes("500") || err?.message?.includes("502") || err?.message?.includes("504") ||
+            err?.message?.includes("Multiturn chat") || err?.message?.includes("not enabled") || err?.message?.includes("INVALID_ARGUMENT")
           ) {
             console.warn(`[Gemini Routing] Model/Server Error (Status ${status}): Trying fallback model...\n${logOutput}`);
             continue; // Try next fallback model for the SAME key
