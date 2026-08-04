@@ -85,6 +85,7 @@ type KnowledgeSource = {
   retryCount: number;
   createdAt: string;
   isWidgetExposed: boolean;
+  rawContent?: string | null;
 };
 
 export function KnowledgeBase({ projectId }: { projectId: string }) {
@@ -375,12 +376,14 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       tag: nextTag,
       sourceUrl,
       notes: nextNotes,
+      rawContent,
       categoryId,
     }: {
       id: string;
       tag?: string;
       sourceUrl?: string;
       notes?: string;
+      rawContent?: string;
       categoryId?: string;
     }) => {
       const res = await authFetch(apiUrl(`/api/files/${id}`), {
@@ -389,6 +392,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
           tag: nextTag,
           sourceUrl,
           notes: nextNotes,
+          rawContent,
           categoryId,
         }),
       });
@@ -408,7 +412,13 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
     setEditingSource(source);
     setEditTag(source.tag || "");
     setEditUrl(source.sourceUrl || "");
-    setEditNotes(source.notes || "");
+    if (source.sourceType === "note") {
+      setEditNotes(source.notes || "");
+    } else if (source.sourceType === "file") {
+      setEditNotes(source.rawContent || "");
+    } else {
+      setEditNotes("");
+    }
     setEditCategoryId(source.categoryId);
     setIsEditOpen(true);
   };
@@ -416,8 +426,18 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
   const handleSaveEdit = () => {
     if (!editingSource) return;
 
+    const isFileTextEditable = editingSource.sourceType === "file" && editingSource.filename && (() => {
+      const ext = editingSource.filename.split('.').pop()?.toLowerCase() || "";
+      return ["txt", "md", "csv", "tsv", "rtf", "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql", "yaml", "yml", "toml", "ini", "conf", "env"].includes(ext);
+    })();
+
     if (editingSource.sourceType === "note" && !editNotes.trim()) {
       toast({ title: "Error", description: "Note content cannot be empty", variant: "destructive" });
+      return;
+    }
+
+    if (isFileTextEditable && !editNotes.trim()) {
+      toast({ title: "Error", description: "File content cannot be empty", variant: "destructive" });
       return;
     }
 
@@ -441,6 +461,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
       tag: editTag.trim(),
       categoryId: editCategoryId,
       ...(editingSource.sourceType === "note" ? { notes: editNotes.trim() } : {}),
+      ...(isFileTextEditable ? { rawContent: editNotes.trim() } : {}),
       ...(["website", "youtube", "github", "instagram"].includes(editingSource.sourceType)
         ? { sourceUrl: editUrl.trim() }
         : {}),
@@ -968,9 +989,14 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                 <Input placeholder="e.g. documentation, reference" value={editTag} onChange={(e) => setEditTag(e.target.value)} />
               </div>
 
-              {editingSource.sourceType === "note" && (
+              {((editingSource.sourceType === "note") || (editingSource.sourceType === "file" && editingSource.filename && (() => {
+                const ext = editingSource.filename.split('.').pop()?.toLowerCase() || "";
+                return ["txt", "md", "csv", "tsv", "rtf", "js", "ts", "jsx", "tsx", "py", "html", "css", "json", "xml", "sh", "c", "cpp", "java", "go", "rs", "php", "sql", "yaml", "yml", "toml", "ini", "conf", "env"].includes(ext);
+              })())) && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Note Content</label>
+                  <label className="text-sm font-medium">
+                    {editingSource.sourceType === "note" ? "Note Content" : "File Content"}
+                  </label>
                   <Textarea
                     placeholder="Paste your text here..."
                     className="min-h-[150px]"

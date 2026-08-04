@@ -585,7 +585,7 @@ router.post("/:id/reprocess", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const { tag, notes, sourceUrl, categoryId, isWidgetExposed } = req.body;
+    const { tag, notes, rawContent, sourceUrl, categoryId, isWidgetExposed } = req.body;
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
@@ -626,6 +626,9 @@ router.patch("/:id", async (req, res) => {
       }
       updates.notes = notes;
     }
+    if (rawContent !== undefined && existing.sourceType === "file") {
+      updates.rawContent = rawContent;
+    }
     if (sourceUrl !== undefined && ["website", "youtube", "github", "instagram"].includes(existing.sourceType)) {
       if (!sourceUrl.trim()) {
         res.status(400).json({ error: "URL cannot be empty" });
@@ -648,6 +651,7 @@ router.patch("/:id", async (req, res) => {
 
     const contentChanged =
       (notes !== undefined && notes !== existing.notes) ||
+      (rawContent !== undefined && rawContent !== existing.rawContent) ||
       (sourceUrl !== undefined && sourceUrl !== existing.sourceUrl);
 
     if (contentChanged) {

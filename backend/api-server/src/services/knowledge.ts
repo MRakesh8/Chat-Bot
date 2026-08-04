@@ -1049,6 +1049,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
         githubLinks: uniqueStrings([...(source.githubLinks ?? []), ...links.githubLinks]),
         updatedAt: new Date(),
       }).where(eq(knowledgeSources.id, sourceId));
+      await invalidateKnowledgeCache(source.projectId);
       
       // PHASE 2: AI ENRICHMENT
       try {
@@ -1106,6 +1107,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
         }).where(eq(knowledgeSources.id, sourceId)).returning();
         
         logger.info(`Successfully processed source ${sourceId}`);
+        await invalidateKnowledgeCache(source.projectId);
         return updated;
         
       } catch (aiError: any) {
@@ -1125,6 +1127,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
           lastError: "AI Enrichment Failed: " + (aiError?.message || String(aiError)),
           updatedAt: new Date(),
         }).where(eq(knowledgeSources.id, sourceId));
+        await invalidateKnowledgeCache(source.projectId);
         
         if (nextRetryAt) scheduleKnowledgeRepair(sourceId, nextRetryCount);
         return current;
@@ -1143,6 +1146,9 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
       lastError: (error as any)?.message || (typeof error === 'string' ? error : JSON.stringify(error, Object.getOwnPropertyNames(error as any))),
       updatedAt: new Date(),
     }).where(eq(knowledgeSources.id, sourceId));
+    if (current?.projectId) {
+      await invalidateKnowledgeCache(current.projectId);
+    }
     return current;
   }
 }
