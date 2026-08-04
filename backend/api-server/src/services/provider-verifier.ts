@@ -63,12 +63,17 @@ export class ProviderVerifier {
       }
       const data = await response.json() as any;
       const models = data.models
-        .filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
+        .filter((m: any) => {
+          const name = (m.name || "").toLowerCase();
+          const supportsChat = m.supportedGenerationMethods?.includes("generateContent");
+          const isNonChat = name.includes("tts") || name.includes("audio") || name.includes("imagen") || name.includes("embed") || name.includes("realtime") || name.includes("bison");
+          return supportsChat && !isNonChat;
+        })
         .map((m: any) => m.name.replace("models/", ""));
         
       return {
         provider: "gemini",
-        defaultModel: models.includes("gemini-2.0-flash") ? "gemini-2.0-flash" : models.includes("gemini-1.5-flash") ? "gemini-1.5-flash" : models[0],
+        defaultModel: models.includes("gemini-2.0-flash") ? "gemini-2.0-flash" : models.includes("gemini-2.0-flash-lite") ? "gemini-2.0-flash-lite" : models[0] || "gemini-2.0-flash",
         models
       };
     } catch (e: any) {

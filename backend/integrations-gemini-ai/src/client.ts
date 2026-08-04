@@ -525,7 +525,11 @@ class GeminiFailoverModels {
       if (method === 'embedContent') {
         keyModels = [originalModel];
       } else {
-        const stored: string[] = (key as any).rawDbKey?.availableModels ?? [];
+        const rawStored: string[] = (key as any).rawDbKey?.availableModels ?? [];
+        const stored = rawStored.filter((m: string) => {
+          const lower = m.toLowerCase();
+          return !lower.includes("-tts") && !lower.includes("-audio") && !lower.includes("-imagen") && !lower.includes("embed") && !lower.includes("-realtime") && !lower.includes("-bison");
+        });
         if (stored.length > 0) {
           // Start with the requested model if it's in the available list, else start with the first available
           const preferred = stored.includes(originalModel) ? originalModel : stored[0];
