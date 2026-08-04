@@ -262,17 +262,21 @@ export default function AdminProjectEditPage() {
               <TabsTrigger value="knowledge" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Database className="w-4 h-4 mr-2" /> Knowledge Base
               </TabsTrigger>
+              {/* Reports feature temporarily hidden
               <TabsTrigger value="reports" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <FileText className="w-4 h-4 mr-2" /> Reports
               </TabsTrigger>
+              */}
               <TabsTrigger value="settings" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
               </TabsTrigger>
+              {/* Context Engine feature temporarily hidden
               <TabsTrigger value="context-engine" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Brain className="w-4 h-4 mr-2" />
                 Context Engine
               </TabsTrigger>
+              */}
               <TabsTrigger value="widget-studio" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Paintbrush className="w-4 h-4 mr-2" /> Widget Studio
               </TabsTrigger>
@@ -373,6 +377,7 @@ export default function AdminProjectEditPage() {
               )}
             </TabsContent>
 
+            {/* Reports feature temporarily hidden
             <TabsContent value="reports">
               {isNew ? (
                 <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
@@ -430,6 +435,7 @@ export default function AdminProjectEditPage() {
               </Card>
               )}
             </TabsContent>
+            */}
 
             <TabsContent value="widget-studio">
               <div className="space-y-6">
@@ -441,6 +447,7 @@ export default function AdminProjectEditPage() {
               </div>
             </TabsContent>
 
+            {/* Context Engine feature temporarily hidden
             <TabsContent value="context-engine">
               <div className="space-y-6">
                 <div>
@@ -458,6 +465,7 @@ export default function AdminProjectEditPage() {
                 )}
               </div>
             </TabsContent>
+            */}
 
             <TabsContent value="deployment">
               {isNew ? (
