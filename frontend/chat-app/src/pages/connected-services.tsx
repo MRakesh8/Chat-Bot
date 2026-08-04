@@ -12,8 +12,25 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { apiBaseUrl } from "@/lib/api-url";
+import { apiBaseUrl, apiUrl } from "@/lib/api-url";
 import { useAuth } from "@/contexts/AuthContext";
+
+function useAuthFetch() {
+  const { session } = useAuth();
+  return async (url: string, options: RequestInit = {}) => {
+    const token = session?.access_token;
+    const headers: Record<string, string> = {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    if (!(options.body instanceof FormData)) {
+      headers["Content-Type"] = "application/json";
+    }
+    return fetch(url, {
+      ...options,
+      headers: { ...headers, ...(options.headers as any) },
+    });
+  };
+}
 
 type Service = {
   id: string;
@@ -42,21 +59,14 @@ export default function ConnectedServicesPage() {
   const [editingService, setEditingService] = useState<Service | null>(null);
   
   const { session } = useAuth();
+  const authFetch = useAuthFetch();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
-  const getHeaders = (): Record<string, string> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (session?.access_token) {
-      headers.Authorization = `Bearer ${session.access_token}`;
-    }
-    return headers;
-  };
 
   const { data: services = [], isLoading } = useQuery<Service[]>({
     queryKey: ["connectedServices"],
     queryFn: async () => {
-      const res = await fetch(`${apiBaseUrl}/api/services`, { headers: getHeaders() });
+      const res = await authFetch(apiUrl("/api/services"));
       if (!res.ok) throw new Error("Failed to fetch services");
       return res.json();
     },
@@ -65,9 +75,8 @@ export default function ConnectedServicesPage() {
 
   const addMutation = useMutation({
     mutationFn: async (data: Partial<Service>) => {
-      const res = await fetch(`${apiBaseUrl}/api/services`, {
+      const res = await authFetch(apiUrl("/api/services"), {
         method: "POST",
-        headers: getHeaders(),
         body: JSON.stringify(data),
       });
       if (!res.ok) {
@@ -89,9 +98,8 @@ export default function ConnectedServicesPage() {
   const editMutation = useMutation({
     mutationFn: async (data: Partial<Service> & { id: string }) => {
       const { id, ...rest } = data;
-      const res = await fetch(`${apiBaseUrl}/api/services/${id}`, {
+      const res = await authFetch(apiUrl(`/api/services/${id}`), {
         method: "PUT",
-        headers: getHeaders(),
         body: JSON.stringify(rest),
       });
       if (!res.ok) {
@@ -113,9 +121,8 @@ export default function ConnectedServicesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`${apiBaseUrl}/api/services/${id}`, {
+      const res = await authFetch(apiUrl(`/api/services/${id}`), {
         method: "DELETE",
-        headers: getHeaders(),
       });
       if (!res.ok) throw new Error("Failed to delete service");
     },
