@@ -75,22 +75,37 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
         <span className="flex-1 truncate select-none">{conv.title}</span>
       )}
       
-      <div className={cn(
-        "flex items-center transition-opacity opacity-100"
-      )}>
+      {/* Always-visible favorite indicator */}
+      {conv.isFavorite && !isEditing && (
         <Button
           variant="ghost" size="icon"
-          className="h-6 w-6 mr-1"
-          onClick={(e) => onToggleFavorite(conv.id, !!conv.isFavorite, e)}
+          className="h-6 w-6 shrink-0 group-hover:hidden"
+          onClick={(e) => onToggleFavorite(conv.id, true, e)}
+          title="Remove from favorites"
         >
-          <Heart className={cn(
-            "w-3.5 h-3.5 transition-colors",
-            conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500",
-            pendingFavorite && "opacity-70",
-          )} />
+          <Heart className="w-3.5 h-3.5 fill-red-500 text-red-500" />
         </Button>
-        
-        {!isEditing && (
+      )}
+
+      {!isEditing && (
+        <div className={cn(
+          "flex items-center gap-0.5 transition-all duration-200 shrink-0",
+          conv.isFavorite ? "opacity-0 group-hover:opacity-100" : "opacity-0 group-hover:opacity-100",
+          isActive && "opacity-100" // Always show for active conversation
+        )}>
+          <Button
+            variant="ghost" size="icon"
+            className="h-6 w-6"
+            onClick={(e) => onToggleFavorite(conv.id, !!conv.isFavorite, e)}
+            title={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <Heart className={cn(
+              "w-3.5 h-3.5 transition-colors",
+              conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500",
+              pendingFavorite && "opacity-70",
+            )} />
+          </Button>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -128,11 +143,12 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 });
+
 
 export function Sidebar({ className, onClose, onDesktopClose }: { className?: string, onClose?: () => void, onDesktopClose?: () => void }) {
   const [location, setLocation] = useLocation();

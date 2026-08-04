@@ -13,7 +13,7 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"];
+const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-exp"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -510,8 +510,6 @@ class GeminiFailoverModels {
     }
 
     const originalModel = options.model || "gemini-2.0-flash";
-    const modelsToTry = method === 'embedContent' ? [originalModel] : Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
-    
     let lastError: any = null;
 
     for (const key of keys) {
@@ -520,7 +518,26 @@ class GeminiFailoverModels {
       let keyFailed = false;
       let allFailuresWereTransient = true;
 
-      for (const modelToUse of modelsToTry) {
+      // Build a per-key model list using what this key actually supports.
+      // This respects the availableModels fetched when the key was registered
+      // so we only try models that are accessible on that key's project/tier.
+      let keyModels: string[] = [];
+      if (method === 'embedContent') {
+        keyModels = [originalModel];
+      } else {
+        const stored: string[] = (key as any).rawDbKey?.availableModels ?? [];
+        if (stored.length > 0) {
+          // Start with the requested model if it's in the available list, else start with the first available
+          const preferred = stored.includes(originalModel) ? originalModel : stored[0];
+          // Deduplicate: preferred first, then the rest of stored, then global fallbacks for any gaps
+          keyModels = Array.from(new Set([preferred, ...stored, ...FALLBACK_MODELS]));
+        } else {
+          // No stored models — fall back to hardcoded list
+          keyModels = Array.from(new Set([originalModel, ...FALLBACK_MODELS]));
+        }
+      }
+
+      for (const modelToUse of keyModels) {
         const attemptOptions = { ...options, model: modelToUse };
         
         try {
@@ -673,6 +690,7 @@ class GeminiFailoverModels {
             // Check if this is a permanent limit 0 for this specific model rather than overall exhaustion
             if (err?.message?.includes("limit: 0")) {
               console.warn(`[Gemini Routing] Model ${modelToUse} is not available on this tier (limit 0). Trying next fallback model...`);
+              allFailuresWereTransient = false; // Track that this is a key-level quota issue
               continue;
             }
             await this._updateKeyFailure(key, err);
@@ -711,7 +729,14 @@ class GeminiFailoverModels {
         if (allFailuresWereTransient) {
           console.warn(`[Gemini Routing] Key ${key.id.substring(0,4)} failed all models due to transient server load/outage. Skipping database unhealthy lock.`);
         } else {
-          await this._updateKeyFailure(key, new Error("All models failed to respond (including fallbacks)"));
+          // If ALL models hit limit:0, this is a quota exhaustion on the key itself — mark it properly
+          const allLimitZero = lastError?.message?.includes("limit: 0");
+          if (allLimitZero) {
+            console.warn(`[Gemini Routing] Key ${key.id.substring(0,4)} exhausted: all models have limit:0 on free tier. Marking as QUOTA_EXCEEDED.`);
+            await this._updateKeyFailure(key, { ...lastError, status: 429 });
+          } else {
+            await this._updateKeyFailure(key, new Error("All models failed to respond (including fallbacks)"));
+          }
         }
       }
     }
