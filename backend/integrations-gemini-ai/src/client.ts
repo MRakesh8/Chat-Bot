@@ -13,7 +13,7 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
+const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -670,6 +670,11 @@ class GeminiFailoverModels {
 
           if (status === 429) {
             console.warn(`[Gemini Routing] Rate Limit:\n${logOutput}`);
+            // Check if this is a permanent limit 0 for this specific model rather than overall exhaustion
+            if (err?.message?.includes("limit: 0")) {
+              console.warn(`[Gemini Routing] Model ${modelToUse} is not available on this tier (limit 0). Trying next fallback model...`);
+              continue;
+            }
             await this._updateKeyFailure(key, err);
             keyFailed = true;
             break; // Move to next key
