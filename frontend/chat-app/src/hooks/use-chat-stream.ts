@@ -46,10 +46,20 @@ export function useChatStream() {
         headers.Authorization = `Bearer ${data.session.access_token}`;
       }
 
+      const fallbackEnabled = localStorage.getItem("openrouter_fallback_enabled") !== "false";
+      const fallbackKey = localStorage.getItem("openrouter_fallback_key") || "";
+
       const response = await fetch(apiUrl(`/api/gemini/conversations/${conversationId}/messages`), {
         method: "POST",
         headers,
-        body: JSON.stringify({ content, fileIds, projectIds, useNormalAi }),
+        body: JSON.stringify({ 
+          content, 
+          fileIds, 
+          projectIds, 
+          useNormalAi,
+          fallbackEnabled,
+          fallbackKey
+        }),
         credentials: "include",
         signal: controller.signal,
       });

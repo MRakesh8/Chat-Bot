@@ -121,6 +121,7 @@ export default function AdminConsolePage() {
 
   // Strict client-side admin check
   const isAdmin = user?.email === "rakesh837m@gmail.com" || 
+                  user?.email === "rakesh0837m@gmail.com" || 
                   dbUser?.role === "super_admin" ||
                   (import.meta.env.DEV || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 

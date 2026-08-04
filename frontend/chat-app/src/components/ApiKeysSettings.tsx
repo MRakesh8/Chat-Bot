@@ -36,6 +36,12 @@ export function ApiKeysSettings() {
   const [adding, setAdding] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
+  const [fallbackEnabled, setFallbackEnabled] = useState(() => {
+    return localStorage.getItem("openrouter_fallback_enabled") !== "false";
+  });
+  const [fallbackKey, setFallbackKey] = useState(() => {
+    return localStorage.getItem("openrouter_fallback_key") || "";
+  });
 
   const fetchSettings = async () => {
     try {
@@ -409,6 +415,53 @@ export function ApiKeysSettings() {
             <div className="font-medium text-sm text-foreground">System First</div>
             <div className="text-xs text-muted-foreground mt-1">Prioritize system default keys</div>
           </button>
+        </div>
+      </div>
+
+      {/* OpenRouter Fallback Settings */}
+      <div className="mt-8 pt-6 border-t border-border">
+        <h3 className="font-medium mb-3 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-primary animate-pulse" /> OpenRouter Backup Fallback
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Automatically switch to OpenRouter's free models if your Gemini API keys run out of quota or get rate-limited.
+        </p>
+        
+        <div className="space-y-4 max-w-xl">
+          <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card/50">
+            <div>
+              <div className="text-sm font-medium">Enable Automatic Backup</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Use OpenRouter free models as a fallback if Gemini fails</div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                checked={fallbackEnabled} 
+                onChange={(e) => {
+                  setFallbackEnabled(e.target.checked);
+                  localStorage.setItem("openrouter_fallback_enabled", String(e.target.checked));
+                }}
+                className="sr-only peer" 
+              />
+              <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+            </label>
+          </div>
+
+          {fallbackEnabled && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Custom OpenRouter API Key (Optional)</label>
+              <input
+                type="password"
+                placeholder="Leave blank to use system default key (sk-or-...)"
+                value={fallbackKey}
+                onChange={(e) => {
+                  setFallbackKey(e.target.value);
+                  localStorage.setItem("openrouter_fallback_key", e.target.value);
+                }}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary font-mono"
+              />
+            </div>
+          )}
         </div>
       </div>
     </section>

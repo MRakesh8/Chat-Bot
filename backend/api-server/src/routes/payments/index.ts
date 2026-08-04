@@ -29,11 +29,15 @@ router.post("/manual", async (req, res) => {
       return;
     }
 
-    // Check project ownership
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "super_admin" || role === "admin")
+      ? eq(projects.id, projectId)
+      : and(eq(projects.id, projectId), eq(projects.userId, userId));
+
     const [project] = await db
       .select()
       .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      .where(condition);
 
     if (!project) {
       res.status(404).json({ error: "Project not found" });
@@ -101,11 +105,15 @@ router.get("/status/:projectId", async (req, res) => {
       return;
     }
 
-    // Verify ownership
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "super_admin" || role === "admin")
+      ? eq(projects.id, projectId)
+      : and(eq(projects.id, projectId), eq(projects.userId, userId));
+
     const [project] = await db
       .select()
       .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      .where(condition);
 
     if (!project) {
       res.status(404).json({ error: "Project not found" });

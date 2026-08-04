@@ -124,22 +124,26 @@ class GeminiFailoverModels {
     let systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     
     // Auto-provision & sync system keys from environment variables
-    const envSystemKeys = Array.from(new Set([
-      process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-      process.env.GEMINI_API_KEY_1,
-      process.env.GEMINI_API_KEY_2,
-      process.env.GEMINI_API_KEY_3,
-      process.env.GEMINI_API_KEY
-    ].filter(Boolean) as string[]));
+    const envKeys = [
+      { key: process.env.AI_INTEGRATIONS_GEMINI_API_KEY, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY_1, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY_2, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY_3, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY, provider: "gemini" },
+      { key: process.env.OPENROUTER_API_KEY, provider: "openrouter" },
+      { key: process.env.OPENROUTER_KEY, provider: "openrouter" },
+      { key: process.env.GROQ_API_KEY, provider: "groq" }
+    ].filter(k => !!k.key) as { key: string, provider: string }[];
 
     let allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
 
     // Purge old system keys from DB that are no longer in environment variables
-    if (envSystemKeys.length > 0) {
+    if (envKeys.length > 0) {
+      const envKeyStrings = envKeys.map(k => k.key);
       for (const sysKey of allDbSystemKeys) {
         let decrypted = "";
         try { decrypted = crypto.decrypt(sysKey.encryptedKey) || sysKey.encryptedKey; } catch { decrypted = sysKey.encryptedKey; }
-        if (!envSystemKeys.includes(decrypted)) {
+        if (!envKeyStrings.includes(decrypted)) {
           try {
             console.log(`[Gemini Routing] Purging outdated system key ${sysKey.id.substring(0,4)} (removed from env).`);
             await db.delete(userApiKeys).where(eq(userApiKeys.id, sysKey.id));
@@ -155,29 +159,36 @@ class GeminiFailoverModels {
         try { return crypto.decrypt(k.encryptedKey) || k.encryptedKey; } catch { return k.encryptedKey; }
       });
 
-      const keysToInsert = envSystemKeys.filter(envKey => !decryptedAllSystemKeys.includes(envKey));
+      const keysToInsert = envKeys.filter(envK => !decryptedAllSystemKeys.includes(envK.key));
 
       if (keysToInsert.length > 0) {
         for (let i = 0; i < keysToInsert.length; i++) {
-          const key = keysToInsert[i];
+          const item = keysToInsert[i];
           try {
-            const encryptedKey = crypto.encrypt(key);
-            const maskedKey = key.substring(0, 4) + "..." + key.slice(-4);
+            const encryptedKey = crypto.encrypt(item.key);
+            const maskedKey = item.provider === "gemini" 
+              ? `AIza****${item.key.slice(-4)}`
+              : `${item.provider.toUpperCase()}****${item.key.slice(-4)}`;
             
             const [newKey] = await db.insert(userApiKeys).values({
-              name: `System Key ${allDbSystemKeys.length + 1} (Auto-Provisioned)`,
-              provider: "gemini",
+              name: `System Key ${allDbSystemKeys.length + 1} (${item.provider.toUpperCase()} Auto-Provisioned)`,
+              provider: item.provider,
               encryptedKey: encryptedKey,
               maskedKey: maskedKey,
               isPrimary: allDbSystemKeys.length === 0 && i === 0,
               isEnabled: true,
               isSystem: true,
               status: "HEALTHY",
-              dailyLimit: null
+              dailyLimit: null,
+              availableModels: item.provider === "openrouter"
+                ? ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct:free"]
+                : item.provider === "groq"
+                  ? ["llama-3.3-70b-specdec"]
+                  : ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
             }).returning();
             
             allDbSystemKeys.push(newKey);
-            console.log(`[Gemini Routing] Auto-provisioned new system key from environment.`);
+            console.log(`[Gemini Routing] Auto-provisioned new system key (${item.provider}) from environment.`);
           } catch (insertErr) {
             console.error("[Gemini Routing] Failed to auto-provision system key:", insertErr);
           }
@@ -317,36 +328,37 @@ class GeminiFailoverModels {
     let availableKeys = allMappedKeys.filter(k => k.status === "HEALTHY");
 
     // Sort based on health, type, primary status, and least-used (True Round-Robin)
+    // Sort based on type (Project -> User -> System), primary flag, health, and least-used
     availableKeys.sort((a, b) => {
-      // 1. Prioritize Health Score (Higher is better)
-      if (a.healthScore !== b.healthScore) {
-        return b.healthScore - a.healthScore;
-      }
+      // 1. Strict priority: Project Keys -> User Keys -> System Keys
+      const typePriority: Record<string, number> = { project: 1, user: 2, system: 3 };
       
-      // 2. Prioritize Project keys -> User keys -> System keys
-      const typePriority = { project: 1, user: 2, system: 3 };
+      // If mode is "system_first", swap priority for user vs system (Project key is still #1)
+      if (mode === "system_first") {
+        typePriority.user = 3;
+        typePriority.system = 2;
+      }
+
       if (typePriority[a.type] !== typePriority[b.type]) {
         return typePriority[a.type] - typePriority[b.type];
       }
 
-      // 3. Fallback sorting based on API mode settings for user vs system
-      if (mode === "auto" || mode === "user_first") {
-        if (a.isSystem !== b.isSystem) return a.isSystem ? 1 : -1;
-      } else if (mode === "system_first") {
-        if (a.isSystem !== b.isSystem) return a.isSystem ? -1 : 1;
-      }
-
-      // 4. Prioritize Primary keys
+      // 2. Prioritize Primary flag within the same group
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
 
-      // 5. True Round-Robin (Least-Used Key Selection)
+      // 3. Prioritize Health Score within the same group (Higher is better)
+      if (a.healthScore !== b.healthScore) {
+        return b.healthScore - a.healthScore;
+      }
+
+      // 4. True Round-Robin (Least-Used Key Selection within same priority level)
       const aUsage = a.totalRequests || 0;
       const bUsage = b.totalRequests || 0;
       if (aUsage !== bUsage) {
         return aUsage - bUsage;
       }
 
-      // 6. Last Used (Oldest used key goes first if usage count is same)
+      // 5. Last Used (Oldest used key goes first if usage count is same)
       const aTime = a.lastUsed ? a.lastUsed.getTime() : 0;
       const bTime = b.lastUsed ? b.lastUsed.getTime() : 0;
       return aTime - bTime;
@@ -517,14 +529,17 @@ class GeminiFailoverModels {
   }
 
   private async _executeWithRouting(userId: string | null, method: 'generateContent' | 'generateContentStream' | 'embedContent', options: any) {
-    const keys = await this._fetchAndResetKeys(userId, options?.projectId);
+    let keys: any[] = [];
+    let lastError: any = null;
 
-    if (keys.length === 0) {
-      throw { success: false, code: "NO_HEALTHY_KEYS", status: 503, message: "All AI API keys are unavailable. Please add a new API key or wait for quota reset." };
+    try {
+      keys = await this._fetchAndResetKeys(userId, options?.projectId);
+    } catch (fetchErr) {
+      console.error("[Gemini Routing] Failed to fetch routing keys:", fetchErr);
+      lastError = fetchErr;
     }
 
     const originalModel = options.model || "gemini-2.0-flash";
-    let lastError: any = null;
 
     for (const key of keys) {
       const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
@@ -659,12 +674,18 @@ class GeminiFailoverModels {
             const systemInst = attemptOptions.config?.systemInstruction?.parts?.[0]?.text;
             if (systemInst) chatMessages.unshift({ role: 'system', content: systemInst });
             
+            const rawMaxTokens = attemptOptions.config?.maxOutputTokens;
+            // Cap max_tokens to 2048 for OpenRouter and Groq to avoid 402 credits error on free tier
+            const maxTokensToUse = (lowerProvider === "openrouter" || lowerProvider === "groq")
+              ? (rawMaxTokens ? Math.min(rawMaxTokens, 2048) : 2048)
+              : rawMaxTokens;
+
             if (method === 'generateContent') {
               const res = await executeWithRetry(() => client.chat.completions.create({
                 model: modelToUse,
                 messages: chatMessages,
                 temperature: attemptOptions.config?.temperature ?? 0.7,
-                max_tokens: attemptOptions.config?.maxOutputTokens
+                max_tokens: maxTokensToUse
               }));
               result = { text: res.choices[0]?.message?.content || "" };
             } else {
@@ -672,7 +693,7 @@ class GeminiFailoverModels {
                 model: modelToUse,
                 messages: chatMessages,
                 temperature: attemptOptions.config?.temperature ?? 0.7,
-                max_tokens: attemptOptions.config?.maxOutputTokens,
+                max_tokens: maxTokensToUse,
                 stream: true
               }));
               result = (async function*() {
@@ -756,6 +777,78 @@ class GeminiFailoverModels {
           } else {
             await this._updateKeyFailure(key, new Error("All models failed to respond (including fallbacks)"));
           }
+        }
+      }
+    }
+
+    // --- OpenRouter Fallback ---
+    const fallbackEnabled = options.fallbackEnabled !== false;
+    const openrouterKey = options.fallbackKey || process.env.openapi || process.env.OPENAPI;
+    if (fallbackEnabled && openrouterKey && method !== 'embedContent') {
+      console.warn(`[Gemini Routing] Fallback triggered! All Gemini keys failed or none available. Trying OpenRouter fallback...`);
+      
+      const fallbackModels = [
+        "nvidia/nemotron-3-nano-30b-a3b:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "z-ai/glm-4.5-air:free",
+        "openai/gpt-oss-20b:free",
+        "google/gemma-3n-e2b-it:free",
+        "cognitivecomputations/dolphin-mistral-24b-venice-edition:free"
+      ];
+
+      const client = new OpenAI({
+        apiKey: openrouterKey,
+        baseURL: "https://openrouter.ai/api/v1",
+        timeout: 45000,
+        defaultHeaders: {
+          "HTTP-Referer": "https://localhost",
+          "X-Title": "AriaChatBot"
+        }
+      });
+
+      const chatMessages = (options.contents || []).map((m: any) => ({
+        role: m.role === 'model' ? 'assistant' : 'user',
+        content: m.parts?.[0]?.text || m.content || ""
+      }));
+      const systemInst = options.config?.systemInstruction?.parts?.[0]?.text;
+      if (systemInst) {
+        chatMessages.unshift({ role: 'system', content: systemInst });
+      }
+
+      for (const modelId of fallbackModels) {
+        try {
+          console.log(`[Gemini Routing Fallback] Trying OpenRouter model ${modelId}...`);
+          if (method === 'generateContent') {
+            const res = await client.chat.completions.create({
+              model: modelId,
+              messages: chatMessages,
+              temperature: options.config?.temperature ?? 0.7,
+              max_tokens: options.config?.maxOutputTokens ? Math.min(options.config.maxOutputTokens, 2048) : 2048
+            });
+            console.log(`[Gemini Routing Fallback] OpenRouter model ${modelId} succeeded!`);
+            return { text: res.choices[0]?.message?.content || "" };
+          } else {
+            const stream = await client.chat.completions.create({
+              model: modelId,
+              messages: chatMessages,
+              temperature: options.config?.temperature ?? 0.7,
+              max_tokens: options.config?.maxOutputTokens ? Math.min(options.config.maxOutputTokens, 2048) : 2048,
+              stream: true
+            });
+            console.log(`[Gemini Routing Fallback] OpenRouter stream for model ${modelId} started!`);
+            
+            // Return stream generator
+            return (async function*() {
+              for await (const chunk of stream) {
+                if (chunk.choices[0]?.delta?.content) {
+                  yield { text: chunk.choices[0].delta.content };
+                }
+              }
+            })();
+          }
+        } catch (orErr: any) {
+          console.error(`[Gemini Routing Fallback] OpenRouter model ${modelId} failed:`, orErr.message || orErr);
+          lastError = orErr;
         }
       }
     }

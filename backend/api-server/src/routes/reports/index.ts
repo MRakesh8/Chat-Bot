@@ -30,8 +30,12 @@ router.post("/generate", async (req, res) => {
       return;
     }
 
-    // Check project ownership
-    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "super_admin" || role === "admin")
+      ? eq(projects.id, projectId)
+      : and(eq(projects.id, projectId), eq(projects.userId, userId));
+
+    const [project] = await db.select().from(projects).where(condition);
     if (!project) {
       res.status(404).json({ error: "Project not found or unauthorized" });
       return;
@@ -112,7 +116,12 @@ router.get("/project/:projectId", async (req, res) => {
       return;
     }
 
-    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "super_admin" || role === "admin")
+      ? eq(projects.id, projectId)
+      : and(eq(projects.id, projectId), eq(projects.userId, userId));
+
+    const [project] = await db.select().from(projects).where(condition);
     if (!project) {
       res.status(404).json({ error: "Project not found or unauthorized" });
       return;

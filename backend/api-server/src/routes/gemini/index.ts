@@ -34,7 +34,14 @@ import {
 
 const router = Router();
 
-async function userOwnsProject(projectId: string, userId: string) {
+async function userOwnsProject(projectId: string, userId: string, role?: string) {
+  if (role === "super_admin" || role === "admin") {
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId));
+    return Boolean(project);
+  }
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
@@ -114,7 +121,7 @@ router.post("/conversations", async (req, res) => {
       return;
     }
     const projectId = req.body.projectId || null;
-    if (projectId && !(await userOwnsProject(projectId, userId))) {
+    if (projectId && !(await userOwnsProject(projectId, userId, (req as any).auth?.dbUser?.role))) {
       res.status(403).json({ error: "Forbidden: You do not own this project" });
       return;
     }
@@ -188,7 +195,7 @@ router.patch("/conversations/:id", async (req, res) => {
       req.log.info({ Conversation: existing.id, Project: bodyParsed.data.projectId }, "MOVE_PROJECT_START");
     }
 
-    if (bodyParsed.data.projectId && !(await userOwnsProject(bodyParsed.data.projectId, userId))) {
+    if (bodyParsed.data.projectId && !(await userOwnsProject(bodyParsed.data.projectId, userId, (req as any).auth?.dbUser?.role))) {
       req.log.error("MOVE_PROJECT_FAILED - Reason: Forbidden: You do not own this project");
       res.status(403).json({ error: "Forbidden: You do not own this project" });
       return;
@@ -1026,7 +1033,7 @@ ${liveContext}`;
     
     while (retries < 4 && !streamStarted) {
       try {
-        const genConfig: any = { maxOutputTokens: 8192 };
+        const genConfig: any = { maxOutputTokens: 2048 };
         if (enableSearchGrounding) {
            genConfig.tools = [{ googleSearch: {} }];
         }
@@ -1035,6 +1042,8 @@ ${liveContext}`;
           model: "gemini-2.0-flash",
           contents: chatMessages,
           config: genConfig,
+          fallbackEnabled: req.body.fallbackEnabled,
+          fallbackKey: req.body.fallbackKey
         });
 
         let chunkCount = 0;

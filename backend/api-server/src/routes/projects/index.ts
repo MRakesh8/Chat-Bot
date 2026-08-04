@@ -655,7 +655,7 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
         const stream = await ai.models.generateContentStream(project.userId, {
           model: "gemini-2.0-flash",
           contents: chatMessages,
-          config: { maxOutputTokens: 8192 },
+          config: { maxOutputTokens: 2048 },
           projectId: project.id,
         });
 

@@ -18,7 +18,14 @@ const renameCategorySchema = z.object({
   name: z.string().trim().min(1).max(255),
 });
 
-async function userOwnsProject(projectId: string, userId: string) {
+async function userOwnsProject(projectId: string, userId: string, role?: string) {
+  if (role === "super_admin" || role === "admin") {
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId));
+    return Boolean(project);
+  }
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
@@ -26,7 +33,14 @@ async function userOwnsProject(projectId: string, userId: string) {
   return Boolean(project);
 }
 
-async function userOwnsCategory(categoryId: string, userId: string) {
+async function userOwnsCategory(categoryId: string, userId: string, role?: string) {
+  if (role === "super_admin" || role === "admin") {
+    const [category] = await db
+      .select({ id: knowledgeCategories.id })
+      .from(knowledgeCategories)
+      .where(eq(knowledgeCategories.id, categoryId));
+    return Boolean(category);
+  }
   const [category] = await db
     .select({ id: knowledgeCategories.id })
     .from(knowledgeCategories)
@@ -48,7 +62,7 @@ router.get("/project/:projectId", async (req: Request, res: Response, next: Next
       res.status(400).json({ error: "Invalid project id" });
       return;
     }
-    if (!(await userOwnsProject(projectId, userId))) {
+    if (!(await userOwnsProject(projectId, userId, (req as any).auth?.dbUser?.role))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -72,7 +86,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       return;
     }
     const { projectId, name } = createCategorySchema.parse(req.body);
-    if (!(await userOwnsProject(projectId, userId))) {
+    if (!(await userOwnsProject(projectId, userId, (req as any).auth?.dbUser?.role))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -101,7 +115,7 @@ router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => 
       return;
     }
     const { name } = renameCategorySchema.parse(req.body);
-    if (!(await userOwnsCategory(id, userId))) {
+    if (!(await userOwnsCategory(id, userId, (req as any).auth?.dbUser?.role))) {
       res.status(404).json({ error: "Category not found" });
       return;
     }
@@ -161,7 +175,7 @@ router.delete("/:id", async (req: Request, res: Response, next: NextFunction) =>
       res.status(400).json({ error: "Invalid category id" });
       return;
     }
-    if (!(await userOwnsCategory(id, userId))) {
+    if (!(await userOwnsCategory(id, userId, (req as any).auth?.dbUser?.role))) {
       res.status(404).json({ error: "Category not found" });
       return;
     }

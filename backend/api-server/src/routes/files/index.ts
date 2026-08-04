@@ -231,7 +231,11 @@ router.post("/upload", (req, res, next) => {
     }
 
     if (!isChatUpload) {
-      const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+      const role = (req as any).auth?.dbUser?.role;
+      const condition = (role === "super_admin" || role === "admin")
+        ? eq(projects.id, projectId)
+        : and(eq(projects.id, projectId), eq(projects.userId, userId));
+      const [project] = await db.select().from(projects).where(condition);
       if (!project) {
         if (localPath) fs.unlinkSync(localPath);
         res.status(403).json({ error: "Forbidden: You do not own this project" });
@@ -416,7 +420,11 @@ router.post("/url", async (req, res) => {
       return;
     }
 
-    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "super_admin" || role === "admin")
+      ? eq(projects.id, projectId)
+      : and(eq(projects.id, projectId), eq(projects.userId, userId));
+    const [project] = await db.select().from(projects).where(condition);
     if (!project) {
       res.status(403).json({ error: "Forbidden: You do not own this project" });
       return;
@@ -463,7 +471,11 @@ router.get("/project/:projectId", async (req, res) => {
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, userId)));
+    const role = (req as any).auth?.dbUser?.role;
+    const condition = (role === "super_admin" || role === "admin")
+      ? eq(projects.id, projectId)
+      : and(eq(projects.id, projectId), eq(projects.userId, userId));
+    const [project] = await db.select().from(projects).where(condition);
     if (!project) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const sources = await db
@@ -487,13 +499,18 @@ router.delete("/:id", async (req, res) => {
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [result] = await db
-      .select({ source: knowledgeSources })
+      .select({ source: knowledgeSources, project: projects })
       .from(knowledgeSources)
       .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
+      .where(eq(knowledgeSources.id, id));
 
     if (!result || !result.source) {
-      res.status(404).json({ error: "Source not found or access denied" });
+      res.status(404).json({ error: "Source not found" });
+      return;
+    }
+    const role = (req as any).auth?.dbUser?.role;
+    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+      res.status(403).json({ error: "Access denied" });
       return;
     }
     
@@ -527,13 +544,18 @@ router.post("/:id/reprocess", async (req, res) => {
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [result] = await db
-      .select({ source: knowledgeSources })
+      .select({ source: knowledgeSources, project: projects })
       .from(knowledgeSources)
       .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
+      .where(eq(knowledgeSources.id, id));
 
     if (!result || !result.source) {
-      res.status(404).json({ error: "Source not found or access denied" });
+      res.status(404).json({ error: "Source not found" });
+      return;
+    }
+    const role = (req as any).auth?.dbUser?.role;
+    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+      res.status(403).json({ error: "Access denied" });
       return;
     }
 
@@ -563,13 +585,18 @@ router.patch("/:id", async (req, res) => {
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     const [result] = await db
-      .select({ source: knowledgeSources })
+      .select({ source: knowledgeSources, project: projects })
       .from(knowledgeSources)
       .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
+      .where(eq(knowledgeSources.id, id));
 
-    if (!result?.source) {
-      res.status(404).json({ error: "Source not found or access denied" });
+    if (!result || !result.source) {
+      res.status(404).json({ error: "Source not found" });
+      return;
+    }
+    const role = (req as any).auth?.dbUser?.role;
+    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+      res.status(403).json({ error: "Access denied" });
       return;
     }
 
@@ -651,13 +678,18 @@ router.patch("/:id/category", async (req, res) => {
     if (!categoryId) { res.status(400).json({ error: "Missing categoryId" }); return; }
 
     const [result] = await db
-      .select({ source: knowledgeSources })
+      .select({ source: knowledgeSources, project: projects })
       .from(knowledgeSources)
       .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(and(eq(knowledgeSources.id, id), eq(projects.userId, userId)));
+      .where(eq(knowledgeSources.id, id));
 
     if (!result || !result.source) {
-      res.status(404).json({ error: "Source not found or access denied" });
+      res.status(404).json({ error: "Source not found" });
+      return;
+    }
+    const role = (req as any).auth?.dbUser?.role;
+    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+      res.status(403).json({ error: "Access denied" });
       return;
     }
 
