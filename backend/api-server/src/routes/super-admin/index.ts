@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs } from "@workspace/db";
 import { z } from "zod";

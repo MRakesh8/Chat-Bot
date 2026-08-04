@@ -97,7 +97,7 @@ router.get("/", async (req, res): Promise<any> => {
       isPrimary: k.isPrimary,
       isEnabled: k.isEnabled,
       status: k.status,
-      model: k.model,
+      model: null,
       availableModels: k.availableModels,
       lastSuccess: k.lastSuccess,
       lastFailure: k.lastFailure,
@@ -139,6 +139,7 @@ router.get("/debug", async (req, res): Promise<any> => {
 });
 
 import { ProviderVerifier } from "../../services/provider-verifier";
+import { updateKeyStats } from "../../services/api-health";
 
 // POST /api/api-keys
 // Add a new user API key (max 5)
@@ -219,14 +220,7 @@ router.put("/:id", async (req, res): Promise<any> => {
     let updateData: any = {};
     if (parsed.data.name) updateData.name = parsed.data.name;
 
-    if (parsed.data.model) {
-      if (existing[0].availableModels && Array.isArray(existing[0].availableModels)) {
-        if (!existing[0].availableModels.includes(parsed.data.model)) {
-          return res.status(400).json({ error: `Model ${parsed.data.model} is not supported by this API key.` });
-        }
-      }
-      updateData.model = parsed.data.model;
-    }
+    // user_api_keys table does not have a model column; ignoring model updates
 
     if (parsed.data.apiKey) {
       try {
@@ -378,8 +372,7 @@ router.patch("/:id/primary", async (req, res): Promise<any> => {
   }
 });
 
-import { ProviderVerifier } from "../../services/provider-verifier";
-import { updateKeyStats } from "../../services/api-health";
+
 
 // Verify API Key
 router.post("/:id/verify", async (req, res): Promise<any> => {

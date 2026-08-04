@@ -78,10 +78,16 @@ export async function runIntelligentHealthCheck() {
       console.log(`[Health Monitor] Verifying ${key.type} key: ${key.id} (Provider: ${key.provider})`);
       const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
       
-      const verifier = new ProviderVerifier(key.provider, decryptedKey);
-      
       const startTime = Date.now();
-      const result = await verifier.verify();
+      let result;
+      let isValid = false;
+      let errorMsg = "Invalid API key";
+      try {
+        result = await ProviderVerifier.verifyAndFetchModels(decryptedKey, key.provider);
+        isValid = true;
+      } catch (err: any) {
+        errorMsg = err?.message || String(err);
+      }
       const latencyMs = Date.now() - startTime;
 
       // Ensure key object structure matches what updateKeyStats expects
@@ -92,7 +98,7 @@ export async function runIntelligentHealthCheck() {
         rawDbKey: key
       };
 
-      if (result.valid) {
+      if (isValid && result) {
         await updateKeyStats({
           key: keyObj,
           success: true,
@@ -116,7 +122,7 @@ export async function runIntelligentHealthCheck() {
           success: false,
           latencyMs,
           status: "INVALID_API_KEY", // Default mapping for verifier fail
-          error: new Error(result.error),
+          error: new Error(errorMsg),
           model: "unknown"
         });
       }

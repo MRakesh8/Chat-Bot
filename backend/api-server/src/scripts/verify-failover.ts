@@ -1,6 +1,4 @@
 
-import { v4 as uuidv4 } from "uuid";
-
 // We need to mock the executeLlmWithFailover by hitting the actual endpoint 100 times concurrently
 // BUT since we don't have a live server with a mocked GenAI client, we can write a local runner that imports
 // the functions from widget-public.ts, but that's deeply tied to Express.

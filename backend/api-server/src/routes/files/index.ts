@@ -83,7 +83,10 @@ async function categoryBelongsToProject(categoryId: string, projectId: string) {
 // POST /files/upload-public - Upload file securely via backend using Service Role Key
 router.post("/upload-public", (req, res, next) => {
   upload.single("file")(req, res, (err: any) => {
-    if (err) return res.status(400).json({ error: err.message || "File upload failed" });
+    if (err) {
+      res.status(400).json({ error: err.message || "File upload failed" });
+      return;
+    }
     next();
   });
 }, async (req, res) => {
@@ -103,10 +106,15 @@ router.post("/upload-public", (req, res, next) => {
     }
 
     const fileBuffer = fs.readFileSync(req.file.path);
+    let uploadMimetype = req.file.mimetype;
+    if (!uploadMimetype.startsWith("image/") && uploadMimetype !== "application/pdf" && !uploadMimetype.includes("wordprocessingml")) {
+      uploadMimetype = "text/plain";
+    }
+
     const { error: uploadError } = await supabaseAdmin.storage
       .from("project-files")
       .upload(storagePath, fileBuffer, {
-        contentType: req.file.mimetype,
+        contentType: uploadMimetype,
         upsert: false,
       });
 
@@ -258,12 +266,9 @@ router.post("/upload", (req, res, next) => {
       let uploadMimetype = mimetype;
       
       // Supabase storage bucket default allows ["image/*", "application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
-      // Convert unsupported text mimetypes (like text/markdown, text/csv, text/html) to text/plain to bypass bucket restrictions
-      if (mimetype.startsWith("text/") && mimetype !== "text/plain") {
+      // Convert unsupported or restricted mimetypes (like text/markdown, text/csv, text/html, videos, audio, or zip archives) to text/plain to bypass bucket restrictions
+      if (!mimetype.startsWith("image/") && mimetype !== "application/pdf" && !mimetype.includes("wordprocessingml")) {
         uploadMimetype = "text/plain";
-      } else if (!mimetype.startsWith("image/") && mimetype !== "application/pdf" && !mimetype.includes("wordprocessingml")) {
-        // Fallback for everything else like videos, audio, or binary files that Supabase might reject
-        uploadMimetype = "application/octet-stream";
       }
 
       const { data: uploadData, error: uploadError } = await supabaseAdmin.storage

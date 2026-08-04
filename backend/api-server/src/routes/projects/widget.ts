@@ -232,12 +232,16 @@ router.put("/api-keys/:keyId", async (req: any, res: Response) => {
     const existing = await db.query.projectApiKeys.findFirst({
       where: and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId))
     });
-    if (!existing) return res.status(404).json({ error: "Key not found" });
+    if (!existing) {
+      res.status(404).json({ error: "Key not found" });
+      return;
+    }
 
     // Validate if the model is in availableModels
     if (model && existing.availableModels && Array.isArray(existing.availableModels)) {
       if (!existing.availableModels.includes(model)) {
-        return res.status(400).json({ error: `Model ${model} is not supported by this API key.` });
+        res.status(400).json({ error: `Model ${model} is not supported by this API key.` });
+        return;
       }
     }
 

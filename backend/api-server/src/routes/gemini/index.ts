@@ -391,9 +391,9 @@ function serializeMessage(message: typeof messages.$inferSelect) {
   };
 }
 
-// Infer MIME type from file extension when the Blob type is empty (common in some environments)
+// Infer MIME type from file extension when the Blob type is empty (common in some environments) or mapped to text/plain to bypass bucket restrictions
 function inferMimeType(fileId: string, blobType: string): string {
-  if (blobType && blobType !== "application/octet-stream") return blobType;
+  if (blobType && blobType !== "application/octet-stream" && blobType !== "text/plain") return blobType;
   const ext = (fileId.split("/").pop() || "").split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
     pdf: "application/pdf",
