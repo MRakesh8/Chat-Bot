@@ -660,12 +660,13 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         </div>
                       ) : (
                         <>
-                          <TabsList className="grid w-full grid-cols-6 mb-4 h-auto">
+                          <TabsList className="grid w-full grid-cols-4 mb-4 h-auto">
                             <TabsTrigger value="file" className="text-[10px] sm:text-xs">File</TabsTrigger>
                             <TabsTrigger value="website" className="text-[10px] sm:text-xs">Website</TabsTrigger>
                             <TabsTrigger value="video" className="text-[10px] sm:text-xs">Video</TabsTrigger>
-                            <TabsTrigger value="instagram" className="text-[10px] sm:text-xs">Insta</TabsTrigger>
-                            <TabsTrigger value="github" className="text-[10px] sm:text-xs">GitHub</TabsTrigger>
+                            {/* Temporarily hidden */}
+                            {/* <TabsTrigger value="instagram" className="text-[10px] sm:text-xs">Insta</TabsTrigger>
+                            <TabsTrigger value="github" className="text-[10px] sm:text-xs">GitHub</TabsTrigger> */}
                             <TabsTrigger value="note" className="text-[10px] sm:text-xs">Note</TabsTrigger>
                           </TabsList>
                           
@@ -738,6 +739,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                         </Button>
                       </TabsContent>
 
+                      {/* Temporarily hidden
                       <TabsContent value="instagram" className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Instagram URL</label>
@@ -759,8 +761,10 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           Add Instagram Link
                         </Button>
                       </TabsContent>
+                      */}
 
 
+                      {/* Temporarily hidden
                       <TabsContent value="github" className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">GitHub Repository URL</label>
@@ -781,6 +785,7 @@ export function KnowledgeBase({ projectId }: { projectId: string }) {
                           Add Repository
                         </Button>
                       </TabsContent>
+                      */}
 
                       <TabsContent value="note" className="space-y-4">
                         <div className="space-y-2">
