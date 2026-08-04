@@ -29,6 +29,12 @@ export class ProviderVerifier {
     const provider = forceProvider || this.detectProvider(apiKey);
     
     if (!provider) {
+      try { return await this.verifyGemini(apiKey); } catch (e) {}
+      try { return await this.verifyOpenAI(apiKey); } catch (e) {}
+      try { return await this.verifyClaude(apiKey); } catch (e) {}
+      try { return await this.verifyGroq(apiKey); } catch (e) {}
+      try { return await this.verifyOpenRouter(apiKey); } catch (e) {}
+      
       throw new Error("Unable to automatically detect the AI provider from this API key. Please ensure it is a valid Groq, Gemini, OpenAI, Anthropic, or OpenRouter key.");
     }
 
