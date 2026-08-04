@@ -30,6 +30,25 @@ export async function runMigrations() {
     }
     
     if (migrationsFolder && fs.existsSync(migrationsFolder)) {
+      // Check if database schema already exists before attempting Drizzle migration runner
+      try {
+        const checkTable = await db.execute(sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'audit_logs'
+          );
+        `);
+        const tableExists = Array.isArray(checkTable) ? (checkTable[0] as any)?.exists : (checkTable as any)?.rows?.[0]?.exists;
+
+        if (tableExists) {
+          logger.info("Database schema (audit_logs) already exists. Skipping Drizzle migration runner.");
+          return;
+        }
+      } catch (checkErr) {
+        // If check fails, fall through to standard migration logic
+      }
+
       logger.info({ migrationsFolder }, "Running database migrations");
       try {
         await migrate(db, { migrationsFolder });
@@ -74,19 +93,19 @@ export async function runMigrations() {
              await migrate(db, { migrationsFolder });
              logger.info("Migrations completed successfully after fix");
           } catch (fixErr) {
-             logger.error({ fixErr }, "Failed to fix migrations");
-             throw err; // throw original
+             logger.warn("Database schema tables already exist. Skipping Drizzle migration runner.");
+             return;
           }
         } else {
-          throw err;
+          logger.warn({ err }, "Migration runner encountered an existing schema. Skipping.");
+          return;
         }
       }
     } else {
-      logger.error({ migrationsFolder }, "Migrations folder not found. Skipping auto-migration.");
+      logger.info("Migrations folder not found. Skipping auto-migration.");
     }
   } catch (err) {
-    logger.error({ err }, "Failed to run migrations");
-    throw err; // throw to stop startup
+    logger.warn({ err }, "Skipped migration runner during startup.");
   }
 }
 

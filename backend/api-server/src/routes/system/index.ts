@@ -73,14 +73,19 @@ router.get("/ai-status", async (req, res) => {
 router.get("/admin/keys-report", async (req, res): Promise<any> => {
   try {
     const auth = (req as any).auth;
-    const userEmail = auth?.user?.email;
+    const userEmail = auth?.dbUser?.email || auth?.user?.email || auth?.email;
+    const role = auth?.dbUser?.role;
     const isDemoMode = process.env.LOCAL_DEMO_MODE === "true";
     
-    // Strict admin email check, allowing local demo mode for testing
-    const isAdmin = userEmail === "rakesh837m@gmail.com" || (isDemoMode && (!auth?.user || auth?.user?.email === "local-demo@example.com"));
+    // Allow admin email, super_admin/admin role, or local demo mode
+    const isAdmin = 
+      userEmail === "rakesh837m@gmail.com" || 
+      role === "super_admin" || 
+      role === "admin" || 
+      (isDemoMode && (!auth?.userId || userEmail === "local-demo@example.com"));
     
     if (!isAdmin) {
-      req.log.warn({ userEmail }, "Unauthorized admin keys-report access attempt");
+      req.log.warn({ userEmail, role }, "Unauthorized admin keys-report access attempt");
       return res.status(403).json({ error: "Access denied. This report is restricted to administrators." });
     }
 
