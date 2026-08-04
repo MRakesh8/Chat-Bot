@@ -188,4 +188,39 @@ router.get("/admin/keys-report", async (req, res): Promise<any> => {
   }
 });
 
+// POST /api/system/admin/reset-keys
+router.post("/admin/reset-keys", async (req, res): Promise<any> => {
+  try {
+    const auth = (req as any).auth;
+    const userEmail = auth?.dbUser?.email || auth?.user?.email || auth?.email;
+    const role = auth?.dbUser?.role;
+    const isDemoMode = process.env.LOCAL_DEMO_MODE === "true";
+    
+    const isAdmin = 
+      userEmail === "rakesh837m@gmail.com" || 
+      role === "super_admin" || 
+      role === "admin" || 
+      (isDemoMode && (!auth?.userId || userEmail === "local-demo@example.com"));
+    
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Access denied." });
+    }
+
+    // Reset status of all system keys
+    await db.update(userApiKeys)
+      .set({
+        status: "HEALTHY",
+        cooldownUntil: null,
+        failureReason: null,
+        dailyUsed: 0,
+        healthScore: 100
+      })
+      .where(or(isNull(userApiKeys.userId), eq(userApiKeys.isSystem, true)));
+
+    res.json({ success: true, message: "All system keys have been reset to HEALTHY." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to reset system keys." });
+  }
+});
+
 export default router;

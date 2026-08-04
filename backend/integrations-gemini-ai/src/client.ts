@@ -123,7 +123,7 @@ class GeminiFailoverModels {
     }
     let systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     
-    // Auto-provision system keys from environment if not already in the database
+    // Auto-provision & sync system keys from environment variables
     const envSystemKeys = Array.from(new Set([
       process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
       process.env.GEMINI_API_KEY_1,
@@ -132,14 +132,27 @@ class GeminiFailoverModels {
       process.env.GEMINI_API_KEY
     ].filter(Boolean) as string[]));
 
+    let allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
+
+    // Purge old system keys from DB that are no longer in environment variables
     if (envSystemKeys.length > 0) {
-      let allSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
-      const decryptedAllSystemKeys = allSystemKeys.map(k => {
-        try {
-          return crypto.decrypt(k.encryptedKey) || k.encryptedKey;
-        } catch {
-          return k.encryptedKey;
+      for (const sysKey of allDbSystemKeys) {
+        let decrypted = "";
+        try { decrypted = crypto.decrypt(sysKey.encryptedKey) || sysKey.encryptedKey; } catch { decrypted = sysKey.encryptedKey; }
+        if (!envSystemKeys.includes(decrypted)) {
+          try {
+            console.log(`[Gemini Routing] Purging outdated system key ${sysKey.id.substring(0,4)} (removed from env).`);
+            await db.delete(userApiKeys).where(eq(userApiKeys.id, sysKey.id));
+          } catch (delErr) {
+            console.error("[Gemini Routing] Failed to purge outdated system key:", delErr);
+          }
         }
+      }
+      
+      // Refresh list of DB system keys
+      allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
+      const decryptedAllSystemKeys = allDbSystemKeys.map(k => {
+        try { return crypto.decrypt(k.encryptedKey) || k.encryptedKey; } catch { return k.encryptedKey; }
       });
 
       const keysToInsert = envSystemKeys.filter(envKey => !decryptedAllSystemKeys.includes(envKey));
@@ -152,25 +165,26 @@ class GeminiFailoverModels {
             const maskedKey = key.substring(0, 4) + "..." + key.slice(-4);
             
             const [newKey] = await db.insert(userApiKeys).values({
-              name: `System Key ${allSystemKeys.length + 1} (Auto-Provisioned)`,
+              name: `System Key ${allDbSystemKeys.length + 1} (Auto-Provisioned)`,
               provider: "gemini",
               encryptedKey: encryptedKey,
               maskedKey: maskedKey,
-              isPrimary: allSystemKeys.length === 0 && i === 0,
+              isPrimary: allDbSystemKeys.length === 0 && i === 0,
               isEnabled: true,
               isSystem: true,
               status: "HEALTHY",
               dailyLimit: null
             }).returning();
             
-            systemKeys.push(newKey);
-            allSystemKeys.push(newKey);
-            console.log(`[Gemini Routing] Auto-provisioned system key from environment.`);
+            allDbSystemKeys.push(newKey);
+            console.log(`[Gemini Routing] Auto-provisioned new system key from environment.`);
           } catch (insertErr) {
             console.error("[Gemini Routing] Failed to auto-provision system key:", insertErr);
           }
         }
       }
+
+      systemKeys = allDbSystemKeys.filter(k => k.isEnabled);
     }
 
     // 3. Reset logic
