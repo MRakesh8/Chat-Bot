@@ -570,9 +570,9 @@ class GeminiFailoverModels {
           }
           
           if (!isModelValid) {
-            console.error(`[Gemini Routing] Invalid combination: Provider ${key.provider} cannot use model ${modelToUse}. Skipping key.`);
+            console.error(`[Gemini Routing] Invalid combination: Provider ${key.provider} cannot use model ${modelToUse}. Skipping model.`);
             allFailuresWereTransient = false;
-            break; // Move to next key
+            continue; // Skip this model and check next fallback
           }
 
           let sdkName = "GoogleGenAI";
