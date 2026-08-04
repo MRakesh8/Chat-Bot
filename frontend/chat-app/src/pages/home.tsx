@@ -91,8 +91,8 @@ export default function Home() {
         {/* Navigation */}
         <header className="px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
-            <img src={`${basePath}/logo.svg`} alt="Aria AI" className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight text-foreground">Aria AI</span>
+            <img src={`${basePath}/logo.svg`} alt="RAGHUB" className="w-8 h-8" />
+            <span className="font-bold text-xl tracking-tight text-foreground">RAGHUB</span>
           </div>
           <div className="flex items-center gap-4">
             {user ? (
@@ -144,7 +144,7 @@ export default function Home() {
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border mb-8"
           >
             <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-muted-foreground">Introducing Aria AI 3.0</span>
+            <span className="text-sm font-medium text-muted-foreground">Introducing RAGHUB 3.0</span>
           </motion.div>
 
           <motion.h1 

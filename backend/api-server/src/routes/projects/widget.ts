@@ -15,7 +15,7 @@ router.get("/settings", async (req: any, res: Response) => {
   const { projectId } = req.params;
   const defaultSettings = {
     projectId,
-    botName: "Aria AI",
+    botName: "RAGHUB",
     welcomeMessage: "Hello 👋",
     themeColor: "#7C3AED",
     position: "bottom-right",

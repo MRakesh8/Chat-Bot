@@ -1,5 +1,5 @@
 /**
- * Aria AI - Embeddable Widget v2.1
+ * RAGHUB - Embeddable Widget v2.1
  * Uses Shadow DOM for style isolation
  * Feature: Draggable widget (drag FAB or header to reposition)
  */
@@ -13,7 +13,7 @@
   const passedApiUrl = scriptTag ? scriptTag.getAttribute('data-api-url') : null;
 
   if (!widgetToken) {
-    console.error("Aria AI Widget: Missing data-widget-token attribute on script tag.");
+    console.error("RAGHUB Widget: Missing data-widget-token attribute on script tag.");
     return;
   }
 
@@ -114,7 +114,7 @@
       render();
       initContextEngine();
     } catch (err) {
-      console.error("Aria AI Widget Initialization failed:", err);
+      console.error("RAGHUB Widget Initialization failed:", err);
     }
   }
 
@@ -401,7 +401,7 @@
     try {
       sessionStorage.setItem(storageKeyHistory, JSON.stringify(capped));
     } catch (e) {
-      console.warn("Aria Widget: failed to save chat history to sessionStorage:", e);
+      console.warn("RAGHUB Widget: failed to save chat history to sessionStorage:", e);
     }
   }
 
@@ -948,8 +948,8 @@
     isMobile = window.innerWidth <= 768;
   });
 
-  // Expose AriaAI globally for manual context injection
-  window.AriaAI = {
+  // Expose RAGHUB globally for manual context injection
+  window.RAGHUB = window.AriaAI = {
     sendHiddenContext: function(text) {
       window.AriaHiddenContext = text;
     }

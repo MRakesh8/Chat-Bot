@@ -132,8 +132,8 @@ const MemoizedMessage = memo(function MemoizedMessage({
         {msg.role !== "user" && (
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5" />
-              <span className="text-xs font-medium text-muted-foreground">Aria</span>
+              <img src={`${basePath}/logo.svg`} alt="RAGHUB" className="h-5 w-5" />
+              <span className="text-xs font-medium text-muted-foreground">RAGHUB</span>
             </div>
             <div className="flex items-center gap-1 transition-opacity opacity-100">
               {hasSelectedProjects && (
@@ -705,7 +705,7 @@ export function ChatArea() {
 
       {!isCentered && (
         <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          Aria can make mistakes. Consider verifying important information.
+          RAGHUB can make mistakes. Consider verifying important information.
         </p>
       )}
     </div>
@@ -918,8 +918,8 @@ export function ChatArea() {
                   {streamingContent ? (
                     <>
                       <div className="mb-2 flex items-center gap-2">
-                        <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
-                        <span className="text-xs font-medium text-primary">Aria is typing...</span>
+                        <img src={`${basePath}/logo.svg`} alt="RAGHUB" className="h-5 w-5 animate-pulse" />
+                        <span className="text-xs font-medium text-primary">RAGHUB is typing...</span>
                       </div>
                       <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted relative">
                         <ReactMarkdown
@@ -975,7 +975,7 @@ export function ChatArea() {
                     </>
                   ) : (
                     <div className="flex items-center gap-3">
-                      <img src={`${basePath}/logo.svg`} alt="Aria" className="h-5 w-5 animate-pulse" />
+                      <img src={`${basePath}/logo.svg`} alt="RAGHUB" className="h-5 w-5 animate-pulse" />
                       <div className="flex items-center gap-1 text-primary">
                         <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                         <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></span>

@@ -41,7 +41,7 @@ export class PlannerAgent extends BaseAgent {
         httpOptions
       });
 
-      const systemPrompt = `You are Aria AI's Planner Agent, an autonomous Website Agent.
+      const systemPrompt = `You are RAGHUB's Planner Agent, an autonomous Website Agent.
 Your job is to translate the user's intent into executable JSON browser actions.
 
 AVAILABLE ACTIONS:

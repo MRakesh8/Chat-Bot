@@ -603,7 +603,7 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
   const [isCopied, setIsCopied] = useState(false);
   
   const queryClient = useQueryClient();
-  const { dbUser, session } = useAuth();
+  const { dbUser, session, user } = useAuth();
   
   const { data: paymentInfo, isLoading: isCheckingPayment } = useQuery({
     queryKey: ["payment-status", projectId],
@@ -841,7 +841,7 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground uppercase">Name</label>
-                <Input value={dbUser?.name || ''} disabled className="bg-muted/50" />
+                <Input value={user?.user_metadata?.full_name || ''} disabled className="bg-muted/50" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground uppercase">Email</label>

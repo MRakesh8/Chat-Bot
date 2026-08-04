@@ -50,7 +50,7 @@ export function Deployment({ projectId }: { projectId: string }) {
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin w-6 h-6" /></div>;
 
-  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://aria-ai.com";
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://raghub.com";
   const widgetUrl = `${currentOrigin}/widget.js`;
   const backendUrl = apiUrl("").replace(/\/+$/, ""); // Returns the current API base URL without trailing slash
   
@@ -174,7 +174,7 @@ export function Deployment({ projectId }: { projectId: string }) {
                     <pre className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 text-sm overflow-x-auto font-mono">
 {`import { useEffect } from "react";
 
-export function AriaWidget() {
+export function RaghubWidget() {
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "${widgetUrl}";
@@ -197,7 +197,7 @@ export function AriaWidget() {
                       size="sm" 
                       variant="outline" 
                       className="absolute top-2 right-2 bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white"
-                      onClick={() => copyToClipboard(`import { useEffect } from "react";\n\nexport function AriaWidget() {\n  useEffect(() => {\n    const script = document.createElement("script");\n    script.src = "${widgetUrl}";\n    script.setAttribute("data-widget-token", "${settings?.widgetToken}");\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      document.body.removeChild(script);\n      const widgetRoot = document.getElementById("aria-ai-widget-root");\n      if (widgetRoot) widgetRoot.remove();\n      delete (window as any).AriaWidgetInitialized;\n    };\n  }, []);\n\n  return null;\n}`)}
+                      onClick={() => copyToClipboard(`import { useEffect } from "react";\n\nexport function RaghubWidget() {\n  useEffect(() => {\n    const script = document.createElement("script");\n    script.src = "${widgetUrl}";\n    script.setAttribute("data-widget-token", "${settings?.widgetToken}");\n    script.async = true;\n    document.body.appendChild(script);\n\n    return () => {\n      document.body.removeChild(script);\n      const widgetRoot = document.getElementById("aria-ai-widget-root");\n      if (widgetRoot) widgetRoot.remove();\n      delete (window as any).AriaWidgetInitialized;\n    };\n  }, []);\n\n  return null;\n}`)}
                     >
                       <Copy className="w-4 h-4 mr-2" /> Copy Code
                     </Button>

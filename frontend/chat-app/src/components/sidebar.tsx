@@ -374,9 +374,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3 px-1">
             <div className="bg-gradient-to-br from-primary/40 to-primary/10 p-1.5 rounded-lg border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.2)]">
-               <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="Aria AI" className="w-5 h-5" />
+               <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="RAGHUB" className="w-5 h-5" />
             </div>
-            <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-sidebar-foreground to-sidebar-foreground/70">Aria AI</span>
+            <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-sidebar-foreground to-sidebar-foreground/70">RAGHUB</span>
           </div>
           <div className="flex items-center gap-1">
             {onClose && (

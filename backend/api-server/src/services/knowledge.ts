@@ -801,7 +801,7 @@ export async function extractSourceContent(params: { sourceType: string, sourceU
     let repoPath = sourceUrl?.replace(/https?:\/\/github\.com\//, "");
     if (repoPath?.endsWith("/")) repoPath = repoPath.slice(0, -1);
     
-    const headers = { "User-Agent": "Aria-AI-Knowledge-Base" };
+    const headers = { "User-Agent": "RAGHUB-Knowledge-Base" };
     const repoRes = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
     if (!repoRes.ok) throw new Error(`Failed to fetch github repo details for ${repoPath}`);
     const repoData = await repoRes.json() as any;

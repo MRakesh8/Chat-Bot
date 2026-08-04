@@ -610,7 +610,7 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 =========================================
 `;
 
-    // Build Gemini chat — project's systemPrompt replaces the default Aria prompt
+    // Build Gemini chat — project's systemPrompt replaces the default RAGHUB prompt
     const chatMessages: { role: "user" | "model"; parts: GeminiPart[] }[] = [
       { role: "user", parts: [{ text: project.systemPrompt + handoffInfo + PROJECT_BRAIN_DIRECTIVE }] },
       { role: "model", parts: [{ text: "Ready." }] },

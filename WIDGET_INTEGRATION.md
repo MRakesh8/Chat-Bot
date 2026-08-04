@@ -1,6 +1,6 @@
-# Aria AI Chatbot Widget Integration Guide
+# RAGHUB Chatbot Widget Integration Guide
 
-This guide explains how to properly integrate the Aria AI Chatbot widget into any website, and how to troubleshoot common issues.
+This guide explains how to properly integrate the RAGHUB Chatbot widget into any website, and how to troubleshoot common issues.
 
 ## Step-by-Step Integration Procedure
 
@@ -14,7 +14,7 @@ This guide explains how to properly integrate the Aria AI Chatbot widget into an
    - Paste the copied `<script>` tag right before the closing `</body>` tag.
    - The script should look something like this:
      ```html
-     <!-- Aria AI Chatbot Widget -->
+     <!-- RAGHUB Chatbot Widget -->
      <script 
        src="https://chatbot-rakesh.vercel.app/widget.js?v=2"
        data-widget-token="YOUR_UNIQUE_WIDGET_TOKEN"

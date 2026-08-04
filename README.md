@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🤖 Aria AI — Intelligent Chatbot Platform
+# 🤖 RAGHUB — Intelligent Chatbot Platform
 
 **More than a chatbot. A full-featured AI assistant that learns from your content,  
 speaks in your brand's voice, and can live on any website — in under a minute.**
@@ -20,9 +20,9 @@ speaks in your brand's voice, and can live on any website — in under a minute.
 
 ---
 
-## 💡 What is Aria AI?
+## 💡 What is RAGHUB?
 
-**Aria AI** is a production-ready AI chatbot platform that is smart, brand-aware, and deployable anywhere. Unlike generic chat tools, Aria learns from *your* content — your documents, your website, your videos — and uses that knowledge to give precise, relevant answers.
+**RAGHUB** is a production-ready AI chatbot platform that is smart, brand-aware, and deployable anywhere. Unlike generic chat tools, RAGHUB learns from *your* content — your documents, your website, your videos — and uses that knowledge to give precise, relevant answers.
 
 You get a beautiful chat interface, a knowledge base you can train, an embeddable widget for external websites, and the flexibility to switch between the world's best AI models — all in one platform.
 
@@ -32,16 +32,16 @@ You get a beautiful chat interface, a knowledge base you can train, an embeddabl
 
 ### 💬 Intelligent Conversations
 
-Every conversation in Aria is powered by state-of-the-art AI. Here is what makes it stand out:
+Every conversation in RAGHUB is powered by state-of-the-art AI. Here is what makes it stand out:
 
 #### 🌊 Real-Time Streaming Responses
-Aria doesn't make you wait. As the AI generates its response, the text flows into the chat window **word-by-word in real time** — just like a human typing. There's no spinner, no loading delay. The moment the AI starts thinking, you start reading.
+RAGHUB doesn't make you wait. As the AI generates its response, the text flows into the chat window **word-by-word in real time** — just like a human typing. There's no spinner, no loading delay. The moment the AI starts thinking, you start reading.
 
 #### 🧠 Context-Aware Memory
-Aria remembers everything said in a conversation. Every message you send carries the full history of that session, so the AI always understands the context — no need to repeat yourself or re-explain previous points.
+RAGHUB remembers everything said in a conversation. Every message you send carries the full history of that session, so the AI always understands the context — no need to repeat yourself or re-explain previous points.
 
 #### 🤖 Multi-LLM Model Switching
-You are not locked into one AI. Aria connects to a **universal AI adapter** that supports:
+You are not locked into one AI. RAGHUB connects to a **universal AI adapter** that supports:
 
 | Provider | Example Models |
 |:---|:---|
@@ -55,26 +55,26 @@ You are not locked into one AI. Aria connects to a **universal AI adapter** that
 Switch the model you use per conversation from a dropdown — no configuration files, no code changes.
 
 #### 💡 Automatic Follow-up Suggestions
-After every AI response, Aria generates **3 intelligent follow-up questions** based on the conversation context. These appear as clickable suggestion chips beneath the response, helping you explore a topic deeper with one click.
+After every AI response, RAGHUB generates **3 intelligent follow-up questions** based on the conversation context. These appear as clickable suggestion chips beneath the response, helping you explore a topic deeper with one click.
 
 #### 🔄 Message Regeneration
-Not happy with an answer? Click the **Regenerate** button on any AI response to get a fresh answer. Aria resends the same prompt and produces a new response — useful when you want a different angle or a more concise reply.
+Not happy with an answer? Click the **Regenerate** button on any AI response to get a fresh answer. RAGHUB resends the same prompt and produces a new response — useful when you want a different angle or a more concise reply.
 
 ---
 
 ### 🧩 Knowledge Base — Train Your AI on Your Own Content
 
-The Knowledge Base is what makes Aria uniquely *yours*. Instead of relying purely on the AI's general training, you can feed Aria your own documents, links, and notes. When you chat, Aria retrieves the most relevant pieces of your knowledge and weaves them into its response.
+The Knowledge Base is what makes RAGHUB uniquely *yours*. Instead of relying purely on the AI's general training, you can feed RAGHUB your own documents, links, and notes. When you chat, RAGHUB retrieves the most relevant pieces of your knowledge and weaves them into its response.
 
 #### How It Works
-> You add content → Aria reads and understands it → When you ask a question, Aria finds the most relevant knowledge → That context is included in the AI's response automatically.
+> You add content → RAGHUB reads and understands it → When you ask a question, RAGHUB finds the most relevant knowledge → That context is included in the AI's response automatically.
 
-This technique is called **RAG (Retrieval-Augmented Generation)** and it's what allows Aria to answer questions about *your specific business, product, or domain* — not just general knowledge.
+This technique is called **RAG (Retrieval-Augmented Generation)** and it's what allows RAGHUB to answer questions about *your specific business, product, or domain* — not just general knowledge.
 
 #### What You Can Add to the Knowledge Base
 
 **📄 Documents & Files**
-Upload files directly from your computer. Aria automatically extracts all readable text from:
+Upload files directly from your computer. RAGHUB automatically extracts all readable text from:
 - PDF documents
 - Word files (`.docx`, `.doc`)
 - Markdown (`.md`) and plain text (`.txt`)
@@ -84,22 +84,22 @@ Upload files directly from your computer. Aria automatically extracts all readab
 - ZIP archives containing any of the above
 
 **🖼️ Images, Audio & Video**
-Upload media files directly. Aria uses Google Gemini's multimodal capabilities to analyze image content, process audio, and understand video — extracting useful information even from non-text formats.
+Upload media files directly. RAGHUB uses Google Gemini's multimodal capabilities to analyze image content, process audio, and understand video — extracting useful information even from non-text formats.
 
 **🌐 Website URLs**
-Paste any website URL. Aria opens a headless browser behind the scenes, visits the page, reads its full visible text content, and adds it to your knowledge base. This works on most public websites — blogs, docs, landing pages, and more.
+Paste any website URL. RAGHUB opens a headless browser behind the scenes, visits the page, reads its full visible text content, and adds it to your knowledge base. This works on most public websites — blogs, docs, landing pages, and more.
 
 **🎬 YouTube Videos**
-Paste a YouTube video link. Aria automatically fetches the complete transcript of the video and indexes it. This means you can "chat with a video" — ask questions about what was said and get accurate answers referencing the video content.
+Paste a YouTube video link. RAGHUB automatically fetches the complete transcript of the video and indexes it. This means you can "chat with a video" — ask questions about what was said and get accurate answers referencing the video content.
 
 **💻 GitHub Repositories**
-Paste a GitHub repository URL. Aria clones the repo and indexes the source code and documentation, making it possible to ask questions like *"How does the authentication flow work?"* or *"What does this function do?"* directly in chat.
+Paste a GitHub repository URL. RAGHUB clones the repo and indexes the source code and documentation, making it possible to ask questions like *"How does the authentication flow work?"* or *"What does this function do?"* directly in chat.
 
 **📸 Instagram Posts**
-Paste an Instagram post link and Aria extracts and indexes its content for knowledge retrieval.
+Paste an Instagram post link and RAGHUB extracts and indexes its content for knowledge retrieval.
 
 **📝 Text Notes**
-Prefer to write directly? Paste any raw text or markdown into the knowledge base as a manual note. Perfect for FAQs, onboarding guides, product descriptions, or any content you want Aria to know about.
+Prefer to write directly? Paste any raw text or markdown into the knowledge base as a manual note. Perfect for FAQs, onboarding guides, product descriptions, or any content you want RAGHUB to know about.
 
 #### 📁 Knowledge Categories
 Organize your knowledge into **named categories** — for example: "Product Docs", "Support FAQs", "Marketing Copy". Categories help keep large knowledge bases structured and manageable.
@@ -112,7 +112,7 @@ The Widget Studio is a **no-code, visual builder** for creating a chatbot that y
 
 #### Visual Customization
 Every visual aspect of the widget is configurable without writing a single line of CSS:
-- **Bot Name & Subtitle** — Set the display name and status line (e.g., "Aria", "Online 24/7")
+- **Bot Name & Subtitle** — Set the display name and status line (e.g., "RAGHUB", "Online 24/7")
 - **Greeting Message** — The first message visitors see when they open the chat
 - **Input Placeholder** — The hint text shown in the message input box
 - **Accent Color** — The primary brand color used for the header, buttons, and highlights
@@ -159,7 +159,7 @@ For security, you can configure exactly which website domains are allowed to loa
 
 ### 📊 Widget Analytics & Lead Capture
 
-Once your widget is live on a website, Aria tracks how people are engaging with it through a built-in analytics dashboard.
+Once your widget is live on a website, RAGHUB tracks how people are engaging with it through a built-in analytics dashboard.
 
 #### What Gets Tracked
 
@@ -178,15 +178,15 @@ If you enable the lead capture form in Widget Studio, every visitor who provides
 
 ### 🔑 API Key Management
 
-Aria gives you full control over which AI provider keys are used for conversations.
+RAGHUB gives you full control over which AI provider keys are used for conversations.
 
 #### How It Works
-You add your own API keys (Gemini, OpenAI, Claude, Groq, etc.) through the Settings page. Aria stores them securely. When a conversation is started, Aria automatically picks the right key for the selected AI provider.
+You add your own API keys (Gemini, OpenAI, Claude, Groq, etc.) through the Settings page. RAGHUB stores them securely. When a conversation is started, RAGHUB automatically picks the right key for the selected AI provider.
 
 #### Key Features
 - **Test Any Key** — Run a live connectivity test on any saved key to confirm it's valid before using it in chat
 - **Set a Primary Key** — Mark one key as your preferred default for all AI operations
-- **Smart Auto-Mode** — Switch to `auto` mode and Aria automatically cycles through available keys if one fails, ensuring uninterrupted conversations
+- **Smart Auto-Mode** — Switch to `auto` mode and RAGHUB automatically cycles through available keys if one fails, ensuring uninterrupted conversations
 - **Failure Visibility** — If a key fails, you can see exactly when it failed and the reason — no guessing
 - **Separate Keys per Project** — Individual AI projects can have their own dedicated keys, isolated from your global settings
 
@@ -196,7 +196,7 @@ You add your own API keys (Gemini, OpenAI, Claude, Groq, etc.) through the Setti
 
 Every project gets a unique, secure **public share link**. Share this URL with anyone — they can chat with your AI assistant through a clean, public-facing chat page without needing an account.
 
-This makes Aria perfect for:
+This makes RAGHUB perfect for:
 - Sharing a specialized AI assistant with a client or teammate
 - Creating a public-facing support bot accessible via a direct link
 - Embedding a conversation demo into a pitch deck or portfolio
@@ -245,10 +245,10 @@ Your left sidebar shows all past conversations, each with an **AI-generated titl
 Attach a file directly inside a chat message. The AI reads the file content on the spot and uses it to answer your follow-up questions — no need to add it to the knowledge base first.
 
 #### 🎤 Voice Input
-Click the microphone button in the chat input and speak your message. Aria transcribes your speech into text and sends it as your message. Hands-free chatting, no typing required.
+Click the microphone button in the chat input and speak your message. RAGHUB transcribes your speech into text and sends it as your message. Hands-free chatting, no typing required.
 
 #### 🔊 Read Aloud
-Every AI response has a **Read Aloud** button. Click it and Aria reads the message out loud using your device's text-to-speech engine. Click again to stop at any time.
+Every AI response has a **Read Aloud** button. Click it and RAGHUB reads the message out loud using your device's text-to-speech engine. Click again to stop at any time.
 
 #### 📋 One-Click Copy
 Copy any message in the conversation — yours or the AI's — to your clipboard with a single click.
@@ -263,7 +263,7 @@ When the AI produces structured content like code, diagrams, or rich formatted o
 
 ### 🎨 Themes
 
-Aria ships with multiple visual themes selectable from Settings:
+RAGHUB ships with multiple visual themes selectable from Settings:
 
 | Theme | Description |
 |:---|:---|
@@ -363,7 +363,7 @@ Open `http://localhost:5173` in your browser — sign in with Google and start c
 
 ## 🚢 Deploying to Production
 
-Aria is pre-configured for a **Vercel + Render** deployment.
+RAGHUB is pre-configured for a **Vercel + Render** deployment.
 
 - **Frontend** → Push to Vercel. Set `frontend/chat-app/dist` as the output directory.
 - **Backend** → Connect your GitHub repo to Render. The included `render.yaml` handles the full build and start configuration automatically.

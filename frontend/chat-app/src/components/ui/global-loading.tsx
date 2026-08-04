@@ -12,7 +12,7 @@ export function GlobalLoadingScreen() {
         </div>
         <div className="text-center space-y-1">
           <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
-            Aria AI
+            RAGHUB
           </h2>
           <p className="text-sm text-muted-foreground animate-pulse">
             Loading your experience...

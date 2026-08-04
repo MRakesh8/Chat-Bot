@@ -802,7 +802,7 @@ class GeminiFailoverModels {
         timeout: 45000,
         defaultHeaders: {
           "HTTP-Referer": "https://localhost",
-          "X-Title": "AriaChatBot"
+          "X-Title": "RAGHUB"
         }
       });
 
