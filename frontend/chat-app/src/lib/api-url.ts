@@ -6,4 +6,4 @@ export function apiUrl(path: string): string {
   return configuredApiUrl ? `${configuredApiUrl}${normalizedPath}` : `${basePath}${normalizedPath}`;
 }
 
-export const apiBaseUrl = configuredApiUrl || null;
+export const apiBaseUrl = configuredApiUrl || "";

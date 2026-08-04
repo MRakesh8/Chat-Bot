@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalLoadingScreen } from "@/components/ui/global-loading";
 
-import { DashboardLayout } from "./components/layout/dashboard-layout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
@@ -102,7 +101,9 @@ export default function App() {
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>
-              <GlobalCommandMenu />
+              <Suspense fallback={null}>
+                <GlobalCommandMenu />
+              </Suspense>
               <Toaster />
             </TooltipProvider>
           </ThemeProvider>

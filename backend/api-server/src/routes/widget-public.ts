@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { logger } from "../lib/logger";
 import { db, crypto } from "@workspace/db";
 import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs } from "@workspace/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -16,6 +17,7 @@ import {
   buildContextAwarePrompt,
   sessionMemoryStore
 } from "../services/context-engine";
+import { detectPromptInjection } from "../middlewares/prompt-firewall";
 
 function isRetryableLlmError(err: any): boolean {
   if (!err) return false;
@@ -52,7 +54,7 @@ async function executeWithRetry<T>(
       const isRetryable = isRetryableLlmError(err);
       if (isRetryable && attempt <= maxRetries) {
         const delayMs = initialDelayMs * Math.pow(2, attempt - 1);
-        console.warn(`[LLM Retry] Attempt ${attempt} failed with retryable error: ${err.message || err}. Retrying in ${delayMs}ms...`);
+        logger.warn(`[LLM Retry] Attempt ${attempt} failed with retryable error: ${err.message || err}. Retrying in ${delayMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }
@@ -86,11 +88,7 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
     const isLast = i === modelsToTry.length - 1;
     try {
       const attemptOptions = { ...options, model: attemptModel };
-      console.log("--- GEMINI INVOCATION DIAGNOSTICS ---");
-      console.log("Model:", attemptModel);
-      console.log("Contents array size:", attemptOptions.contents?.length || 0);
-      console.log("Config keys:", attemptOptions.config ? Object.keys(attemptOptions.config) : 'none');
-      console.log("Full request payload:", JSON.stringify(attemptOptions, null, 2).substring(0, 500) + '...');
+      logger.info({ model: attemptModel, contentsSize: attemptOptions.contents?.length || 0 }, "GEMINI INVOCATION DIAGNOSTICS");
       
       if (method === 'generateContent') {
         return await executeWithRetry(() => directClient.models.generateContent(attemptOptions));
@@ -112,7 +110,7 @@ async function executeWithFallback(activeKey: string, method: 'generateContent' 
       const isRetryable = isRetryableLlmError(err) || isModelNotFound;
       
       if (isRetryable && !isLast) {
-        console.warn(`Widget API error on model ${attemptModel}, falling back to next model...`);
+        logger.warn(`Widget API error on model ${attemptModel}, falling back to next model...`);
         continue;
       }
       throw err;
@@ -170,7 +168,7 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
       }
     }
   } catch (err) {
-    console.error("Widget public router: failed to load project keys:", err);
+    logger.error({ err }, "Widget public router: failed to load project keys");
   }
 
   try {
@@ -204,7 +202,7 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
       }
     }
   } catch (err) {
-    console.error("Widget public router: failed to load user keys:", err);
+    logger.error({ err }, "Widget public router: failed to load user keys");
   }
 
   try {
@@ -236,7 +234,7 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
       }
     }
   } catch (err) {
-    console.error("Widget public router: failed to load system keys:", err);
+    logger.error({ err }, "Widget public router: failed to load system keys");
   }
 
   // Note: The previous fallback logic that retried keys marked as QUOTA_EXCEEDED has been removed.
@@ -270,11 +268,11 @@ async function fetchAndManageWidgetKeys(projectId: string, userId: string | null
   
   let enabledKeys = totalKeys - disabledKeys;
 
-  console.log(`\n--- API KEY MANAGER ---`);
-  console.log(`Total API keys loaded: ${totalKeys}`);
-  console.log(`Enabled API keys: ${enabledKeys}`);
-  console.log(`Disabled API keys: ${disabledKeys}`);
-  console.log(`-----------------------\n`);
+  logger.info(`\n--- API KEY MANAGER ---`);
+  logger.info(`Total API keys loaded: ${totalKeys}`);
+  logger.info(`Enabled API keys: ${enabledKeys}`);
+  logger.info(`Disabled API keys: ${disabledKeys}`);
+  logger.info(`-----------------------\n`);
 
   // Sort: Project Keys (primary first) -> User Keys -> System Keys -> Env Keys
   // Within the same priority group, sort by:
@@ -342,13 +340,13 @@ async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'ge
     else endpointName = "api.openai.com/v1";
   }
 
-  console.log(`\n--- Execution Diagnostics ---`);
-  console.log(`Selected Provider: ${key.provider}`);
-  console.log(`Selected Model: ${selectedModel}`);
-  console.log(`Selected SDK: ${sdkName}`);
-  console.log(`Selected Endpoint: ${endpointName}`);
-  console.log(`Selected API Key: ${key.id || 'env'}`);
-  console.log(`---------------------------\n`);
+  logger.info(`\n--- Execution Diagnostics ---`);
+  logger.info(`Selected Provider: ${key.provider}`);
+  logger.info(`Selected Model: ${selectedModel}`);
+  logger.info(`Selected SDK: ${sdkName}`);
+  logger.info(`Selected Endpoint: ${endpointName}`);
+  logger.info(`Selected API Key: ${key.id || 'env'}`);
+  logger.info(`---------------------------\n`);
   
   if (key.provider !== 'gemini') {
     const adapter = new UniversalProviderAdapter({
@@ -389,7 +387,7 @@ async function executeLlmWithFailover(
   method: 'generateContent' | 'generateContentStream', 
   options: any
 ): Promise<{ result: any; keyUsed: WidgetKey }> {
-  console.log(`\nLoaded API Keys: ${keys.length}\n`);
+  logger.info(`\nLoaded API Keys: ${keys.length}\n`);
   
   const failures: string[] = [];
   
@@ -401,7 +399,7 @@ async function executeLlmWithFailover(
       keyUsageStats[statKey] = { inFlight: 0, lastUsed: 0 };
     }
     
-    console.log(`Trying API Key #${i + 1}`);
+    logger.info(`Trying API Key #${i + 1}`);
     keyUsageStats[statKey].inFlight += 1;
     keyUsageStats[statKey].lastUsed = Date.now();
     
@@ -441,9 +439,9 @@ async function executeLlmWithFailover(
         completionTokens,
         totalTokens,
         model: selectedModel
-      }).catch(e => console.error("Key success update error:", e));
+      }).catch(e => logger.error("Key success update error:", e));
       
-      console.log(`Success (${latencyMs}ms)\n`);
+      logger.info(`Success (${latencyMs}ms)\n`);
       return { result, keyUsed: key };
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
@@ -452,7 +450,7 @@ async function executeLlmWithFailover(
                           String(err?.message || "").toLowerCase().includes("timeout") || String(err?.message || "").toLowerCase().includes("unavailable");
                           
       if (isTransient) {
-        console.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient.`);
+        logger.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient.`);
       } else {
         await updateKeyStats({
           key,
@@ -461,16 +459,16 @@ async function executeLlmWithFailover(
           status: "UNHEALTHY", // Will be reclassified by classifyError
           error: err,
           model: selectedModel
-        }).catch(e => console.error("Key failure update error:", e));
+        }).catch(e => logger.error("Key failure update error:", e));
       }
 
       const failureReason = err?.message || err?.toString() || "Unknown error";
-      console.log(`${failureReason}\n`);
+      logger.info(`${failureReason}\n`);
       failures.push(`Key #${i + 1} (${key.id || 'env'}): ${failureReason}`);
       
       if (i < keys.length - 1) {
-        console.log(`Reason for switching: ${failureReason}`);
-        console.log(`Switching to API Key #${i + 2}\n`);
+        logger.info(`Reason for switching: ${failureReason}`);
+        logger.info(`Switching to API Key #${i + 2}\n`);
       }
     } finally {
       // Always decrement inFlight when request finishes (success or failure)
@@ -478,8 +476,8 @@ async function executeLlmWithFailover(
     }
   }
   
-  console.log("All API keys failed:");
-  failures.forEach(f => console.log(`- ${f}`));
+  logger.info("All API keys failed:");
+  failures.forEach(f => logger.info(`- ${f}`));
   
   throw new Error(`No healthy API keys available to execute the request. Failures: ${failures.join(" | ")}`);
 }
@@ -519,11 +517,11 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
       try {
         const requestHostname = new URL(origin).hostname;
         if (!allowedUrls.includes(requestHostname)) {
-          console.error("EARLY RETURN: Domain not authorized", origin);
+          req.log.error({ origin }, "EARLY RETURN: Domain not authorized");
           return res.status(403).json({ error: "Domain not authorized" });
         }
       } catch (e) {
-        console.error("EARLY RETURN: Invalid origin", origin);
+        req.log.error({ origin, err: e }, "EARLY RETURN: Invalid origin");
         return res.status(403).json({ error: "Invalid origin" });
       }
     }
@@ -532,7 +530,7 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
     (req as any).projectId = settings.projectId;
     return next();
   } catch (error) {
-    console.error("Widget validation error:", error);
+    req.log.error({ err: error }, "Widget validation error");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -576,7 +574,7 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
       } : { enabled: true, maxContextSizeBytes: 6144, developerDebugMode: false }
     });
   } catch (error) {
-    console.error("Failed to fetch widget config", error);
+    req.log.error({ err: error }, "Failed to fetch widget config");
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -584,8 +582,18 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
 router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<any> => {
   const { messages, websiteContext, sessionId } = req.body;
   if (!messages || !Array.isArray(messages)) {
-    console.error("EARLY RETURN: Invalid messages format", req.body);
+    req.log.error("EARLY RETURN: Invalid messages format", req.body);
     return res.status(400).json({ error: "Invalid messages format" });
+  }
+
+  const lastUserMsg = messages[messages.length - 1]?.content || "";
+  if (detectPromptInjection(lastUserMsg)) {
+    req.log.warn({ lastUserMsg }, "[SECURITY] Public widget prompt injection blocked");
+    res.setHeader("Content-Type", "text/event-stream");
+    res.write(`data: ${JSON.stringify({ content: "I cannot fulfill requests that attempt to bypass safety guidelines or access internal instructions." })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
+    return res;
   }
 
   // SSE headers
@@ -596,10 +604,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
   try {
     const projectId = (req as any).projectId;
-    console.log("\n=============================================");
-    console.log("STEP 1: Incoming request body:", JSON.stringify(req.body).substring(0, 500));
-    console.log("STEP 2: Resolved widget token:", req.params.widgetToken);
-    console.log("STEP 3: Resolved project id:", projectId);
+    req.log.info({ widgetToken: req.params.widgetToken, projectId }, "Widget incoming request");
 
     // Get project details to know the owner's userId for key failover/rotation
     let project;
@@ -607,9 +612,9 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       project = await db.query.projects.findFirst({
         where: eq(projects.id, projectId)
       });
-      console.log("STEP 4: Loaded project:", project?.id);
+      req.log.info({ projectId: project?.id }, "STEP 4: Loaded project");
     } catch (err: any) {
-      console.error("Failed Loading project...", err.stack || err);
+      req.log.error({ err }, "Failed Loading project...");
       throw err;
     }
     const userId = project ? project.userId : null;
@@ -648,14 +653,14 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         } as any);
       }
     } catch (e) {
-      console.error("Failed to track analytics:", e);
+      req.log.error({ err: e }, "Failed to track analytics");
     }
 
     // Resolve & Manage Keys with Failover
     const keys = await fetchAndManageWidgetKeys(projectId, userId);
 
     if (keys.length === 0) {
-      console.error("EARLY RETURN: No AI API keys configured");
+      req.log.error("EARLY RETURN: No AI API keys configured");
       res.write(`data: ${JSON.stringify({ content: "Sorry, no AI API keys are configured for this chatbot. Please configure an API key in your dashboard." })}\n\n`);
       res.end();
       return res;
@@ -697,7 +702,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           }
         }
       } catch (err) {
-        console.error("Error confirming correction:", err);
+        req.log.error({ err }, "Error confirming correction");
       }
     }
 
@@ -756,7 +761,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           }
         }
       } catch (err) {
-        console.error("Error in correction flow:", err);
+        req.log.error({ err }, "Error in correction flow");
         res.write(`data: ${JSON.stringify({ content: "Sorry, I encountered an error while verifying the information on Google." })}\n\n`);
       }
       res.end();
@@ -769,9 +774,9 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       contextSettings = await db.query.projectContextSettings.findFirst({
         where: eq(projectContextSettings.projectId, projectId)
       });
-      console.log("Loaded context settings:", contextSettings ? "Found" : "Missing");
+      req.log.info({ found: !!contextSettings }, "Loaded context settings");
     } catch (err: any) {
-      console.error("Failed Loading context settings...", err.stack || err);
+      req.log.error({ err }, "Failed Loading context settings...");
       throw err;
     }
     
@@ -803,7 +808,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         }
       }
     } catch (err: any) {
-      console.error("Failed processing website context...", err.stack || err);
+      req.log.error({ err }, "Failed processing website context...");
       throw err;
     }
 
@@ -819,7 +824,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         apiKeys: keys
       });
     } catch (err: any) {
-      console.error("Failed contextFuser() step...", err.stack || err);
+      req.log.error({ err }, "Failed contextFuser() step...");
       throw err;
     }
 
@@ -828,7 +833,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       const widgetSettings = await db.query.projectWidgetSettings.findFirst({
         where: eq(projectWidgetSettings.projectId, projectId)
       });
-      console.log("STEP 5: Loaded widget settings:", widgetSettings ? "Found" : "Missing");
+      req.log.info({ found: !!widgetSettings }, "STEP 5: Loaded widget settings");
       if (widgetSettings?.humanHandoffLinks) {
         const links = widgetSettings.humanHandoffLinks as Record<string, string>;
         const details = [];
@@ -842,7 +847,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         }
       }
     } catch (err) {
-      console.error("Error fetching widget settings for handoff:", err);
+      req.log.error({ err }, "Error fetching widget settings for handoff");
     }
 
     let systemPrompt;
@@ -856,7 +861,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       });
 
     } catch (err: any) {
-      console.error("Failed buildContextAwarePrompt()...", err.stack || err);
+      req.log.error({ err }, "Failed buildContextAwarePrompt()...");
       throw err;
     }
 
@@ -900,14 +905,14 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
             await llmResponseCache.set(intentHash, intentType, 86400); // 24 hours
           }
         } catch (e) {
-          console.error("Failed to parse intent JSON", e);
+          req.log.error({ err: e }, "Failed to parse intent JSON");
         }
       }
     } catch (e) {
-      console.error("Intent detection failed, defaulting to GENERAL_QUESTION", e);
+      req.log.error({ err: e }, "Intent detection failed, defaulting to GENERAL_QUESTION");
     }
     
-    console.log(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
+    req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
 
     try {
       // If the intent is an ACTION_REQUEST, bypass the conversational LLM and route directly to the Coordinator
@@ -948,7 +953,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       let fullResponseText = "";
 
       if (cachedResponse) {
-        console.log("[LLM_CACHE_HIT] Widget duplicate prompt detected, returning cached response");
+        req.log.info("[LLM_CACHE_HIT] Widget duplicate prompt detected, returning cached response");
         res.write(`data: ${JSON.stringify({ content: cachedResponse })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
         fullResponseText = cachedResponse;
@@ -991,10 +996,10 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
            if (typeof (res as any).flush === 'function') (res as any).flush();
         }
       } catch(e) {
-         console.error("Coordinator error during stream fallback:", e);
+         req.log.error({ err: e }, "Coordinator error during stream fallback");
       }
     } catch (err: any) {
-      console.error("executeLlmWithFailover threw an error:", err);
+      req.log.error({ err }, "executeLlmWithFailover threw an error");
       res.write(`data: ${JSON.stringify({ content: "I'm sorry, I'm having trouble connecting to my backend systems right now. Please try again later." })}\n\n`);
       res.end();
       return res;
@@ -1004,7 +1009,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     return res;
 
   } catch (error: any) {
-    console.error("Widget chat general error:", error);
+    req.log.error({ err: error }, "Widget chat general error");
     res.write(`data: ${JSON.stringify({ content: "Internal server error occurred." })}\n\n`);
     res.end();
     return res;
@@ -1039,7 +1044,7 @@ router.post("/:widgetToken/swarm-dryrun", async (req: Request, res: Response): P
       return res.status(500).json({ error: result.error });
     }
   } catch (error: any) {
-    console.error("Swarm dryrun error:", error);
+    req.log.error("Swarm dryrun error:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1074,13 +1079,13 @@ router.post("/:widgetToken/action-result", async (req: Request, res: Response): 
             projectId,
             sessionId: execRecord.sessionId,
             payload: { resumeExecution: true, executionId, actionResult: req.body }
-          }).catch(console.error);
+          }).catch(err => req.log.error("Async execution error:", err));
        }, 0);
     }
     
     return res.json({ success: true });
   } catch (err: any) {
-    console.error("Action result error:", err);
+    req.log.error("Action result error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

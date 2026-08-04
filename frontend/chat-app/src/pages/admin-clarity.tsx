@@ -122,8 +122,7 @@ export default function AdminConsolePage() {
   // Strict client-side admin check
   const isAdmin = user?.email === "rakesh837m@gmail.com" || 
                   user?.email === "rakesh0837m@gmail.com" || 
-                  dbUser?.role === "super_admin" ||
-                  (import.meta.env.DEV || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+                  dbUser?.role === "super_admin";
 
   // Fetch Users
   const { data: users, isLoading: usersLoading } = useQuery({
@@ -373,7 +372,6 @@ export default function AdminConsolePage() {
           {[
             { id: "users", label: "Users & Roles", icon: Users },
             { id: "projects", label: "Global Projects", icon: LayoutDashboard },
-            { id: "payments", label: "Payments", icon: CreditCard },
             { id: "settings", label: "System Settings", icon: Settings2 },
             { id: "keys", label: "System Keys Health", icon: Key },
             { id: "errors", label: "System Errors", icon: AlertCircle },
@@ -524,7 +522,8 @@ export default function AdminConsolePage() {
           </div>
         )}
 
-        {/* PAYMENTS TAB */}
+        {/* PAYMENTS TAB (temporarily disabled) */}
+        {/*
         {activeTab === "payments" && (
           <div className="max-w-7xl mx-auto space-y-6">
             <h2 className="text-2xl font-bold">Manual Payments</h2>
@@ -657,6 +656,7 @@ export default function AdminConsolePage() {
             )}
           </div>
         )}
+        */}
 
         {/* KEYS TAB */}
         {activeTab === "keys" && (

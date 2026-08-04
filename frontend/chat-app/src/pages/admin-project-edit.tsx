@@ -373,7 +373,7 @@ export default function AdminProjectEditPage() {
                   <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can upload knowledge base documents (PDF, PPT, Text, etc).</p>
                 </div>
               ) : (
-                <KnowledgeBase projectId={projectId!} />
+                projectId && <KnowledgeBase projectId={projectId} />
               )}
             </TabsContent>
 
@@ -691,9 +691,8 @@ function DeploymentPaywall({ projectId, isAdmin, authFetch, toast }: {
     }
   };
 
-  if (isAdmin || hasActiveLicense) {
-    return <Deployment projectId={projectId} />;
-  }
+  // Payment feature temporarily disabled - allow deployment directly for all users
+  return <Deployment projectId={projectId} />;
 
   if (isCheckingPayment) {
     return (

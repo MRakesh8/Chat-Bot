@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Request, Response, NextFunction } from "express";
 import { db, users } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { logger } from "../lib/logger";
 
 const supabaseUrl = process.env.SUPABASE_URL || "";
 // Use the service role key on the backend for server-side token verification.
@@ -31,7 +32,7 @@ export const supabaseAuthMiddleware = async (
           .values({ id: LOCAL_DEMO_USER_ID, email: "local-demo@example.com" })
           .onConflictDoNothing();
       } catch (err) {
-        console.error("Failed to ensure local demo user:", err);
+        logger.error(err, "Failed to ensure local demo user");
         res.status(500).json({ error: "Failed to initialize local demo user session" });
         return;
       }
@@ -100,7 +101,7 @@ export const supabaseAuthMiddleware = async (
 
     (req as any).auth = { userId: mappedUserId, user: data.user, dbUser };
   } catch (err) {
-    console.error("Failed to upsert user:", err);
+    logger.error(err, "Failed to upsert user");
     res.status(500).json({ error: "Failed to initialize user session" });
     return;
   }

@@ -40,8 +40,7 @@ router.get("/settings", async (req: any, res: Response) => {
         });
       } catch (insertError: any) {
         // Migration might be missing or DB error
-        console.error(`Failed to insert default widget settings for project ${projectId}:`, insertError.message);
-        console.error(insertError.stack);
+        req.log.error(insertError, `Failed to insert default widget settings for project ${projectId}`);
         return res.json(defaultSettings);
       }
     }
@@ -51,9 +50,7 @@ router.get("/settings", async (req: any, res: Response) => {
     // If table doesn't exist or DB is down
     const queryError = error.message;
     const tableExists = !queryError.includes("does not exist");
-    console.error({ tableExists, projectId, queryError });
-    console.error(`Failed to fetch widget settings for project ${projectId}:`, error.message);
-    console.error(error.stack);
+    req.log.error({ tableExists, projectId, err: error }, `Failed to fetch widget settings for project ${projectId}`);
     // Never return 500 for first-time projects. Use safe defaults.
     return res.json(defaultSettings);
   }
@@ -92,7 +89,7 @@ router.put("/settings", async (req: any, res: Response) => {
 
     // Server-side guard: reject non-CSS content from being saved to customCss
     if (typeof safeUpdates.customCss === "string" && safeUpdates.customCss.trim() && looksLikeNonCSS(safeUpdates.customCss)) {
-      console.warn(`Blocked non-CSS content from being saved to customCss for project ${projectId}`);
+      req.log.warn(`Blocked non-CSS content from being saved to customCss for project ${projectId}`);
       safeUpdates.customCss = "";
     }
 
@@ -128,7 +125,7 @@ router.put("/settings", async (req: any, res: Response) => {
     
     res.json(newSettings);
   } catch (error) {
-    console.error("Failed to update widget settings:", error);
+    req.log.error(error, "Failed to update widget settings");
     res.status(500).json({ error: "Failed to update widget settings" });
   }
 });
@@ -159,11 +156,7 @@ router.get("/api-keys", async (req: any, res: Response) => {
     
     res.json(safeKeys);
   } catch (error: any) {
-    console.error({
-      projectId,
-      error: error.message,
-      stack: error.stack
-    });
+    req.log.error({ projectId, err: error }, "Failed to fetch project keys");
     res.status(500).json({ error: "Failed to fetch project keys" });
   }
 });
@@ -220,7 +213,7 @@ router.post("/api-keys", async (req: any, res: Response) => {
 
     return res.json({ success: true, provider: verified.provider, model: verified.defaultModel });
   } catch (error: any) {
-    console.error("Failed to add project API key:", error);
+    req.log.error(error, "Failed to add project API key");
     return res.status(400).json({ error: error.message || "Failed to verify or add project key" });
   }
 });
@@ -413,7 +406,7 @@ router.get("/analytics", async (req: any, res: Response) => {
       aiCost: ((result.tokenUsage || 0) * 0.00000015).toFixed(4) // estimated cost based on Gemini Flash pricing
     });
   } catch (error) {
-    console.error("Analytics fetch error:", error);
+    req.log.error(error, "Analytics fetch error");
     res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
@@ -428,7 +421,7 @@ router.get("/leads", async (req: any, res: Response) => {
     });
     res.json(leads);
   } catch (error) {
-    console.error("Leads fetch error:", error);
+    req.log.error(error, "Leads fetch error");
     res.status(500).json({ error: "Failed to fetch leads" });
   }
 });
@@ -494,13 +487,13 @@ Rules:
 
     // Validate that AI output looks like actual CSS and not error logs/stack traces
     if (cssText && looksLikeNonCSS(cssText)) {
-      console.warn("AI CSS generation returned non-CSS content, discarding.");
+      req.log.warn("AI CSS generation returned non-CSS content, discarding.");
       return res.json({ css: "/* AI generation failed: invalid output. Please try again. */" });
     }
 
     return res.json({ css: cssText });
   } catch (error: any) {
-    console.error("AI CSS Generation failed:", error);
+    req.log.error(error, "AI CSS Generation failed");
     // Graceful error indicator for missing/unhealthy keys
     if (error?.code === "NO_HEALTHY_KEYS" || error?.status === 503 || error?.status === 403 || error?.status === 429) {
       return res.status(200).json({ 
@@ -543,7 +536,7 @@ function looksLikeNonCSS(text: string): boolean {
 router.get("/context-settings", async (req: any, res: Response): Promise<any> => {
   const projectId = (req.params.projectId || req.query.projectId || "") as string;
   try {
-    console.log("Project ID:", projectId);
+    req.log.info({ projectId }, "Project ID");
 
     const defaultSettings = {
       projectId,
@@ -565,7 +558,7 @@ router.get("/context-settings", async (req: any, res: Response): Promise<any> =>
         where: eq(projectContextSettings.projectId, projectId)
       });
     } catch (dbError) {
-      console.warn("Database query failed (table might be missing):", dbError);
+      req.log.warn(dbError, "Database query failed (table might be missing)");
       return res.json(defaultSettings);
     }
 
@@ -576,14 +569,14 @@ router.get("/context-settings", async (req: any, res: Response): Promise<any> =>
           where: eq(projectContextSettings.projectId, projectId)
         });
       } catch (insertError: any) {
-        console.error(`Failed to insert default context settings for project ${projectId}:`, insertError);
+        req.log.error(insertError, `Failed to insert default context settings for project ${projectId}`);
         return res.json(defaultSettings);
       }
     }
 
     return res.json(settings || defaultSettings);
   } catch (error: any) {
-    console.error("GET /context-settings error:", error);
+    req.log.error(error, "GET /context-settings error");
     return res.status(500).json({ 
       error: error.message,
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined
@@ -596,7 +589,7 @@ router.put("/context-settings", async (req: any, res: Response): Promise<any> =>
   const updates = req.body;
   
   try {
-    console.log("Project ID:", projectId);
+    req.log.info({ projectId }, "Project ID");
     const safeUpdates: any = {};
     const allowedKeys = [
       "enabled", "dashboardAnalysis", "formAssistant", "tableAnalysis", 
@@ -619,7 +612,7 @@ router.put("/context-settings", async (req: any, res: Response): Promise<any> =>
         .where(eq(projectContextSettings.projectId, projectId))
         .returning();
     } catch (updateError) {
-      console.warn("Update failed (table might be missing):", updateError);
+      req.log.warn(updateError, "Update failed (table might be missing)");
       return res.json({ projectId, ...safeUpdates });
     }
 
@@ -634,14 +627,14 @@ router.put("/context-settings", async (req: any, res: Response): Promise<any> =>
           .returning();
         return res.json(insertResult[0]);
       } catch (insertError) {
-        console.error("Insert failed:", insertError);
+        req.log.error(insertError, "Insert failed");
         return res.json(newSettings);
       }
     }
 
     return res.json(result[0]);
   } catch (error: any) {
-    console.error("PUT /context-settings error:", error);
+    req.log.error(error, "PUT /context-settings error");
     return res.status(500).json({ 
       error: error.message,
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined

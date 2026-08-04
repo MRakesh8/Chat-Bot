@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListGeminiConversationsQueryKey,
@@ -22,6 +22,15 @@ export function useChatStream() {
     setIsStreaming(false);
     setStreamingContent("");
   };
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const sendMessage = async (
     conversationId: string,

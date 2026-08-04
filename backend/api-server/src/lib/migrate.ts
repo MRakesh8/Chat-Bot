@@ -30,25 +30,6 @@ export async function runMigrations() {
     }
     
     if (migrationsFolder && fs.existsSync(migrationsFolder)) {
-      // Check if database schema already exists before attempting Drizzle migration runner
-      try {
-        const checkTable = await db.execute(sql`
-          SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'audit_logs'
-          );
-        `);
-        const tableExists = Array.isArray(checkTable) ? (checkTable[0] as any)?.exists : (checkTable as any)?.rows?.[0]?.exists;
-
-        if (tableExists) {
-          logger.info("Database schema (audit_logs) already exists. Skipping Drizzle migration runner.");
-          return;
-        }
-      } catch (checkErr) {
-        // If check fails, fall through to standard migration logic
-      }
-
       logger.info({ migrationsFolder }, "Running database migrations");
       try {
         await migrate(db, { migrationsFolder });

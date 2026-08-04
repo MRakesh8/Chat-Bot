@@ -179,8 +179,8 @@ export default function AuthPage() {
                 }}
                 className="absolute w-1.5 h-1.5 bg-white rounded-full blur-[1px] z-30"
                 style={{
-                  top: `\${40 + Math.random() * 20}%`,
-                  left: `\${40 + Math.random() * 20}%`
+                  top: `${40 + Math.random() * 20}%`,
+                  left: `${40 + Math.random() * 20}%`
                 }}
               />
             ))}

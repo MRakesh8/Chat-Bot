@@ -29,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 // Security Headers
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/widget")) {
-    next();
+    helmet({ frameguard: false, contentSecurityPolicy: false })(req, res, next);
   } else {
     helmet()(req, res, next);
   }

@@ -109,7 +109,7 @@ const updateGlobalSettingsSchema = z.object({
 
 // PATCH /api/super-admin/global-settings
 router.patch("/global-settings", async (req, res) => {
-  console.log("PATCH /global-settings received!");
+  req.log.info("PATCH /global-settings received!");
   const parsed = updateGlobalSettingsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0].message });
@@ -128,10 +128,10 @@ router.patch("/global-settings", async (req, res) => {
           });
       }
     }
-    console.log("DB update success");
+    req.log.info("DB update success");
     res.json({ success: true });
   } catch (err: any) {
-    console.error("DB Update Error:", err);
+    req.log.error({ err }, "DB Update Error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
