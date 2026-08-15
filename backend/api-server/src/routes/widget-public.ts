@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
 import { db, crypto } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs } from "@workspace/db/schema";
+import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads } from "@workspace/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
 import { minuteCache, llmResponseCache } from "../services/cache-provider";
@@ -1087,6 +1087,31 @@ router.post("/:widgetToken/action-result", async (req: Request, res: Response): 
   } catch (err: any) {
     req.log.error("Action result error:", err);
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Public Lead Capture Endpoint
+router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<any> => {
+  const { widgetToken } = req.params;
+  const { name, email, phone } = req.body;
+  try {
+    const token = Array.isArray(widgetToken) ? widgetToken[0] : widgetToken;
+    const settings = await db.query.projectWidgetSettings.findFirst({
+      where: eq(projectWidgetSettings.widgetToken, token),
+    });
+    if (!settings) {
+      return res.status(404).json({ error: "Widget token invalid or not found" });
+    }
+    const [lead] = await db.insert(widgetLeads).values({
+      projectId: settings.projectId,
+      name: name || "Anonymous Lead",
+      email: email || null,
+      phone: phone || null,
+    }).returning();
+    return res.json({ success: true, lead });
+  } catch (err: any) {
+    req.log.error("Failed to capture public lead:", err);
+    return res.status(500).json({ error: "Failed to capture lead" });
   }
 });
 
