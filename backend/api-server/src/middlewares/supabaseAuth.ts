@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Request, Response, NextFunction } from "express";
-import { db, users } from "@workspace/db";
+import { db, users, organizations, organizationMembers } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
@@ -31,12 +31,44 @@ export const supabaseAuthMiddleware = async (
           .insert(users)
           .values({ id: LOCAL_DEMO_USER_ID, email: "local-demo@example.com" })
           .onConflictDoNothing();
+
+        // Ensure organization and membership for demo user
+        let memberships = await db.select()
+          .from(organizationMembers)
+          .where(eq(organizationMembers.userId, LOCAL_DEMO_USER_ID));
+
+        if (memberships.length === 0) {
+          const [newOrg] = await db.insert(organizations).values({
+            name: "Demo Workspace",
+            planId: "00000000-0000-0000-0000-000000000001",
+            subscriptionStatus: "active"
+          }).returning();
+
+          await db.insert(organizationMembers).values({
+            organizationId: newOrg.id,
+            userId: LOCAL_DEMO_USER_ID,
+            role: "owner"
+          });
+
+          memberships.push({
+            organizationId: newOrg.id,
+            userId: LOCAL_DEMO_USER_ID,
+            role: "owner"
+          } as any);
+        }
+
+        (req as any).auth = { 
+          userId: LOCAL_DEMO_USER_ID,
+          memberships: memberships.map(m => ({
+            organizationId: m.organizationId,
+            role: m.role
+          }))
+        };
       } catch (err) {
         logger.error(err, "Failed to ensure local demo user");
         res.status(500).json({ error: "Failed to initialize local demo user session" });
         return;
       }
-      (req as any).auth = { userId: LOCAL_DEMO_USER_ID };
       return next();
     }
     res.status(401).json({ error: "Missing or invalid authorization header" });
@@ -99,7 +131,40 @@ export const supabaseAuthMiddleware = async (
       }
     }
 
-    (req as any).auth = { userId: mappedUserId, user: data.user, dbUser };
+    // 4. Fetch/sync memberships for user
+    let memberships = await db.select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, mappedUserId));
+
+    if (memberships.length === 0) {
+      const [newOrg] = await db.insert(organizations).values({
+        name: `${email.split("@")[0]}'s Workspace`,
+        planId: "00000000-0000-0000-0000-000000000001",
+        subscriptionStatus: "active"
+      }).returning();
+
+      await db.insert(organizationMembers).values({
+        organizationId: newOrg.id,
+        userId: mappedUserId,
+        role: "owner"
+      });
+
+      memberships.push({
+        organizationId: newOrg.id,
+        userId: mappedUserId,
+        role: "owner"
+      } as any);
+    }
+
+    (req as any).auth = { 
+      userId: mappedUserId, 
+      user: data.user, 
+      dbUser,
+      memberships: memberships.map(m => ({
+        organizationId: m.organizationId,
+        role: m.role
+      }))
+    };
   } catch (err) {
     logger.error(err, "Failed to upsert user");
     res.status(500).json({ error: "Failed to initialize user session" });

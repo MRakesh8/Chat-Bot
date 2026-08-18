@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, withBypassRLS } from "@workspace/db";
 import { userApiKeys } from "@workspace/db";
 import { and, eq, isNull, or } from "drizzle-orm";
 
@@ -25,9 +25,11 @@ router.get("/me", (req, res) => {
 // GET /api/system/ai-status
 router.get("/ai-status", async (req, res) => {
   try {
-    const allKeys = await db.select().from(userApiKeys);
+    const allKeys = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(userApiKeys);
+    });
     
-    const systemKeys = allKeys.filter(k => k.isSystem).map(k => ({
+    const systemKeys = allKeys.filter((k: any) => k.isSystem).map((k: any) => ({
       slot: `System ${k.provider.toUpperCase()} Key ${k.id.substring(0, 4)}`,
       provider: k.provider,
       healthy: k.status === 'HEALTHY',
@@ -41,7 +43,7 @@ router.get("/ai-status", async (req, res) => {
       cooldownUntil: k.cooldownUntil
     }));
 
-    const userKeys = allKeys.filter(k => !k.isSystem).map(k => ({
+    const userKeys = allKeys.filter((k: any) => !k.isSystem).map((k: any) => ({
       slot: `${k.name || `User ${k.provider.toUpperCase()} Key`} (${k.id.substring(0, 4)})`,
       provider: k.provider,
       userId: k.userId,
@@ -90,20 +92,22 @@ router.get("/admin/keys-report", async (req, res): Promise<any> => {
       return res.status(403).json({ error: "Access denied. This report is restricted to administrators." });
     }
 
-    const allSystemKeys = await db
-      .select()
-      .from(userApiKeys)
-      .where(
-        or(
-          isNull(userApiKeys.userId),
-          eq(userApiKeys.isSystem, true)
-        )
-      );
+    const allSystemKeys = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select()
+        .from(userApiKeys)
+        .where(
+          or(
+            isNull(userApiKeys.userId),
+            eq(userApiKeys.isSystem, true)
+          )
+        );
+    });
 
     const now = new Date();
     
     // Format detailed metrics for each key
-    const keysReport = allSystemKeys.map(k => {
+    const keysReport = allSystemKeys.map((k: any) => {
       const totalRequests = k.totalRequests || 0;
       const totalFailures = k.totalFailures || 0;
       const totalSuccesses = Math.max(0, totalRequests - totalFailures);
@@ -148,16 +152,16 @@ router.get("/admin/keys-report", async (req, res): Promise<any> => {
 
     // Calculate aggregate metrics across all system keys
     const totalKeys = allSystemKeys.length;
-    const healthyCount = allSystemKeys.filter(k => k.status === "HEALTHY").length;
-    const quotaExceededCount = allSystemKeys.filter(k => k.status === "QUOTA_EXCEEDED").length;
-    const invalidCount = allSystemKeys.filter(k => k.status === "INVALID").length;
-    const unhealthyCount = allSystemKeys.filter(k => k.status === "UNHEALTHY" || k.status === "COOLDOWN").length;
+    const healthyCount = allSystemKeys.filter((k: any) => k.status === "HEALTHY").length;
+    const quotaExceededCount = allSystemKeys.filter((k: any) => k.status === "QUOTA_EXCEEDED").length;
+    const invalidCount = allSystemKeys.filter((k: any) => k.status === "INVALID").length;
+    const unhealthyCount = allSystemKeys.filter((k: any) => k.status === "UNHEALTHY" || k.status === "COOLDOWN").length;
     
     let aggregateRequests = 0;
     let aggregateFailures = 0;
     let aggregateDailyUsed = 0;
     
-    allSystemKeys.forEach(k => {
+    allSystemKeys.forEach((k: any) => {
       aggregateRequests += k.totalRequests || 0;
       aggregateFailures += k.totalFailures || 0;
       aggregateDailyUsed += k.dailyUsed || 0;
@@ -209,15 +213,17 @@ router.post("/admin/reset-keys", async (req, res): Promise<any> => {
     }
 
     // Reset status of all system keys
-    await db.update(userApiKeys)
-      .set({
-        status: "HEALTHY",
-        cooldownUntil: null,
-        failureReason: null,
-        dailyUsed: 0,
-        healthScore: 100
-      })
-      .where(or(isNull(userApiKeys.userId), eq(userApiKeys.isSystem, true)));
+    await withBypassRLS(async (tx: any) => {
+      return await tx.update(userApiKeys)
+        .set({
+          status: "HEALTHY",
+          cooldownUntil: null,
+          failureReason: null,
+          dailyUsed: 0,
+          healthScore: 100
+        })
+        .where(or(isNull(userApiKeys.userId), eq(userApiKeys.isSystem, true)));
+    });
 
     res.json({ success: true, message: "All system keys have been reset to HEALTHY." });
   } catch (err: any) {

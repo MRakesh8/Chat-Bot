@@ -42,11 +42,97 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const organizations = pgTable("organizations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  planId: uuid("plan_id").references(() => plans.id, { onDelete: "set null" }),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  razorpayCustomerId: varchar("razorpay_customer_id", { length: 255 }),
+  subscriptionId: varchar("subscription_id", { length: 255 }),
+  subscriptionStatus: varchar("subscription_status", { length: 50 }).default("inactive").notNull(),
+  trialStartedAt: timestamp("trial_started_at"),
+  trialEndedAt: timestamp("trial_ended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const organizationMembers = pgTable("organization_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  role: varchar("role", { length: 50 }).default("viewer").notNull(), // owner, admin, manager, agent, viewer
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  orgUserUniq: uniqueIndex("org_user_uniq_idx").on(table.organizationId, table.userId),
+  orgIdIdx: index("org_members_org_id_idx").on(table.organizationId),
+  userIdIdx: index("org_members_user_id_idx").on(table.userId),
+}));
+
+export const organizationUsage = pgTable("organization_usage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  billingCycleStart: timestamp("billing_cycle_start").notNull(),
+  billingCycleEnd: timestamp("billing_cycle_end").notNull(),
+  messagesSent: integer("messages_sent").default(0).notNull(),
+  storageBytes: integer("storage_bytes").default(0).notNull(),
+  crawlCount: integer("crawl_count").default(0).notNull(),
+  actionCount: integer("action_count").default(0).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  orgCycleUniq: uniqueIndex("org_cycle_uniq_idx").on(table.organizationId, table.billingCycleStart),
+  orgIdIdx: index("org_usage_org_id_idx").on(table.organizationId),
+}));
+
+export const usageEvents = pgTable("usage_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "set null" }),
+  eventType: varchar("event_type", { length: 50 }).notNull(), // message, crawl, parse, ocr, action
+  quantity: integer("quantity").default(1).notNull(),
+  provider: varchar("provider", { length: 50 }),
+  model: varchar("model", { length: 255 }),
+  inputTokens: integer("input_tokens").default(0).notNull(),
+  outputTokens: integer("output_tokens").default(0).notNull(),
+  estimatedCost: varchar("estimated_cost", { length: 50 }).default("0").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  orgIdIdx: index("usage_events_org_id_idx").on(table.organizationId),
+  orgTypeIdx: index("usage_events_org_type_idx").on(table.organizationId, table.eventType),
+}));
+
+export const knowledgeGaps = pgTable("knowledge_gaps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  questionText: text("question_text").notNull(),
+  askedCount: integer("asked_count").default(1).notNull(),
+  isResolved: boolean("is_resolved").default(false).notNull(),
+  resolvedSourceId: uuid("resolved_source_id")
+    .references(() => knowledgeSources.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("knowledge_gaps_project_id_idx").on(table.projectId),
+}));
+
+
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .references(() => users.id)
     .notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
   systemPrompt: text("system_prompt").default("").notNull(),
@@ -58,6 +144,7 @@ export const projects = pgTable("projects", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("projects_user_id_idx").on(table.userId),
+  organizationIdIdx: index("projects_organization_id_idx").on(table.organizationId),
 }));
 
 export const projectSettings = pgTable("project_settings", {
@@ -140,6 +227,7 @@ export const knowledgeChunks = pgTable("knowledge_chunks", {
 }, (table) => ({
   sourceIdIdx: index("knowledge_chunks_source_id_idx").on(table.knowledgeSourceId),
   projectIdIdx: index("knowledge_chunks_project_id_idx").on(table.projectId),
+  embeddingHnswIdx: index("knowledge_chunks_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
 }));
 
 export const chatSessions = pgTable("chat_sessions", {
@@ -167,7 +255,9 @@ export const messages = pgTable("messages", {
   sourceTransparency: varchar("source_transparency", { length: 100 }), // project, gemini, combined
   confidence: varchar("confidence", { length: 50 }), // high, medium, low
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  sessionIdIdx: index("messages_session_id_idx").on(table.sessionId),
+}));
 
 export const notes = pgTable("notes", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -199,6 +289,7 @@ export const auditLogs = pgTable("audit_logs", {
 export const userApiKeys = pgTable("user_api_keys", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }), // null = system key
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }),
   provider: varchar("provider", { length: 50 }).default("gemini").notNull(),
   encryptedKey: text("encrypted_key").notNull(),
@@ -239,6 +330,7 @@ export const userApiSettings = pgTable("user_api_settings", {
 export const connectedServices = pgTable("connected_services", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   provider: varchar("provider", { length: 50 }).notNull(), // github, linkedin, supabase, render, etc.
   name: text("name").notNull(),
   url: text("url").notNull(),
@@ -517,6 +609,7 @@ export const apiLogs = pgTable("api_logs", {
   keyId: uuid("key_id"), // Not a hard FK so logs survive key deletion
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   provider: varchar("provider", { length: 50 }).notNull(),
   model: varchar("model", { length: 255 }).notNull(),
   latencyMs: integer("latency_ms").notNull(),
@@ -533,6 +626,7 @@ export const apiLogs = pgTable("api_logs", {
   keyIdIdx: index("api_logs_key_id_idx").on(table.keyId),
   projectIdIdx: index("api_logs_project_id_idx").on(table.projectId),
   userIdIdx: index("api_logs_user_id_idx").on(table.userId),
+  orgIdIdx: index("api_logs_org_id_idx").on(table.organizationId),
 }));
 
 export const apiLogsRelations = relations(apiLogs, ({ one }) => ({
@@ -571,6 +665,7 @@ export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   amount: integer("amount").notNull(),
   currency: varchar("currency", { length: 10 }).default("INR").notNull(),
   status: varchar("status", { length: 50 }).default("pending").notNull(), // pending, verified, rejected, failed
@@ -582,6 +677,7 @@ export const payments = pgTable("payments", {
 }, (table) => ({
   projectIdIdx: index("payments_project_id_idx").on(table.projectId),
   userIdIdx: index("payments_user_id_idx").on(table.userId),
+  orgIdIdx: index("payments_org_id_idx").on(table.organizationId),
 }));
 
 export const paymentLogs = pgTable("payment_logs", {
@@ -591,7 +687,9 @@ export const paymentLogs = pgTable("payment_logs", {
   performedBy: uuid("performed_by").references(() => users.id, { onDelete: "set null" }), // User or Admin ID
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  paymentIdIdx: index("payment_logs_payment_id_idx").on(table.paymentId),
+}));
 
 // Relations
 export const projectLicensesRelations = relations(projectLicenses, ({ one }) => ({
@@ -616,6 +714,7 @@ export const paymentLogsRelations = relations(paymentLogs, ({ one }) => ({
 export const whatsappConnections = pgTable("whatsapp_connections", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   provider: varchar("provider", { length: 50 }).notNull(),
   providerAccountId: varchar("provider_account_id", { length: 255 }).notNull(),
   phoneNumber: varchar("phone_number", { length: 50 }),
@@ -629,6 +728,7 @@ export const whatsappConnections = pgTable("whatsapp_connections", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdIdx: index("whatsapp_connections_project_id_idx").on(table.projectId),
+  orgIdIdx: index("whatsapp_connections_org_id_idx").on(table.organizationId),
 }));
 
 export const whatsappConversations = pgTable("whatsapp_conversations", {

@@ -46,5 +46,26 @@ pool.on("error", (err) => {
 });
 export const db = drizzle(pool, { schema });
 
+import { sql } from "drizzle-orm";
+
+export async function withTenantContext<T>(
+  orgId: string,
+  cb: (tx: any) => Promise<T>
+): Promise<T> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL app.current_organization_id = ${orgId}`);
+    return await cb(tx);
+  });
+}
+
+export async function withBypassRLS<T>(
+  cb: (tx: any) => Promise<T>
+): Promise<T> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL app.bypass_rls = 'true'`);
+    return await cb(tx);
+  });
+}
+
 export * from "./schema";
 export * as crypto from "./crypto";

@@ -6,7 +6,7 @@ import { Router } from "express";
 import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
 import crypto, { randomUUID } from "crypto";
 import fs from "fs";
-import { db } from "@workspace/db";
+import { db, withTenantContext, withBypassRLS } from "@workspace/db";
 import { projects, knowledgeSources, chatSessions, messages, knowledgeChunks, projectSettings, projectWidgetSettings } from "@workspace/db";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logger } from "../../lib/logger";
@@ -30,6 +30,19 @@ const updateProjectSchema = z.object({
 
 const router = Router();
 
+// Helper to determine if a role meets required permission weights
+const ROLE_WEIGHTS: Record<string, number> = {
+  owner: 5,
+  admin: 4,
+  manager: 3,
+  agent: 2,
+  viewer: 1,
+};
+
+function hasRequiredRole(userRole: string, requiredRole: "owner" | "admin" | "manager" | "agent" | "viewer"): boolean {
+  return (ROLE_WEIGHTS[userRole] || 0) >= ROLE_WEIGHTS[requiredRole];
+}
+
 // ─── Admin routes (require auth) ───────────────────────────────────────────
 
 // GET /projects
@@ -39,22 +52,46 @@ router.get("/", async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  try {
-    const condition = eq(projects.userId, userId);
 
-    const result = await db
-      .select({
-        project: projects,
-        knowledgeCount: sql<number>`count(${knowledgeSources.id})`.mapWith(Number)
-      })
-      .from(projects)
-      .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
-      .where(condition)
-      .groupBy(projects.id)
-      .orderBy(desc(projects.createdAt));
+  // Resolve active organization context
+  let orgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(orgId)) orgId = orgId[0];
+
+  if (!orgId) {
+    const userMemberships = (req as any).auth?.memberships;
+    if (userMemberships && userMemberships.length > 0) {
+      orgId = userMemberships[0].organizationId;
+    }
+  }
+
+  if (!orgId) {
+    res.json([]);
+    return;
+  }
+
+  // Authorize user membership
+  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+  const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === orgId);
+  if (!isSuperAdmin && !membership) {
+    res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    return;
+  }
+
+  try {
+    const result = await withTenantContext(orgId as string, async (tx: any) => {
+      return await tx
+        .select({
+          project: projects,
+          knowledgeCount: sql<number>`count(${knowledgeSources.id})`.mapWith(Number)
+        })
+        .from(projects)
+        .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
+        .groupBy(projects.id)
+        .orderBy(desc(projects.createdAt));
+    });
       
     // Flatten the result so it matches the expected Project[] type but with knowledgeCount
-    const flattened = result.map(r => ({
+    const flattened = result.map((r: any) => ({
       ...r.project,
       knowledgeCount: r.knowledgeCount
     }));
@@ -88,19 +125,46 @@ router.post("/", async (req, res) => {
   }
   const { name, description, systemPrompt } = parsed.data;
 
+  // Resolve active organization context
+  let orgId = req.headers["x-organization-id"] || req.query.organizationId || req.body.organizationId;
+  if (Array.isArray(orgId)) orgId = orgId[0];
+
+  if (!orgId) {
+    const userMemberships = (req as any).auth?.memberships;
+    if (userMemberships && userMemberships.length > 0) {
+      orgId = userMemberships[0].organizationId;
+    }
+  }
+
+  if (!orgId) {
+    res.status(400).json({ error: "Missing organization context" });
+    return;
+  }
+
+  // Authorize user role inside the workspace (owner, admin, manager can create projects)
+  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+  const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === orgId);
+  if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
+    res.status(403).json({ error: "Forbidden: Insufficient privileges in this workspace" });
+    return;
+  }
+
   try {
     const shareToken = randomUUID().replace(/-/g, "").slice(0, 20);
-    const [project] = await db
-      .insert(projects)
-      .values({
-        name,
-        description,
-        systemPrompt,
-        userId,
-        shareToken,
-        isActive: true,
-      })
-      .returning();
+    const [project] = await withTenantContext(orgId as string, async (tx: any) => {
+      return await tx
+        .insert(projects)
+        .values({
+          name,
+          description,
+          systemPrompt,
+          userId,
+          organizationId: orgId as string,
+          shareToken,
+          isActive: true,
+        })
+        .returning();
+    });
     res.status(201).json(project);
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error creating project");
@@ -121,11 +185,27 @@ router.get("/:id", async (req, res) => {
     return;
   }
   try {
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    // 1. Resolve project parent organization using bypass RLS
+    const projectMeta = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+    });
+    const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    const role = (req as any).auth?.dbUser?.role;
-    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
-    res.json(project);
+
+    // 2. Authorize workspace membership
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && !membership) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    // 3. Query inside transaction context to enforce RLS
+    const [securedProject] = await withTenantContext(project.organizationId as string, async (tx: any) => {
+      return await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+    });
+
+    res.json(securedProject);
   } catch (err: any) {
     req.log.error({ err }, "Error getting project");
     res.status(500).json({ success: false, error: err.message || "Internal server error" });
@@ -152,10 +232,20 @@ router.patch("/:id", async (req, res) => {
   const { name, description, systemPrompt, isActive } = parsed.data;
 
   try {
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    // 1. Resolve parent organization using bypass RLS
+    const projectMeta = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+    });
+    const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    const role = (req as any).auth?.dbUser?.role;
-    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+    // 2. Authorize manager/admin/owner role
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
+      res.status(403).json({ error: "Forbidden: Insufficient privileges to update this project" });
+      return;
+    }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -163,11 +253,14 @@ router.patch("/:id", async (req, res) => {
     if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
     if (isActive !== undefined) updateData.isActive = isActive;
 
-    const [updated] = await db
-      .update(projects)
-      .set(updateData)
-      .where(eq(projects.id, id))
-      .returning();
+    // 3. Update inside transaction context to enforce RLS
+    const [updated] = await withTenantContext(project.organizationId as string, async (tx: any) => {
+      return await tx
+        .update(projects)
+        .set(updateData)
+        .where(eq(projects.id, id))
+        .returning();
+    });
     res.json(updated);
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error updating project");
@@ -185,11 +278,25 @@ router.delete("/:id", async (req, res) => {
   const id = req.params.id;
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    // 1. Resolve parent organization
+    const projectMeta = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+    });
+    const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    const role = (req as any).auth?.dbUser?.role;
-    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
-    await db.delete(projects).where(eq(projects.id, id));
+
+    // 2. Authorize owner/admin role
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "admin"))) {
+      res.status(403).json({ error: "Forbidden: Insufficient privileges to delete this project" });
+      return;
+    }
+
+    // 3. Delete inside transaction context to enforce RLS
+    await withTenantContext(project.organizationId as string, async (tx: any) => {
+      return await tx.delete(projects).where(eq(projects.id, id));
+    });
     res.status(204).send();
   } catch (err: any) {
     req.log.error({ err }, "Error deleting project");
@@ -215,29 +322,41 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
   }
   
   try {
-    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    // 1. Resolve parent organization
+    const projectMeta = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+    });
+    const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
-    const role = (req as any).auth?.dbUser?.role;
-    if (project.userId !== userId && role !== "super_admin" && role !== "admin") { res.status(403).json({ error: "Forbidden" }); return; }
+
+    // 2. Authorize manager/admin/owner role
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
+      res.status(403).json({ error: "Forbidden: Insufficient privileges to add knowledge" });
+      return;
+    }
 
     const { contents } = parsed.data;
     
-    // Embed and insert each message as a knowledge chunk
-    for (const content of contents) {
-      const embedRes = await ai.models.embedContent(userId, {
-        model: "gemini-embedding-2",
-        contents: content,
-        config: { outputDimensionality: 768 },
-      });
-      const embedding = embedRes.embeddings?.[0]?.values;
-      if (embedding) {
-        await db.insert(knowledgeChunks).values({
-          projectId: id as any,
-          chunkText: content,
-          embedding: embedding as any,
+    // Embed and insert each message as a knowledge chunk inside transaction context to enforce RLS
+    await withTenantContext(project.organizationId as string, async (tx: any) => {
+      for (const content of contents) {
+        const embedRes = await ai.models.embedContent(userId, {
+          model: "gemini-embedding-2",
+          contents: content,
+          config: { outputDimensionality: 768 },
         });
+        const embedding = embedRes.embeddings?.[0]?.values;
+        if (embedding) {
+          await tx.insert(knowledgeChunks).values({
+            projectId: id as any,
+            chunkText: content,
+            embedding: embedding as any,
+          });
+        }
       }
-    }
+    });
     
     res.status(200).json({ success: true });
   } catch (err: any) {

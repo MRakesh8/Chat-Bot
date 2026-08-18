@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, desc, sql, and } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, withBypassRLS } from "@workspace/db";
 import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs } from "@workspace/db";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -20,17 +20,19 @@ router.use((req, res, next) => {
 // GET /api/super-admin/users
 router.get("/users", async (req, res) => {
   try {
-    const allUsers = await db
-      .select({
-        user: users,
-        projectCount: sql<number>`count(${projects.id})`.mapWith(Number),
-      })
-      .from(users)
-      .leftJoin(projects, eq(users.id, projects.userId))
-      .groupBy(users.id)
-      .orderBy(desc(users.createdAt));
+    const allUsers = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({
+          user: users,
+          projectCount: sql<number>`count(${projects.id})`.mapWith(Number),
+        })
+        .from(users)
+        .leftJoin(projects, eq(users.id, projects.userId))
+        .groupBy(users.id)
+        .orderBy(desc(users.createdAt));
+    });
       
-    const flattened = allUsers.map(u => ({ ...u.user, projectCount: u.projectCount }));
+    const flattened = allUsers.map((u: any) => ({ ...u.user, projectCount: u.projectCount }));
     res.json(flattened);
   } catch (err: any) {
     req.log.error({ err }, "Error listing users for super-admin");
@@ -56,10 +58,12 @@ router.patch("/users/:id", async (req, res) => {
     if (parsed.data.role !== undefined) updateData.role = parsed.data.role;
     if (parsed.data.features !== undefined) updateData.features = parsed.data.features;
     
-    const [updated] = await db.update(users)
-      .set(updateData)
-      .where(eq(users.id, req.params.id))
-      .returning();
+    const [updated] = await withBypassRLS(async (tx: any) => {
+      return await tx.update(users)
+        .set(updateData)
+        .where(eq(users.id, req.params.id))
+        .returning();
+    });
       
     res.json(updated);
   } catch (err: any) {
@@ -71,14 +75,16 @@ router.patch("/users/:id", async (req, res) => {
 // GET /api/super-admin/projects
 router.get("/projects", async (req, res) => {
   try {
-    const allProjects = await db.select({
-      id: projects.id,
-      name: projects.name,
-      description: projects.description,
-      userId: projects.userId,
-      isActive: projects.isActive,
-      createdAt: projects.createdAt
-    }).from(projects).orderBy(desc(projects.createdAt));
+    const allProjects = await withBypassRLS(async (tx: any) => {
+      return await tx.select({
+        id: projects.id,
+        name: projects.name,
+        description: projects.description,
+        userId: projects.userId,
+        isActive: projects.isActive,
+        createdAt: projects.createdAt
+      }).from(projects).orderBy(desc(projects.createdAt));
+    });
     res.json(allProjects);
   } catch (err: any) {
     req.log.error({ err }, "Error listing projects for super-admin");
@@ -89,8 +95,10 @@ router.get("/projects", async (req, res) => {
 // GET /api/super-admin/global-settings
 router.get("/global-settings", async (req, res) => {
   try {
-    const settings = await db.select().from(globalSettings);
-    const result = settings.reduce((acc, s) => {
+    const settings = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(globalSettings);
+    });
+    const result = settings.reduce((acc: any, s: any) => {
       acc[s.id] = s.value;
       return acc;
     }, {} as Record<string, string>);
@@ -118,16 +126,18 @@ router.patch("/global-settings", async (req, res) => {
   
   try {
     const entries = Object.entries(parsed.data);
-    for (const [key, value] of entries) {
-      if (value !== undefined) {
-        await db.insert(globalSettings)
-          .values({ id: key, value })
-          .onConflictDoUpdate({
-            target: globalSettings.id,
-            set: { value, updatedAt: new Date() }
-          });
+    await withBypassRLS(async (tx: any) => {
+      for (const [key, value] of entries) {
+        if (value !== undefined) {
+          await tx.insert(globalSettings)
+            .values({ id: key, value })
+            .onConflictDoUpdate({
+              target: globalSettings.id,
+              set: { value, updatedAt: new Date() }
+            });
+        }
       }
-    }
+    });
     req.log.info("DB update success");
     res.json({ success: true });
   } catch (err: any) {
@@ -139,7 +149,9 @@ router.patch("/global-settings", async (req, res) => {
 // GET /super-admin/errors
 router.get("/errors", async (req, res) => {
   try {
-    const errorsList = await db.select().from(systemErrors).orderBy(desc(systemErrors.createdAt)).limit(100);
+    const errorsList = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(systemErrors).orderBy(desc(systemErrors.createdAt)).limit(100);
+    });
     res.json(errorsList);
   } catch (err: any) {
     req.log.error({ err }, "Error fetching system errors");
@@ -151,7 +163,10 @@ router.get("/errors", async (req, res) => {
 router.post("/errors/:id/fix", async (req, res) => {
   const id = req.params.id;
   try {
-    const [sysErr] = await db.select().from(systemErrors).where(eq(systemErrors.id, id));
+    const sysErr = await withBypassRLS(async (tx: any) => {
+      const result = await tx.select().from(systemErrors).where(eq(systemErrors.id, id));
+      return result[0];
+    });
     if (!sysErr) {
       res.status(404).json({ error: "Error not found" });
       return;
@@ -183,33 +198,35 @@ Provide the likely root cause and how to fix it in 2-3 short paragraphs or bulle
 // GET /super-admin/supabase-stats
 router.get("/supabase-stats", async (req, res) => {
   try {
-    const dbSize = await db.execute(sql`SELECT pg_size_pretty(pg_database_size(current_database())) as size, pg_database_size(current_database()) as bytes`);
-    
-    // Some supabase instances might have storage.objects restricted or not present in local dev. We wrap in a try-catch for safety.
-    let storageSizeRaw = 0;
-    let userStorage: any[] = [];
-    try {
-      const storageResult = await db.execute(sql`SELECT SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes FROM storage.objects`);
-      storageSizeRaw = Number(storageResult.rows[0]?.bytes || 0);
+    const stats = await withBypassRLS(async (tx: any) => {
+      const dbSize = await tx.execute(sql`SELECT pg_size_pretty(pg_database_size(current_database())) as size, pg_database_size(current_database()) as bytes`);
+      
+      let storageSizeRaw = 0;
+      let userStorage: any[] = [];
+      try {
+        const storageResult = await tx.execute(sql`SELECT SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes FROM storage.objects`);
+        storageSizeRaw = Number(storageResult.rows[0]?.bytes || 0);
 
-      const userStorageResult = await db.execute(sql`
-        SELECT owner as user_id, SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes 
-        FROM storage.objects 
-        GROUP BY owner
-      `);
-      userStorage = userStorageResult.rows;
-    } catch (e) {
-      req.log.warn({ e }, "storage.objects not available or query failed");
-    }
+        const userStorageResult = await tx.execute(sql`
+          SELECT owner as user_id, SUM(COALESCE((metadata->>'size')::bigint, 0)) as bytes 
+          FROM storage.objects 
+          GROUP BY owner
+        `);
+        userStorage = userStorageResult.rows;
+      } catch (e) {
+        req.log.warn({ e }, "storage.objects not available or query failed");
+      }
+      return { dbSize, storageSizeRaw, userStorage };
+    });
 
     res.json({
       database: {
-        sizeStr: dbSize.rows[0]?.size || "0 bytes",
-        bytes: Number(dbSize.rows[0]?.bytes || 0)
+        sizeStr: stats.dbSize.rows[0]?.size || "0 bytes",
+        bytes: Number(stats.dbSize.rows[0]?.bytes || 0)
       },
       storage: {
-        bytes: storageSizeRaw,
-        perUser: userStorage
+        bytes: stats.storageSizeRaw,
+        perUser: stats.userStorage
       }
     });
   } catch (err: any) {
@@ -221,29 +238,31 @@ router.get("/supabase-stats", async (req, res) => {
 // GET /api/super-admin/payments
 router.get("/payments", async (req, res) => {
   try {
-    const allPayments = await db
-      .select({
-        id: payments.id,
-        amount: payments.amount,
-        currency: payments.currency,
-        status: payments.status,
-        method: payments.method,
-        utrTransactionId: payments.utrTransactionId,
-        screenshotUrl: payments.screenshotUrl,
-        createdAt: payments.createdAt,
-        project: {
-          id: projects.id,
-          name: projects.name,
-        },
-        user: {
-          id: users.id,
-          email: users.email,
-        }
-      })
-      .from(payments)
-      .innerJoin(projects, eq(payments.projectId, projects.id))
-      .innerJoin(users, eq(payments.userId, users.id))
-      .orderBy(desc(payments.createdAt));
+    const allPayments = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({
+          id: payments.id,
+          amount: payments.amount,
+          currency: payments.currency,
+          status: payments.status,
+          method: payments.method,
+          utrTransactionId: payments.utrTransactionId,
+          screenshotUrl: payments.screenshotUrl,
+          createdAt: payments.createdAt,
+          project: {
+            id: projects.id,
+            name: projects.name,
+          },
+          user: {
+            id: users.id,
+            email: users.email,
+          }
+        })
+        .from(payments)
+        .innerJoin(projects, eq(payments.projectId, projects.id))
+        .innerJoin(users, eq(payments.userId, users.id))
+        .orderBy(desc(payments.createdAt));
+    });
 
     res.json(allPayments);
   } catch (err: any) {
@@ -258,39 +277,44 @@ router.post("/payments/:id/approve", async (req, res) => {
     const paymentId = req.params.id;
     const adminId = (req as any).auth?.userId;
 
-    const [payment] = await db.select().from(payments).where(eq(payments.id, paymentId));
-    if (!payment) {
-      res.status(404).json({ error: "Payment not found" });
-      return;
-    }
+    await withBypassRLS(async (tx: any) => {
+      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId));
+      if (!payment) {
+        throw new Error("Payment not found");
+      }
 
-    // 1. Update payment status
-    await db.update(payments).set({ status: "verified" }).where(eq(payments.id, paymentId));
+      // 1. Update payment status
+      await tx.update(payments).set({ status: "verified" }).where(eq(payments.id, paymentId));
 
-    // 2. Log action
-    await db.insert(paymentLogs).values({
-      paymentId: paymentId,
-      action: "verified",
-      performedBy: adminId,
-      notes: "Approved manually by Super Admin",
+      // 2. Log action
+      await tx.insert(paymentLogs).values({
+        paymentId: paymentId,
+        action: "verified",
+        performedBy: adminId,
+        notes: "Approved manually by Super Admin",
+      });
+
+      // 3. Update project license to active
+      await tx.update(projectLicenses)
+        .set({ 
+          licenseStatus: "active", 
+          paymentStatus: "paid", 
+          approvedBy: adminId, 
+          approvedAt: new Date(),
+          paymentDate: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(projectLicenses.projectId, payment.projectId));
     });
-
-    // 3. Update project license to active
-    await db.update(projectLicenses)
-      .set({ 
-        licenseStatus: "active", 
-        paymentStatus: "paid", 
-        approvedBy: adminId, 
-        approvedAt: new Date(),
-        paymentDate: new Date(),
-        updatedAt: new Date()
-      })
-      .where(eq(projectLicenses.projectId, payment.projectId));
 
     res.json({ success: true });
   } catch (err: any) {
     req.log.error({ err }, "Error approving payment");
-    res.status(500).json({ error: "Internal server error" });
+    if (err.message === "Payment not found") {
+      res.status(404).json({ error: "Payment not found" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
@@ -301,35 +325,40 @@ router.post("/payments/:id/reject", async (req, res) => {
     const adminId = (req as any).auth?.userId;
     const { reason } = req.body;
 
-    const [payment] = await db.select().from(payments).where(eq(payments.id, paymentId));
-    if (!payment) {
-      res.status(404).json({ error: "Payment not found" });
-      return;
-    }
+    await withBypassRLS(async (tx: any) => {
+      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId));
+      if (!payment) {
+        throw new Error("Payment not found");
+      }
 
-    // 1. Update payment status
-    await db.update(payments).set({ status: "rejected" }).where(eq(payments.id, paymentId));
+      // 1. Update payment status
+      await tx.update(payments).set({ status: "rejected" }).where(eq(payments.id, paymentId));
 
-    // 2. Log action
-    await db.insert(paymentLogs).values({
-      paymentId: paymentId,
-      action: "rejected",
-      performedBy: adminId,
-      notes: reason || "Rejected manually by Super Admin",
+      // 2. Log action
+      await tx.insert(paymentLogs).values({
+        paymentId: paymentId,
+        action: "rejected",
+        performedBy: adminId,
+        notes: reason || "Rejected manually by Super Admin",
+      });
+
+      // 3. Update project license to failed (if currently pending)
+      await tx.update(projectLicenses)
+        .set({ 
+          paymentStatus: "failed", 
+          updatedAt: new Date()
+        })
+        .where(and(eq(projectLicenses.projectId, payment.projectId), eq(projectLicenses.paymentStatus, "pending")));
     });
-
-    // 3. Update project license to failed (if currently pending)
-    await db.update(projectLicenses)
-      .set({ 
-        paymentStatus: "failed", 
-        updatedAt: new Date()
-      })
-      .where(and(eq(projectLicenses.projectId, payment.projectId), eq(projectLicenses.paymentStatus, "pending")));
 
     res.json({ success: true });
   } catch (err: any) {
     req.log.error({ err }, "Error rejecting payment");
-    res.status(500).json({ error: "Internal server error" });
+    if (err.message === "Payment not found") {
+      res.status(404).json({ error: "Payment not found" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
