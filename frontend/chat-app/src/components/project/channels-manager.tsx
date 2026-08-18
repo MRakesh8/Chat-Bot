@@ -187,11 +187,26 @@ export function ChannelsManager({ projectId }: { projectId: string }) {
                       <Smartphone className="w-4 h-4 text-green-500" />
                       {c.displayName || c.providerAccountId}
                     </h3>
-                    <p className="text-xs text-muted-foreground uppercase">{c.provider}</p>
+                    <p className="text-xs text-muted-foreground uppercase">{c.provider} • Status: {c.status === "connected" ? <span className="text-green-500">Connected</span> : <span className="text-yellow-500">{c.status}</span>}</p>
+                    {c.lastError && <p className="text-xs text-red-400 mt-1">Error: {c.lastError}</p>}
                   </div>
-                  <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-300" onClick={() => deleteConnectionMutation.mutate(c.id)}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={async () => {
+                      toast({ title: "Testing connection..." });
+                      const res = await authFetch(apiUrl(`/api/projects/${projectId}/whatsapp/connections/${c.id}/test`), { method: "POST" });
+                      if (res.ok) {
+                        toast({ title: "Success", description: "Connection verified." });
+                        queryClient.invalidateQueries({ queryKey: ["whatsapp-connections", projectId] });
+                      } else {
+                        const err = await res.json();
+                        toast({ title: "Verification Failed", description: err.error, variant: "destructive" });
+                        queryClient.invalidateQueries({ queryKey: ["whatsapp-connections", projectId] });
+                      }
+                    }}>Test</Button>
+                    <Button variant="ghost" size="icon" className="text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => deleteConnectionMutation.mutate(c.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="mt-2 text-sm bg-background p-2 rounded flex flex-col gap-1 border border-border">

@@ -78,6 +78,56 @@ router.delete("/connections/:connectionId", async (req: any, res: any) => {
   res.json({ success: true });
 });
 
+import { TimelinesAIProvider } from "../../services/whatsapp/providers/timelines";
+import { MetaBusinessProvider } from "../../services/whatsapp/providers/meta";
+
+const providersMap = {
+  timelinesai: new TimelinesAIProvider(),
+  meta: new MetaBusinessProvider()
+};
+
+router.post("/connections/:connectionId/test", async (req: any, res: any) => {
+  const projectId = req.params.projectId;
+  const connectionId = req.params.connectionId;
+  
+  const conn = await db.query.whatsappConnections.findFirst({
+    where: and(
+      eq(whatsappConnections.id, connectionId),
+      eq(whatsappConnections.projectId, projectId)
+    )
+  });
+  
+  if (!conn || !conn.encryptedCredentials) {
+    return res.status(404).json({ error: "Connection or credentials not found" });
+  }
+
+  const provider = providersMap[conn.provider as keyof typeof providersMap];
+  if (!provider || !provider.getConnectionStatus) {
+    return res.status(400).json({ error: "Provider does not support connection testing" });
+  }
+
+  let credentials = {};
+  try {
+    credentials = JSON.parse(crypto.decrypt(conn.encryptedCredentials));
+  } catch (e) {
+    return res.status(500).json({ error: "Failed to decrypt credentials" });
+  }
+
+  const result = await provider.getConnectionStatus(credentials);
+  
+  if (result.connected) {
+    await db.update(whatsappConnections)
+      .set({ status: "connected", lastConnectedAt: new Date(), lastError: null })
+      .where(eq(whatsappConnections.id, connectionId));
+    res.json({ status: "connected", info: result.info });
+  } else {
+    await db.update(whatsappConnections)
+      .set({ status: "error", lastError: result.info })
+      .where(eq(whatsappConnections.id, connectionId));
+    res.status(400).json({ status: "error", error: result.info });
+  }
+});
+
 router.get("/settings", async (req: any, res: any) => {
   const projectId = req.params.projectId;
   let settings = await db.query.whatsappSettings.findFirst({
