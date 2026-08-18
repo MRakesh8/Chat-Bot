@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check } from "lucide-react";
+import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check, Smartphone } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
+import { ChannelsManager } from "../components/project/channels-manager";
 import { Deployment } from "../components/project/deployment";
 import { ApiKeys } from "../components/project/api-keys";
 import { Analytics } from "../components/project/analytics";
@@ -276,6 +277,9 @@ export default function AdminProjectEditPage() {
               <TabsTrigger value="widget-studio" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Paintbrush className="w-4 h-4 mr-2" /> Widget Studio
               </TabsTrigger>
+              <TabsTrigger value="channels" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <Smartphone className="w-4 h-4 mr-2" /> Channels
+              </TabsTrigger>
               <TabsTrigger value="deployment" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <Rocket className="w-4 h-4 mr-2" /> Deployment
               </TabsTrigger>
@@ -438,6 +442,16 @@ export default function AdminProjectEditPage() {
                   <p className="text-white/60 text-sm">Customize the appearance and behavior of your chatbot widget.</p>
                 </div>
                 {projectId && <WidgetStudio projectId={projectId} />}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="channels">
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-medium mb-1">Channels & Integrations</h3>
+                  <p className="text-white/60 text-sm">Connect WhatsApp and other channels to your AI.</p>
+                </div>
+                {projectId && <ChannelsManager projectId={projectId} />}
               </div>
             </TabsContent>
 

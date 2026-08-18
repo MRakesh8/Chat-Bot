@@ -120,6 +120,13 @@ async function start() {
     startApiKeyHealthCheckTask();
     startSupabaseKeepAliveTask();
     
+    // Background recovery for WhatsApp
+    setInterval(() => {
+      import("./services/whatsapp/processor").then(m => {
+        m.WhatsAppProcessor.recoverPendingMessages().catch(err => logger.error(err, "WA Recovery failed"));
+      });
+    }, 60000); // every 1 minute
+    
     // Background validation
     validateDatabaseSchema().catch((err) => {
       logger.error({ err }, "[DB] Background validation failed");

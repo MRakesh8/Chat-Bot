@@ -768,3 +768,6 @@ import widgetRouter from "./widget";
 router.use("/:projectId/widget", widgetRouter);
 
 export default router;
+
+import whatsappRouter from './whatsapp-config';
+router.use('/:projectId/whatsapp', whatsappRouter);

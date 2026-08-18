@@ -9,6 +9,7 @@ import categoriesRouter from "./categories";
 import apiKeysRouter from "./api-keys";
 import servicesRouter from "./services";
 import paymentsRouter from "./payments";
+import integrationsRouter from "./integrations";
 
 import systemRouter from "./system";
 import superAdminRouter from "./super-admin";
@@ -24,6 +25,7 @@ router.use("/categories", categoriesRouter);
 router.use("/api-keys", apiKeysRouter);
 router.use("/services", servicesRouter);
 router.use("/payments", paymentsRouter);
+router.use("/integrations", integrationsRouter);
 router.use("/system", systemRouter);
 router.use("/super-admin", superAdminRouter);
 
