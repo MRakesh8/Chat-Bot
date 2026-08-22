@@ -7,6 +7,7 @@ import { runMigrations } from "./lib/migrate";
 import { validateDatabaseSchema } from "./middlewares/databaseHealth";
 import puppeteer from "puppeteer";
 import fs from "fs";
+import { startQueueWorker } from "./lib/queue";
 
 const rawPort = process.env["PORT"];
 
@@ -119,6 +120,7 @@ async function start() {
     startCleanupTask();
     startApiKeyHealthCheckTask();
     startSupabaseKeepAliveTask();
+    startQueueWorker();
     
     // Background recovery for WhatsApp
     setInterval(() => {

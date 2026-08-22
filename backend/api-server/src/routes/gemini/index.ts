@@ -20,6 +20,7 @@ import { supabaseAdmin } from "../../lib/supabase";
 import { logger, logSystemError } from "../../lib/logger";
 import { detectPromptInjection } from "../../middlewares/prompt-firewall";
 import { llmResponseCache } from "../../services/cache-provider";
+import { checkProjectEntitlement } from "../../security/entitlement";
 import {
   CreateGeminiConversationBody,
   UpdateGeminiConversationBody,
@@ -540,6 +541,18 @@ router.post("/conversations/:id/messages", async (req, res) => {
     if (!conversation) {
       res.status(404).json({ error: "Conversation not found" });
       return;
+    }
+
+    // Server-side Entitlement Check for project dashboard AI
+    if (conversation.projectId) {
+      const entitlement = await checkProjectEntitlement(conversation.projectId);
+      if (!entitlement.allowed) {
+        res.status(403).json({
+          error: entitlement.message || "Your trial or subscription has expired. Please upgrade to continue.",
+          status: entitlement.status,
+        });
+        return;
+      }
     }
 
     currentStep = "PROJECT_LOOKUP";

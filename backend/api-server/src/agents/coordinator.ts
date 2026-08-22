@@ -2,6 +2,7 @@ import { BaseAgent, AgentContext, AgentResult } from "./base";
 import { PlannerAgent } from "./planner";
 import { VerificationAgent } from "./verification";
 import { SecurityAgent } from "./security";
+import { generateActionConfirmationToken } from "../security";
 import { db } from "@workspace/db";
 import { workflowExecutions, executionSteps } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -77,6 +78,19 @@ export class CoordinatorAgent extends BaseAgent {
                status: secRes.data.requiresConfirmation ? "pending_approval" : "planned"
             }).returning();
 
+            if (secRes.data.requiresConfirmation) {
+              const { token, expiresAt } = generateActionConfirmationToken({
+                userId: userId || "public_visitor",
+                projectId,
+                sessionId,
+                actionId: newStep.id,
+                actionType: nextAction.actionType || nextAction.type,
+                actionTarget: nextAction.actionTarget || nextAction.target || ""
+              });
+              secRes.data.confirmationToken = token;
+              secRes.data.expiresAt = expiresAt;
+            }
+
             return { success: true, data: { action: { ...nextAction, id: newStep.id }, executionId, security: secRes.data } };
         } else {
             await db.update(workflowExecutions).set({ status: "completed" }).where(eq(workflowExecutions.id, executionId));
@@ -107,6 +121,19 @@ export class CoordinatorAgent extends BaseAgent {
           actionValue: firstAction.actionValue || firstAction.value,
           status: secRes.data.requiresConfirmation ? "pending_approval" : "planned"
       }).returning();
+
+      if (secRes.data.requiresConfirmation) {
+        const { token, expiresAt } = generateActionConfirmationToken({
+          userId: userId || "public_visitor",
+          projectId,
+          sessionId,
+          actionId: newStep.id,
+          actionType: firstAction.actionType || firstAction.type,
+          actionTarget: firstAction.actionTarget || firstAction.target || ""
+        });
+        secRes.data.confirmationToken = token;
+        secRes.data.expiresAt = expiresAt;
+      }
 
       return {
         success: true,

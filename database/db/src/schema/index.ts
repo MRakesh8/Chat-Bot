@@ -116,14 +116,20 @@ export const knowledgeGaps = pgTable("knowledge_gaps", {
     .references(() => projects.id, { onDelete: "cascade" })
     .notNull(),
   questionText: text("question_text").notNull(),
+  normalizedQuestion: text("normalized_question"),
   askedCount: integer("asked_count").default(1).notNull(),
   isResolved: boolean("is_resolved").default(false).notNull(),
   resolvedSourceId: uuid("resolved_source_id")
     .references(() => knowledgeSources.id, { onDelete: "set null" }),
+  sourceUrl: text("source_url"),
+  sessionId: uuid("session_id").references(() => chatSessions.id, { onDelete: "set null" }),
+  confidence: varchar("confidence", { length: 50 }),
+  reason: varchar("reason", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdIdx: index("knowledge_gaps_project_id_idx").on(table.projectId),
+  projNormIdx: index("knowledge_gaps_proj_norm_idx").on(table.projectId, table.normalizedQuestion),
 }));
 
 
@@ -141,6 +147,10 @@ export const projects = pgTable("projects", {
   tags: jsonb("tags").$type<string[]>().default([]).notNull(),
   allowedDomains: jsonb("allowed_domains").$type<string[]>().default(["*"]).notNull(),
   deploymentPaid: boolean("deployment_paid").default(false).notNull(),
+  trialStartedAt: timestamp("trial_started_at"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  customTrialDays: integer("custom_trial_days"),
+  status: varchar("status", { length: 50 }).default("active").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("projects_user_id_idx").on(table.userId),
@@ -469,8 +479,39 @@ export const widgetLeads = pgTable("widget_leads", {
   name: varchar("name", { length: 255 }),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
+  company: varchar("company", { length: 255 }),
+  sessionId: uuid("session_id").references(() => chatSessions.id, { onDelete: "set null" }),
+  sourcePageUrl: text("source_page_url"),
+  userIntent: text("user_intent"),
+  status: varchar("status", { length: 50 }).default("NEW").notNull(),
+  score: varchar("score", { length: 50 }).default("MEDIUM").notNull(),
+  scoreValue: integer("score_value").default(50).notNull(),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("widget_leads_project_id_idx").on(table.projectId),
+  emailIdx: index("widget_leads_email_idx").on(table.projectId, table.email),
+  phoneIdx: index("widget_leads_phone_idx").on(table.projectId, table.phone),
+}));
+
+export const frequentQuestions = pgTable("frequent_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  questionText: text("question_text").notNull(),
+  normalizedQuestion: text("normalized_question").notNull(),
+  category: varchar("category", { length: 100 }).default("General").notNull(),
+  intent: varchar("intent", { length: 100 }).default("general").notNull(),
+  count: integer("count").default(1).notNull(),
+  lastAskedAt: timestamp("last_asked_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("frequent_questions_project_id_idx").on(table.projectId),
+  projNormIdx: uniqueIndex("frequent_questions_proj_norm_idx").on(table.projectId, table.normalizedQuestion),
+}));
 
 export const widgetSettingsRelations = relations(projectWidgetSettings, ({ one }) => ({
   project: one(projects, { fields: [projectWidgetSettings.projectId], references: [projects.id] }),
@@ -484,8 +525,13 @@ export const widgetAnalyticsRelations = relations(widgetAnalytics, ({ one }) => 
   project: one(projects, { fields: [widgetAnalytics.projectId], references: [projects.id] }),
 }));
 
-export const widgetLeadsRelations = relations(widgetLeads, ({ one }) => ({
+export const widgetLeadsRelations = relations(widgetLeads, ({ one, many }) => ({
   project: one(projects, { fields: [widgetLeads.projectId], references: [projects.id] }),
+  session: one(chatSessions, { fields: [widgetLeads.sessionId], references: [chatSessions.id] }),
+}));
+
+export const frequentQuestionsRelations = relations(frequentQuestions, ({ one }) => ({
+  project: one(projects, { fields: [frequentQuestions.projectId], references: [projects.id] }),
 }));
 
 export const contextSettingsRelations = relations(projectContextSettings, ({ one }) => ({
@@ -850,3 +896,33 @@ export const whatsappHandoffsRelations = relations(whatsappHandoffs, ({ one }) =
 export const whatsappAnalyticsRelations = relations(whatsappAnalytics, ({ one }) => ({
   project: one(projects, { fields: [whatsappAnalytics.projectId], references: [projects.id] }),
 }));
+
+export const projectEntitlements = pgTable("project_entitlements", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  trialStartedAt: timestamp("trial_started_at"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  subscriptionStatus: varchar("subscription_status", { length: 50 }).default("inactive").notNull(),
+  entitlementStatus: varchar("entitlement_status", { length: 50 }).default("TRIAL_ACTIVE").notNull(),
+  customTrialDays: integer("custom_trial_days"),
+  planId: uuid("plan_id"),
+  subscriptionId: varchar("subscription_id", { length: 255 }),
+  subscriptionStartedAt: timestamp("subscription_started_at"),
+  subscriptionEndsAt: timestamp("subscription_ends_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const securityAuditLogs = pgTable("security_audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event: varchar("event", { length: 100 }).notNull(),
+  userId: uuid("user_id"),
+  projectId: uuid("project_id"),
+  requestId: varchar("request_id", { length: 100 }),
+  ipAddress: varchar("ip_address", { length: 100 }),
+  origin: varchar("origin", { length: 255 }),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+

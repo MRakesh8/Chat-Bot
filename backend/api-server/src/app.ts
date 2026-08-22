@@ -23,7 +23,11 @@ app.use(compression({
   }
 }));
 
-app.use(express.json());
+app.use(express.json({
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // Security Headers
@@ -89,7 +93,6 @@ const globalLimiter = rateLimit({
   }
 });
 app.use("/api", globalLimiter);
-app.use("/gemini", globalLimiter);
 
 // Strict LLM API Rate Limiter
 const geminiLimiter = rateLimit({
@@ -99,8 +102,28 @@ const geminiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests to the AI model. Please try again later." },
 });
-// Apply to message endpoints specifically
-app.use("/gemini/conversations/:id/messages", geminiLimiter);
+// Apply to message endpoints specifically with correct route prefix
+app.use("/api/gemini/conversations/:id/messages", geminiLimiter);
+
+// Specific rate limiters for key validation and payment submissions
+const keyVerifyLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many key verification attempts. Please wait a minute." }
+});
+app.use("/api/projects/:projectId/widget/api-keys/:keyId/verify", keyVerifyLimiter);
+app.use("/api/projects/:projectId/widget/api-keys/:keyId/test", keyVerifyLimiter);
+
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // 5 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many payment submission attempts. Please try again later." }
+});
+app.use("/api/payments/manual", paymentLimiter);
 
 // Strict Widget API Rate Limiter
 const widgetLimiter = rateLimit({

@@ -13,6 +13,7 @@ import { logger } from "../../lib/logger";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { searchProjectKnowledge } from "../../services/knowledge";
 import { llmResponseCache } from "../../services/cache-provider";
+import { checkProjectEntitlement, logAdminBypassIfNecessary } from "../../security";
 import { z } from "zod";
 
 const createProjectSchema = z.object({
@@ -199,6 +200,9 @@ router.get("/:id", async (req, res) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    if (isSuperAdmin && !membership) {
+      await logAdminBypassIfNecessary(req, project.id, project.organizationId);
+    }
 
     // 3. Query inside transaction context to enforce RLS
     const [securedProject] = await withTenantContext(project.organizationId as string, async (tx: any) => {
@@ -246,6 +250,9 @@ router.patch("/:id", async (req, res) => {
       res.status(403).json({ error: "Forbidden: Insufficient privileges to update this project" });
       return;
     }
+    if (isSuperAdmin && !membership) {
+      await logAdminBypassIfNecessary(req, project.id, project.organizationId);
+    }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -291,6 +298,9 @@ router.delete("/:id", async (req, res) => {
     if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "admin"))) {
       res.status(403).json({ error: "Forbidden: Insufficient privileges to delete this project" });
       return;
+    }
+    if (isSuperAdmin && !membership) {
+      await logAdminBypassIfNecessary(req, project.id, project.organizationId);
     }
 
     // 3. Delete inside transaction context to enforce RLS
@@ -402,6 +412,15 @@ router.post("/share/:token/conversations", async (req, res) => {
       res.status(404).json({ error: "Project not found" });
       return;
     }
+
+    const entitlement = await checkProjectEntitlement(project.id);
+    if (!entitlement.allowed) {
+      res.status(403).json({
+        error: entitlement.message || "Your trial or subscription has expired. Please upgrade.",
+        status: entitlement.status
+      });
+      return;
+    }
     const [conv] = await db
       .insert(chatSessions)
       .values({ title: "New Chat", projectId: project.id })
@@ -502,6 +521,15 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
       .where(eq(projects.shareToken, req.params.token));
     if (!project || !project.isActive) {
       res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
+    const entitlement = await checkProjectEntitlement(project.id);
+    if (!entitlement.allowed) {
+      res.status(403).json({
+        error: entitlement.message || "Your trial or subscription has expired. Please upgrade.",
+        status: entitlement.status
+      });
       return;
     }
 

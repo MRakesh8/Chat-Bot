@@ -489,12 +489,18 @@
           </div>
           ` : ''}
           <div class="input-area">
-            <form id="chat-form" class="input-wrapper">
-              <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
-              <button type="submit" class="send-btn">
-                 <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-              </button>
-            </form>
+            ${config.isLocked ? `
+              <div style="text-align: center; color: var(--text-muted); font-size: 13px; font-weight: 500; padding: 4px 8px;">
+                🔒 Chat disabled: ${config.lockedReason || "Subscription or Trial expired."}
+              </div>
+            ` : `
+              <form id="chat-form" class="input-wrapper">
+                <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
+                <button type="submit" class="send-btn">
+                   <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                </button>
+              </form>
+            `}
           </div>
         </div>
         <button class="floating-button" aria-label="Open chat" style="${isOpen ? 'display:none;' : ''}">
@@ -518,14 +524,20 @@
               <div id="debug-stats"></div>
             </div>
             ` : ''}
-            <div class="input-area">
-              <form id="chat-form" class="input-wrapper">
-                <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
-                <button type="submit" class="send-btn">
-                   <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                </button>
-              </form>
-            </div>
+             <div class="input-area">
+               ${config.isLocked ? `
+                 <div style="text-align: center; color: var(--text-muted); font-size: 13px; font-weight: 500; padding: 4px 8px;">
+                   🔒 Chat disabled: ${config.lockedReason || "Subscription or Trial expired."}
+                 </div>
+               ` : `
+                 <form id="chat-form" class="input-wrapper">
+                   <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
+                   <button type="submit" class="send-btn">
+                      <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                   </button>
+                 </form>
+               `}
+             </div>
           </div>
         `}
       </div>
@@ -855,7 +867,7 @@
                            
                            approveBtn.addEventListener('click', function() {
                               progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
-                              window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl)
+                              window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl, data.security.confirmationToken)
                                .then(res => { progressDiv.innerHTML = `✅ <em>Completed: ${actionLabel}</em>`; })
                                .catch(err => { progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`; });
                            });

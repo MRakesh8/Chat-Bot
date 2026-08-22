@@ -7,13 +7,15 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { eq, desc, and } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, withBypassRLS, withTenantContext } from "@workspace/db";
 import { knowledgeCategories, knowledgeSources, projects, knowledgeChunks } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { supabaseAdmin } from "../../lib/supabase";
 import { processKnowledgeSource, extractSourceContent, invalidateKnowledgeCache } from "../../services/knowledge";
+import { enqueueKnowledgeProcessing } from "../../lib/queue";
 import { extractYouTubeId } from "../../lib/youtube";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { logAdminBypassIfNecessary, checkAndIncrementUsage } from "../../security";
 
 const router = Router();
 
@@ -72,8 +74,20 @@ const upload = multer({
   },
 });
 
-async function categoryBelongsToProject(categoryId: string, projectId: string) {
-  const [category] = await db
+const ROLE_WEIGHTS: Record<string, number> = {
+  owner: 5,
+  admin: 4,
+  manager: 3,
+  agent: 2,
+  viewer: 1,
+};
+
+function hasRequiredRole(userRole: string, requiredRole: "owner" | "admin" | "manager" | "agent" | "viewer"): boolean {
+  return (ROLE_WEIGHTS[userRole] || 0) >= ROLE_WEIGHTS[requiredRole];
+}
+
+async function categoryBelongsToProject(tx: any, categoryId: string, projectId: string) {
+  const [category] = await tx
     .select({ id: knowledgeCategories.id })
     .from(knowledgeCategories)
     .where(and(eq(knowledgeCategories.id, categoryId), eq(knowledgeCategories.projectId, projectId)));
@@ -231,6 +245,7 @@ router.post("/upload", (req, res, next) => {
 
     // Determine upload intent: Chat attachment vs Knowledge Base upload
     const isChatUpload = !projectId && !categoryId;
+    let resolvedOrgId = "";
 
     if (!isChatUpload && (!projectId || !categoryId)) {
       if (localPath) fs.unlinkSync(localPath);
@@ -239,22 +254,44 @@ router.post("/upload", (req, res, next) => {
     }
 
     if (!isChatUpload) {
-      const role = (req as any).auth?.dbUser?.role;
-      const condition = (role === "super_admin" || role === "admin")
-        ? eq(projects.id, projectId)
-        : and(eq(projects.id, projectId), eq(projects.userId, userId));
-      const [project] = await db.select().from(projects).where(condition);
+      const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+      // Find the project's organizationId
+      const project = await withBypassRLS(async (tx: any) => {
+        return await tx.query.projects.findFirst({ where: eq(projects.id, projectId) });
+      });
       if (!project) {
         if (localPath) fs.unlinkSync(localPath);
-        res.status(403).json({ error: "Forbidden: You do not own this project" });
+        res.status(404).json({ error: "Project not found" });
         return;
       }
+      
+      const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+      if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
+        if (localPath) fs.unlinkSync(localPath);
+        res.status(403).json({ error: "Forbidden: Insufficient privileges in this workspace" });
+        return;
+      }
+      if (isSuperAdmin && !membership) {
+        await logAdminBypassIfNecessary(req, projectId, project.organizationId);
+      }
 
-      if (!(await categoryBelongsToProject(categoryId, projectId))) {
+      const belongs = await withTenantContext(project.organizationId as string, async (tx: any) => {
+        return await categoryBelongsToProject(tx, categoryId, projectId);
+      });
+      if (!belongs) {
         if (localPath) fs.unlinkSync(localPath);
         res.status(400).json({ error: "Category does not belong to this project" });
         return;
       }
+
+      // Verify parse/action quota
+      const quotaCheck = await checkAndIncrementUsage(projectId, "parse", 1);
+      if (!quotaCheck.allowed) {
+        if (localPath) fs.unlinkSync(localPath);
+        res.status(403).json({ error: quotaCheck.reason || "Monthly file parsing limits exceeded." });
+        return;
+      }
+      resolvedOrgId = project.organizationId as string;
     }
 
     let fileId: string | undefined;
@@ -265,8 +302,6 @@ router.post("/upload", (req, res, next) => {
       const storagePath = isChatUpload ? `chats/${conversationId || "temp-" + Date.now()}/${filename}` : `${projectId}/${filename}`;
       let uploadMimetype = mimetype;
       
-      // Supabase storage bucket default allows ["image/*", "application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
-      // Convert unsupported or restricted mimetypes (like text/markdown, text/csv, text/html, videos, audio, or zip archives) to text/plain to bypass bucket restrictions
       if (!mimetype.startsWith("image/") && mimetype !== "application/pdf" && !mimetype.includes("wordprocessingml")) {
         uploadMimetype = "text/plain";
       }
@@ -299,24 +334,26 @@ router.post("/upload", (req, res, next) => {
       return;
     }
 
-    const [record] = await db
-      .insert(knowledgeSources)
-      .values({
-        projectId,
-        categoryId,
-        tag: tag || null,
-        title: req.body.title || null,
-        notes: notes || null,
-        filename: originalname || null,
-        fileId: fileId || null,
-        sourceType,
-        status: "pending",
-      })
-      .returning();
-
-    processKnowledgeSource(record.id).catch((e) => {
-      req.log.error({ err: e }, "Async processing failed");
+    const record = await withTenantContext(resolvedOrgId, async (tx: any) => {
+      const [inserted] = await tx
+        .insert(knowledgeSources)
+        .values({
+          projectId,
+          categoryId,
+          tag: tag || null,
+          title: req.body.title || null,
+          notes: notes || null,
+          filename: originalname || null,
+          fileId: fileId || null,
+          sourceType,
+          status: "pending",
+          organizationId: resolvedOrgId,
+        })
+        .returning();
+      return inserted;
     });
+
+    enqueueKnowledgeProcessing(record.id);
 
     res.status(201).json(record);
   } catch (err: any) {
@@ -425,42 +462,69 @@ router.post("/url", async (req, res) => {
       return;
     }
 
-    const role = (req as any).auth?.dbUser?.role;
-    const condition = (role === "super_admin" || role === "admin")
-      ? eq(projects.id, projectId)
-      : and(eq(projects.id, projectId), eq(projects.userId, userId));
-    const [project] = await db.select().from(projects).where(condition);
+    // Resolve project and check membership
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const project = await withBypassRLS(async (tx: any) => {
+      return await tx.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    });
     if (!project) {
-      res.status(403).json({ error: "Forbidden: You do not own this project" });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
+      res.status(403).json({ error: "Forbidden: Insufficient privileges in this workspace" });
+      return;
+    }
+    if (isSuperAdmin && !membership) {
+      await logAdminBypassIfNecessary(req, projectId, project.organizationId);
+    }
 
-    if (!(await categoryBelongsToProject(categoryId, projectId))) {
+    const belongs = await withTenantContext(project.organizationId as string, async (tx: any) => {
+      return await categoryBelongsToProject(tx, categoryId, projectId);
+    });
+    if (!belongs) {
       res.status(400).json({ error: "Category does not belong to this project" });
       return;
     }
 
-    const records = [];
-    for (const url of urlsToProcess) {
-      const [record] = await db
-        .insert(knowledgeSources)
-        .values({
-          projectId,
-          categoryId,
-          tag: tag || null,
-          title: title || null,
-          sourceType,
-          sourceUrl: url || null,
-          notes: notes || null,
-          status: "pending",
-        })
-        .returning();
-
-      processKnowledgeSource(record.id).catch((e) => {
-        req.log.error({ err: e }, "Async processing failed for source");
-      });
-      records.push(record);
+    // Verify crawl or parse quota
+    if (["website", "youtube", "github", "instagram"].includes(sourceType)) {
+      const quotaCheck = await checkAndIncrementUsage(projectId, "crawl", urlsToProcess.length);
+      if (!quotaCheck.allowed) {
+        res.status(403).json({ error: quotaCheck.reason || "Monthly website crawl limits exceeded." });
+        return;
+      }
+    } else {
+      const quotaCheck = await checkAndIncrementUsage(projectId, "parse", urlsToProcess.length);
+      if (!quotaCheck.allowed) {
+        res.status(403).json({ error: quotaCheck.reason || "Monthly parsing limits exceeded." });
+        return;
+      }
     }
+
+    const records: any[] = [];
+    await withTenantContext(project.organizationId as string, async (tx: any) => {
+      for (const url of urlsToProcess) {
+        const [record] = await tx
+          .insert(knowledgeSources)
+          .values({
+            projectId,
+            categoryId,
+            tag: tag || null,
+            title: title || null,
+            sourceType,
+            sourceUrl: url || null,
+            notes: notes || null,
+            status: "pending",
+            organizationId: project.organizationId,
+          })
+          .returning();
+
+        enqueueKnowledgeProcessing(record.id);
+        records.push(record);
+      }
+    });
 
     res.status(201).json(records.length === 1 ? records[0] : records);
   } catch (err: any) {
@@ -476,18 +540,25 @@ router.get("/project/:projectId", async (req, res) => {
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const role = (req as any).auth?.dbUser?.role;
-    const condition = (role === "super_admin" || role === "admin")
-      ? eq(projects.id, projectId)
-      : and(eq(projects.id, projectId), eq(projects.userId, userId));
-    const [project] = await db.select().from(projects).where(condition);
-    if (!project) { res.status(403).json({ error: "Forbidden" }); return; }
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const project = await withBypassRLS(async (tx: any) => {
+      return await tx.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    });
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && !membership) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (isSuperAdmin && !membership) {
+      await logAdminBypassIfNecessary(req, projectId, project.organizationId);
+    }
 
-    const sources = await db
-      .select()
-      .from(knowledgeSources)
-      .where(eq(knowledgeSources.projectId, projectId))
-      .orderBy(desc(knowledgeSources.createdAt));
+    const sources = await withTenantContext(project.organizationId as string, async (tx: any) => {
+      return await tx
+        .select()
+        .from(knowledgeSources)
+        .where(eq(knowledgeSources.projectId, projectId))
+        .orderBy(desc(knowledgeSources.createdAt));
+    });
     
     res.json(sources);
   } catch (err: any) {
@@ -503,20 +574,26 @@ router.delete("/:id", async (req, res) => {
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const [result] = await db
-      .select({ source: knowledgeSources, project: projects })
-      .from(knowledgeSources)
-      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(eq(knowledgeSources.id, id));
+    const [result] = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({ source: knowledgeSources, project: projects })
+        .from(knowledgeSources)
+        .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+        .where(eq(knowledgeSources.id, id));
+    });
 
     if (!result || !result.source) {
       res.status(404).json({ error: "Source not found" });
       return;
     }
-    const role = (req as any).auth?.dbUser?.role;
-    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === result.project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "admin"))) {
       res.status(403).json({ error: "Access denied" });
       return;
+    }
+    if (isSuperAdmin && !membership) {
+      await logAdminBypassIfNecessary(req, result.project.id, result.project.organizationId);
     }
     
     const record = result.source;
@@ -531,9 +608,12 @@ router.delete("/:id", async (req, res) => {
       }
     }
 
-    await db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledgeSourceId, id));
-    await db.delete(knowledgeSources).where(eq(knowledgeSources.id, id));
-    await invalidateKnowledgeCache(record.projectId);
+    await withTenantContext(result.project.organizationId as string, async (tx: any) => {
+      await tx.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledgeSourceId, id));
+      await tx.delete(knowledgeSources).where(eq(knowledgeSources.id, id));
+      await invalidateKnowledgeCache(record.projectId);
+    });
+
     res.status(204).send();
   } catch (err: any) {
     req.log.error({ err }, "Error deleting source");
@@ -548,31 +628,35 @@ router.post("/:id/reprocess", async (req, res) => {
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const [result] = await db
-      .select({ source: knowledgeSources, project: projects })
-      .from(knowledgeSources)
-      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(eq(knowledgeSources.id, id));
+    const [result] = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({ source: knowledgeSources, project: projects })
+        .from(knowledgeSources)
+        .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+        .where(eq(knowledgeSources.id, id));
+    });
 
     if (!result || !result.source) {
       res.status(404).json({ error: "Source not found" });
       return;
     }
-    const role = (req as any).auth?.dbUser?.role;
-    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === result.project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
 
-    const [record] = await db
-      .update(knowledgeSources)
-      .set({ status: "pending" })
-      .where(eq(knowledgeSources.id, id))
-      .returning();
-
-    processKnowledgeSource(record.id).catch((e) => {
-      req.log.error({ err: e }, "Async reprocessing failed");
+    const record = await withTenantContext(result.project.organizationId as string, async (tx: any) => {
+      const [updated] = await tx
+        .update(knowledgeSources)
+        .set({ status: "pending" })
+        .where(eq(knowledgeSources.id, id))
+        .returning();
+      return updated;
     });
+
+    enqueueKnowledgeProcessing(record.id);
 
     res.json(record);
   } catch (err: any) {
@@ -589,18 +673,21 @@ router.patch("/:id", async (req, res) => {
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const [result] = await db
-      .select({ source: knowledgeSources, project: projects })
-      .from(knowledgeSources)
-      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(eq(knowledgeSources.id, id));
+    const [result] = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({ source: knowledgeSources, project: projects })
+        .from(knowledgeSources)
+        .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+        .where(eq(knowledgeSources.id, id));
+    });
 
     if (!result || !result.source) {
       res.status(404).json({ error: "Source not found" });
       return;
     }
-    const role = (req as any).auth?.dbUser?.role;
-    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === result.project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
@@ -613,7 +700,10 @@ router.patch("/:id", async (req, res) => {
     if (tag !== undefined) updates.tag = tag || null;
     if (isWidgetExposed !== undefined) updates.isWidgetExposed = isWidgetExposed;
     if (categoryId !== undefined) {
-      if (!(await categoryBelongsToProject(categoryId, existing.projectId))) {
+      const belongs = await withTenantContext(result.project.organizationId as string, async (tx: any) => {
+        return await categoryBelongsToProject(tx, categoryId, existing.projectId);
+      });
+      if (!belongs) {
         res.status(400).json({ error: "Category does not belong to this project" });
         return;
       }
@@ -658,16 +748,17 @@ router.patch("/:id", async (req, res) => {
       updates.status = "pending";
     }
 
-    const [record] = await db
-      .update(knowledgeSources)
-      .set(updates)
-      .where(eq(knowledgeSources.id, id))
-      .returning();
+    const record = await withTenantContext(result.project.organizationId as string, async (tx: any) => {
+      const [updated] = await tx
+        .update(knowledgeSources)
+        .set(updates)
+        .where(eq(knowledgeSources.id, id))
+        .returning();
+      return updated;
+    });
 
     if (contentChanged) {
-      processKnowledgeSource(record.id).catch((e) => {
-        req.log.error({ err: e }, "Async reprocessing failed after edit");
-      });
+      enqueueKnowledgeProcessing(record.id);
     }
 
     res.json(record);
@@ -686,32 +777,41 @@ router.patch("/:id/category", async (req, res) => {
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
     if (!categoryId) { res.status(400).json({ error: "Missing categoryId" }); return; }
 
-    const [result] = await db
-      .select({ source: knowledgeSources, project: projects })
-      .from(knowledgeSources)
-      .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
-      .where(eq(knowledgeSources.id, id));
+    const [result] = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({ source: knowledgeSources, project: projects })
+        .from(knowledgeSources)
+        .innerJoin(projects, eq(knowledgeSources.projectId, projects.id))
+        .where(eq(knowledgeSources.id, id));
+    });
 
     if (!result || !result.source) {
       res.status(404).json({ error: "Source not found" });
       return;
     }
-    const role = (req as any).auth?.dbUser?.role;
-    if (result.project.userId !== userId && role !== "super_admin" && role !== "admin") {
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === result.project.organizationId);
+    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
 
-    if (!(await categoryBelongsToProject(categoryId, result.source.projectId))) {
+    const belongs = await withTenantContext(result.project.organizationId as string, async (tx: any) => {
+      return await categoryBelongsToProject(tx, categoryId, result.source.projectId);
+    });
+    if (!belongs) {
       res.status(400).json({ error: "Category does not belong to this project" });
       return;
     }
 
-    const [record] = await db
-      .update(knowledgeSources)
-      .set({ categoryId, updatedAt: new Date() })
-      .where(eq(knowledgeSources.id, id))
-      .returning();
+    const record = await withTenantContext(result.project.organizationId as string, async (tx: any) => {
+      const [updated] = await tx
+        .update(knowledgeSources)
+        .set({ categoryId, updatedAt: new Date() })
+        .where(eq(knowledgeSources.id, id))
+        .returning();
+      return updated;
+    });
 
     res.json(record);
   } catch (err: any) {

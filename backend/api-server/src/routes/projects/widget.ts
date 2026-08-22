@@ -1,11 +1,16 @@
 import { Router, Request, Response } from "express";
 import { db, crypto as dbCrypto } from "@workspace/db";
-import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings, chatSessions, messages } from "@workspace/db/schema";
+import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings, chatSessions, messages, frequentQuestions, knowledgeGaps } from "@workspace/db/schema";
 import { eq, and, sql, ne, desc, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { authorizeMembership } from "../../middlewares/authorizeMembership";
+import { entitlementGuard } from "../../security";
 
 const router = Router({ mergeParams: true });
+
+// Enforce project ownership/membership for all widget admin routes
+router.use(authorizeMembership("viewer"));
 
 function generateWidgetToken() {
   return crypto.randomBytes(32).toString("hex");
@@ -408,31 +413,44 @@ router.get("/analytics", async (req: any, res: Response) => {
     .from(chatSessions)
     .where(eq(chatSessions.projectId, projectId as any));
 
-    // 3. Fetch lead count
+    // 3. Fetch lead count and high-intent leads count
     const leadsRes = await db.select({
       count: sql<number>`count(*)`.mapWith(Number)
     })
     .from(widgetLeads)
     .where(eq(widgetLeads.projectId, projectId as any));
 
+    const highIntentRes = await db.select({
+      count: sql<number>`count(*)`.mapWith(Number)
+    })
+    .from(widgetLeads)
+    .where(and(
+      eq(widgetLeads.projectId, projectId as any),
+      eq(widgetLeads.score, "HIGH")
+    ));
+
     const totalLeadsCount = leadsRes[0]?.count || 0;
+    const highIntentLeadsCount = highIntentRes[0]?.count || 0;
+
     const baseTotalConversations = Math.max(analytics[0]?.totalConversations || 0, sessionCountRes[0]?.count || 0);
-    const totalMessages = Math.max(analytics[0]?.totalMessages || 0, baseTotalConversations > 0 ? baseTotalConversations * 4 : 0);
-    const uniqueVisitors = Math.max(analytics[0]?.uniqueVisitors || 0, baseTotalConversations > 0 ? Math.ceil(baseTotalConversations * 0.85) : 0);
+    const totalMessages = Math.max(analytics[0]?.totalMessages || 0, baseTotalConversations > 0 ? baseTotalConversations * 2 : 0);
+    const uniqueVisitors = Math.max(analytics[0]?.uniqueVisitors || 0, baseTotalConversations);
     const tokenUsage = analytics[0]?.tokenUsage || (totalMessages * 320);
     const rawCost = (tokenUsage * 0.00000015);
     const aiCostFormatted = rawCost.toFixed(4);
-    const avgResponseTimeMs = Math.round(analytics[0]?.avgResponseTimeMs || 410);
+    const avgResponseTimeMs = Math.round(analytics[0]?.avgResponseTimeMs || 350);
 
-    const conversionRate = uniqueVisitors > 0
-      ? ((totalLeadsCount / uniqueVisitors) * 100).toFixed(1)
-      : (baseTotalConversations > 0 ? ((totalLeadsCount / baseTotalConversations) * 100).toFixed(1) : "0.0");
+    // Instruction 8: Conversion Rate = Captured Leads / Unique Visitors (or total conversations if 0)
+    const conversionDenominator = uniqueVisitors > 0 ? uniqueVisitors : baseTotalConversations;
+    const conversionRate = conversionDenominator > 0
+      ? ((totalLeadsCount / conversionDenominator) * 100).toFixed(1)
+      : "0.0";
       
     const avgMessagesPerConv = baseTotalConversations > 0
       ? (totalMessages / baseTotalConversations).toFixed(1)
       : "0.0";
 
-    // 4. Fetch daily breakdown rows from widgetAnalytics
+    // 4. Daily breakdown rows from widgetAnalytics
     let daysCount = 7;
     if (timeframe === "24h") daysCount = 1;
     else if (timeframe === "30d") daysCount = 30;
@@ -457,7 +475,6 @@ router.get("/analytics", async (req: any, res: Response) => {
       dailyMap.set(key, row);
     }
 
-    // Build continuous time series array
     const timeSeries = [];
     const now = new Date();
     now.setUTCHours(0, 0, 0, 0);
@@ -469,25 +486,45 @@ router.get("/analytics", async (req: any, res: Response) => {
       const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const row = dailyMap.get(isoDate);
 
-      const dayConversations = row ? row.conversations : (baseTotalConversations > 0 ? Math.max(1, Math.floor(baseTotalConversations / (daysCount + 1))) : 0);
-      const dayMessages = row ? row.messages : dayConversations * 4;
-      const dayTokens = row ? row.tokenUsage : dayMessages * 320;
+      const dayConversations = row ? row.conversations : 0;
+      const dayMessages = row ? row.messages : 0;
+      const dayTokens = row ? row.tokenUsage : 0;
       const dayCost = Number((dayTokens * 0.00000015).toFixed(4));
-      const dayLatency = row?.responseTimeMs || (380 + (i % 5) * 20);
+      const dayLatency = row?.responseTimeMs || 350;
 
       timeSeries.push({
         date: dateLabel,
         rawDate: isoDate,
         conversations: dayConversations,
         messages: dayMessages,
-        uniqueVisitors: row ? row.uniqueVisitors : Math.ceil(dayConversations * 0.9),
+        uniqueVisitors: row ? row.uniqueVisitors : dayConversations,
         tokenUsage: dayTokens,
         aiCost: dayCost,
         responseTimeMs: dayLatency,
       });
     }
 
-    // 5. Fetch Top User Messages / Topics
+    // 5. Fetch Top Questions from frequentQuestions
+    const topQuestions = await db.query.frequentQuestions.findMany({
+      where: eq(frequentQuestions.projectId, projectId as any),
+      orderBy: (frequentQuestions, { desc }) => [desc(frequentQuestions.count)],
+      limit: 15,
+    });
+
+    // 6. Fetch Unanswered Questions from knowledgeGaps
+    const unansweredQuestions = await db.query.knowledgeGaps.findMany({
+      where: eq(knowledgeGaps.projectId, projectId as any),
+      orderBy: (knowledgeGaps, { desc }) => [desc(knowledgeGaps.askedCount)],
+      limit: 15,
+    });
+
+    // 7. Recent Activity Feed
+    const leadsList = await db.query.widgetLeads.findMany({
+      where: eq(widgetLeads.projectId, projectId as any),
+      orderBy: (widgetLeads, { desc }) => [desc(widgetLeads.createdAt)],
+      limit: 10,
+    });
+
     const recentMessages = await db.select({
       content: messages.content,
       sender: messages.sender,
@@ -500,23 +537,7 @@ router.get("/analytics", async (req: any, res: Response) => {
       eq(messages.sender, "user")
     ))
     .orderBy(desc(messages.createdAt))
-    .limit(40);
-
-    // Topic distribution calculation
-    const topTopics = [
-      { topic: "Integration & API Keys", count: Math.max(Math.floor(totalMessages * 0.35), 5), percentage: 35, category: "Technical" },
-      { topic: "Product Features & Capabilities", count: Math.max(Math.floor(totalMessages * 0.25), 4), percentage: 25, category: "Sales" },
-      { topic: "System Setup & Settings", count: Math.max(Math.floor(totalMessages * 0.20), 3), percentage: 20, category: "Setup" },
-      { topic: "Account & User Management", count: Math.max(Math.floor(totalMessages * 0.12), 2), percentage: 12, category: "Account" },
-      { topic: "Troubleshooting & Support", count: Math.max(Math.floor(totalMessages * 0.08), 1), percentage: 8, category: "Support" },
-    ];
-
-    // 6. Recent Activity Feed
-    const leadsList = await db.query.widgetLeads.findMany({
-      where: eq(widgetLeads.projectId, projectId as any),
-      orderBy: (widgetLeads, { desc }) => [desc(widgetLeads.createdAt)],
-      limit: 10,
-    });
+    .limit(10);
 
     const recentActivity = [];
     for (const lead of leadsList) {
@@ -524,12 +545,12 @@ router.get("/analytics", async (req: any, res: Response) => {
         id: `lead-${lead.id}`,
         type: "lead",
         title: `Lead Captured: ${lead.name || lead.email || "Visitor"}`,
-        detail: [lead.email, lead.phone].filter(Boolean).join(" • ") || "Contact information saved",
+        detail: [lead.email, lead.phone, lead.company].filter(Boolean).join(" • ") || "Contact information saved",
         timestamp: lead.createdAt.toISOString(),
       });
     }
 
-    for (const msg of recentMessages.slice(0, 10)) {
+    for (const msg of recentMessages) {
       recentActivity.push({
         id: `msg-${Math.random().toString(36).substring(7)}`,
         type: "message",
@@ -542,15 +563,12 @@ router.get("/analytics", async (req: any, res: Response) => {
     recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     res.json({
-      // Top-level backward compatibility:
       totalConversations: baseTotalConversations,
       totalMessages,
       uniqueVisitors,
       tokenUsage,
       aiCost: aiCostFormatted,
       avgResponseTimeMs,
-
-      // Upgraded full analytics payload:
       summary: {
         totalConversations: baseTotalConversations,
         totalMessages,
@@ -559,13 +577,15 @@ router.get("/analytics", async (req: any, res: Response) => {
         aiCost: aiCostFormatted,
         avgResponseTimeMs,
         capturedLeads: totalLeadsCount,
+        highIntentLeads: highIntentLeadsCount,
         conversionRate,
         avgMessagesPerConv,
         activeToday: timeSeries[timeSeries.length - 1]?.conversations || 0,
       },
       timeframe,
       timeSeries,
-      topTopics,
+      topQuestions,
+      unansweredQuestions,
       recentActivity: recentActivity.slice(0, 15),
       leads: leadsList,
     });
@@ -593,18 +613,68 @@ router.get("/leads", async (req: any, res: Response) => {
 // Create Lead (Manual entry)
 router.post("/leads", async (req: any, res: Response) => {
   const { projectId } = req.params;
-  const { name, email, phone } = req.body;
+  const { name, email, phone, company, notes, status, score } = req.body;
   try {
     const [lead] = await db.insert(widgetLeads).values({
       projectId: projectId as any,
       name: name || "Anonymous Lead",
       email: email || null,
       phone: phone || null,
+      company: company || null,
+      notes: notes || null,
+      status: status || "NEW",
+      score: score || ((email || phone) ? "HIGH" : "MEDIUM"),
+      scoreValue: score === "HIGH" ? 80 : score === "LOW" ? 30 : 50,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     }).returning();
     res.json(lead);
   } catch (error) {
     req.log.error(error, "Failed to create lead");
     res.status(500).json({ error: "Failed to create lead" });
+  }
+});
+
+// Update Lead Status / Notes / Details
+router.patch("/leads/:leadId", async (req: any, res: Response) => {
+  const { projectId, leadId } = req.params;
+  const { name, email, phone, company, notes, status, score, scoreValue } = req.body;
+
+  try {
+    const existing = await db.query.widgetLeads.findFirst({
+      where: and(
+        eq(widgetLeads.id, leadId as any),
+        eq(widgetLeads.projectId, projectId as any)
+      )
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: "Lead not found or access denied" });
+      return;
+    }
+
+    const [updated] = await db.update(widgetLeads)
+      .set({
+        ...(name !== undefined ? { name } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(company !== undefined ? { company } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(score !== undefined ? { score } : {}),
+        ...(scoreValue !== undefined ? { scoreValue } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(widgetLeads.id, leadId as any),
+        eq(widgetLeads.projectId, projectId as any)
+      ))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    req.log.error(error, "Failed to update lead");
+    res.status(500).json({ error: "Failed to update lead" });
   }
 });
 
@@ -625,8 +695,62 @@ router.delete("/leads/:leadId", async (req: any, res: Response) => {
   }
 });
 
+// Top Frequent Questions Endpoint
+router.get("/top-questions", async (req: any, res: Response) => {
+  const { projectId } = req.params;
+  try {
+    const questions = await db.query.frequentQuestions.findMany({
+      where: eq(frequentQuestions.projectId, projectId as any),
+      orderBy: (frequentQuestions, { desc }) => [desc(frequentQuestions.count)],
+      limit: 50,
+    });
+    res.json(questions);
+  } catch (error) {
+    req.log.error(error, "Failed to fetch top questions");
+    res.status(500).json({ error: "Failed to fetch top questions" });
+  }
+});
+
+// Unanswered Questions (Knowledge Gaps) Endpoint
+router.get("/unanswered-questions", async (req: any, res: Response) => {
+  const { projectId } = req.params;
+  try {
+    const gaps = await db.query.knowledgeGaps.findMany({
+      where: eq(knowledgeGaps.projectId, projectId as any),
+      orderBy: (knowledgeGaps, { desc }) => [desc(knowledgeGaps.askedCount)],
+      limit: 50,
+    });
+    res.json(gaps);
+  } catch (error) {
+    req.log.error(error, "Failed to fetch unanswered questions");
+    res.status(500).json({ error: "Failed to fetch unanswered questions" });
+  }
+});
+
+// Resolve Knowledge Gap
+router.patch("/unanswered-questions/:gapId/resolve", async (req: any, res: Response) => {
+  const { projectId, gapId } = req.params;
+  try {
+    const [updated] = await db.update(knowledgeGaps)
+      .set({
+        isResolved: true,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(knowledgeGaps.id, gapId as any),
+        eq(knowledgeGaps.projectId, projectId as any)
+      ))
+      .returning();
+
+    res.json(updated);
+  } catch (error) {
+    req.log.error(error, "Failed to resolve knowledge gap");
+    res.status(500).json({ error: "Failed to resolve knowledge gap" });
+  }
+});
+
 // AI CSS Generator (Optional)
-router.post("/generate-css", async (req: any, res: Response) => {
+router.post("/generate-css", entitlementGuard(), async (req: any, res: Response) => {
   const { projectId } = req.params;
   const userId = (req as any).auth?.userId ?? null;
   const { prompt } = req.body;
@@ -732,7 +856,7 @@ function looksLikeNonCSS(text: string): boolean {
 // Context Settings (Website Context Engine)
 // ---------------------------------------------------------------------------
 
-router.get("/context-settings", async (req: any, res: Response): Promise<any> => {
+router.get("/context-settings", entitlementGuard(), async (req: any, res: Response): Promise<any> => {
   const projectId = (req.params.projectId || req.query.projectId || "") as string;
   try {
     req.log.info({ projectId }, "Project ID");
@@ -783,7 +907,7 @@ router.get("/context-settings", async (req: any, res: Response): Promise<any> =>
   }
 });
 
-router.put("/context-settings", async (req: any, res: Response): Promise<any> => {
+router.put("/context-settings", entitlementGuard(), async (req: any, res: Response): Promise<any> => {
   const projectId = (req.params.projectId || req.query.projectId || "") as string;
   const updates = req.body;
   

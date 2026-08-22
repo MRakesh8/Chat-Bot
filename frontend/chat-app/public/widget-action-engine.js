@@ -119,7 +119,7 @@
   /**
    * Main execution handler for Agent Actions.
    */
-  AriaActionEngine.prototype.executeAction = function(actionParams, widgetToken, executionId, apiBaseUrl) {
+  AriaActionEngine.prototype.executeAction = function(actionParams, widgetToken, executionId, apiBaseUrl, confirmationToken) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var startTime = Date.now();
@@ -137,7 +137,8 @@
            duration: Date.now() - startTime,
            url: window.location.href,
            verification: verificationData || {},
-           error: error ? error.message || String(error) : null
+           error: error ? error.message || String(error) : null,
+           confirmationToken: confirmationToken
         };
         fetch((apiBaseUrl || 'http://localhost:3001') + '/api/widget/' + widgetToken + '/action-result', {
            method: 'POST',

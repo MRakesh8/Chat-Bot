@@ -18,6 +18,19 @@ import {
   sessionMemoryStore
 } from "../services/context-engine";
 import { detectPromptInjection } from "../middlewares/prompt-firewall";
+import {
+  validateWidgetOrigin,
+  checkProjectEntitlement,
+  redactSensitiveContext,
+  sendSafeError,
+  getRequestId,
+  checkAndIncrementUsage,
+  verifyActionConfirmationToken,
+} from "../security";
+import { processAndSaveLead } from "../services/lead-detection";
+import { trackUserQuestion } from "../services/question-normalization";
+import { trackKnowledgeGap, isFallbackResponse } from "../services/unanswered-questions";
+
 
 function isRetryableLlmError(err: any): boolean {
   if (!err) return false;
@@ -484,7 +497,7 @@ async function executeLlmWithFailover(
 
 const router = Router();
 
-// Middleware to validate origin for widget routes
+// Middleware to validate origin and project entitlement for widget routes
 router.use(async (req: Request, res: Response, next): Promise<any> => {
   // Extract token from URL path robustly, ignoring any empty segments caused by double slashes
   const pathSegments = req.path.split('/').filter(Boolean);
@@ -492,7 +505,7 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
   const widgetToken = req.params?.widgetToken || req.body?.widgetToken || req.query?.widgetToken || pathToken;
   
   if (!widgetToken) {
-    return res.status(401).json({ error: "Missing widget token" });
+    return sendSafeError(res, 401, "MISSING_TOKEN", "Missing widget token", req);
   }
 
   try {
@@ -501,37 +514,50 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
     });
 
     if (!settings || !settings.isEnabled) {
-      return res.status(403).json({ error: "Invalid or disabled widget token" });
+      return sendSafeError(res, 403, "INVALID_WIDGET_TOKEN", "Invalid or disabled widget token", req);
     }
 
-    const origin = req.headers.origin;
-    if (origin && origin !== "null" && settings.allowedDomains.length > 0) {
-      const allowedUrls = settings.allowedDomains.map((domain: string) => {
-        try {
-          return new URL(domain.startsWith("http") ? domain : `https://${domain}`).hostname;
-        } catch {
-          return domain;
-        }
-      });
-      
-      try {
-        const requestHostname = new URL(origin).hostname;
-        if (!allowedUrls.includes(requestHostname)) {
-          req.log.error({ origin }, "EARLY RETURN: Domain not authorized");
-          return res.status(403).json({ error: "Domain not authorized" });
-        }
-      } catch (e) {
-        req.log.error({ origin, err: e }, "EARLY RETURN: Invalid origin");
-        return res.status(403).json({ error: "Invalid origin" });
-      }
+    // 1. Domain Authorization Check
+    const originCheck = validateWidgetOrigin(req, settings.allowedDomains || []);
+    if (!originCheck.valid) {
+      req.log.warn({ domain: originCheck.domain, reason: originCheck.reason }, "Domain not authorized for widget token");
+      return sendSafeError(
+        res,
+        403,
+        "DOMAIN_NOT_ALLOWED",
+        "Domain not authorized",
+        req,
+        { domain: originCheck.domain }
+      );
     }
 
-    // Pass projectId to request
+    // 2. Server-side Entitlement Check (with lazy trial activation)
+    const entitlement = await checkProjectEntitlement(settings.projectId);
+    
+    // Attach projectId and entitlement state to request
     (req as any).projectId = settings.projectId;
+    (req as any).entitlement = entitlement;
+
+    const isConfigRoute = req.path.endsWith("/config");
+    if (!entitlement.allowed && !isConfigRoute) {
+      req.log.warn(
+        { projectId: settings.projectId, status: entitlement.status },
+        "Widget request blocked due to entitlement status"
+      );
+      return sendSafeError(
+        res,
+        403,
+        entitlement.status,
+        entitlement.message || "Your trial has expired. Please upgrade to continue.",
+        req,
+        { expiresAt: entitlement.expiresAt }
+      );
+    }
+
     return next();
   } catch (error) {
     req.log.error({ err: error }, "Widget validation error");
-    return res.status(500).json({ error: "Internal server error" });
+    return sendSafeError(res, 500, "INTERNAL_ERROR", "Internal server error", req);
   }
 });
 
@@ -555,11 +581,15 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
       return res.status(404).json({ error: "Widget config not found" });
     }
 
+    const entitlement = (req as any).entitlement;
+    const isLocked = entitlement && !entitlement.allowed;
+    const lockedReason = isLocked ? (entitlement.message || "Subscription or Trial expired.") : undefined;
+
     // Return safe configuration (no keys, no internal ids if possible)
     return res.json({
       botName: settings.botName,
       botAvatar: settings.botAvatar,
-      welcomeMessage: settings.welcomeMessage,
+      welcomeMessage: isLocked ? lockedReason : settings.welcomeMessage,
       themeColor: settings.themeColor,
       position: settings.position,
       displayMode: settings.displayMode,
@@ -567,11 +597,15 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
       customContainerId: settings.customContainerId,
       humanHandoffLinks: settings.humanHandoffLinks,
       leadsEnabled: settings.leadsEnabled,
+      isLocked: isLocked,
+      lockedReason: lockedReason,
+      entitlementStatus: entitlement?.status,
+      expiresAt: entitlement?.expiresAt,
       contextEngine: contextSettings ? {
-        enabled: contextSettings.enabled,
+        enabled: !isLocked && contextSettings.enabled,
         maxContextSizeBytes: contextSettings.maxContextSizeBytes,
         developerDebugMode: contextSettings.developerDebugMode
-      } : { enabled: true, maxContextSizeBytes: 6144, developerDebugMode: false }
+      } : { enabled: false, maxContextSizeBytes: 6144, developerDebugMode: false }
     });
   } catch (error) {
     req.log.error({ err: error }, "Failed to fetch widget config");
@@ -656,6 +690,16 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       req.log.error({ err: e }, "Failed to track analytics");
     }
 
+    // Quota Usage Verification
+    const quotaCheck = await checkAndIncrementUsage(projectId, "message", 1);
+    if (!quotaCheck.allowed) {
+      req.log.warn({ projectId, reason: quotaCheck.reason }, "Quota limits exceeded for project chat widget");
+      res.write(`data: ${JSON.stringify({ content: "Monthly message limits for this chatbot have been reached. Please contact the administrator or upgrade your subscription." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      return res;
+    }
+
     // Resolve & Manage Keys with Failover
     const keys = await fetchAndManageWidgetKeys(projectId, userId);
 
@@ -668,6 +712,21 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
     const lastUserMessage = messages[messages.length - 1]?.content || "";
     const previousAssistantMessage = messages.length >= 2 ? messages[messages.length - 2]?.content : "";
+
+    // Track Lead & Frequent Questions asynchronously in background
+    if (lastUserMessage) {
+      processAndSaveLead({
+        projectId,
+        sessionId,
+        sourcePageUrl: websiteContext?.url,
+        userMessage: lastUserMessage,
+      }).catch((e) => req.log.error({ err: e }, "Background lead processing error"));
+
+      trackUserQuestion({
+        projectId,
+        questionText: lastUserMessage,
+      }).catch((e) => req.log.error({ err: e }, "Background question tracking error"));
+    }
 
     // 1. Check if the user is pointing out a mistake
     let userIsPointingOutMistake = false;
@@ -975,6 +1034,18 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         }
       }
 
+      // Track Knowledge Gap if AI returned fallback response or retrieved no context
+      if (isFallbackResponse(fullResponseText) || (!fusedContext?.knowledgeChunks || fusedContext.knowledgeChunks.length === 0)) {
+        trackKnowledgeGap({
+          projectId,
+          questionText: lastUserMessage,
+          sessionId,
+          sourceUrl: websiteContext?.url,
+          confidence: "low",
+          reason: isFallbackResponse(fullResponseText) ? "AI_FALLBACK" : "NO_RAG_MATCH",
+        }).catch((e) => req.log.error({ err: e }, "Background knowledge gap tracking error"));
+      }
+
       // After streaming chat, invoke Swarm Coordinator ONLY IF they explicitly asked for an action in a roundabout way
       // But usually, ACTION_REQUEST handles this now. We'll leave a soft-invoke here just in case the LLM realizes it needs to act.
       try {
@@ -1053,13 +1124,36 @@ router.post("/:widgetToken/swarm-dryrun", async (req: Request, res: Response): P
 import { workflowExecutions, executionSteps } from "@workspace/db/schema";
 
 router.post("/:widgetToken/action-result", async (req: Request, res: Response): Promise<any> => {
-  const { executionId, actionId, status, tool, duration, url, domDelta, verification, error } = req.body;
+  const { executionId, actionId, status, tool, duration, url, domDelta, verification, error, confirmationToken } = req.body;
   if (!executionId || !actionId) {
     return res.status(400).json({ error: "Missing executionId or actionId" });
   }
 
   try {
     const projectId = (req as any).projectId;
+
+    const [step] = await db.select().from(executionSteps).where(eq(executionSteps.id, actionId)).limit(1);
+    if (!step) {
+      return res.status(404).json({ error: "Execution step not found" });
+    }
+
+    if (step.status === "pending_approval") {
+      const [execRecord] = await db.select().from(workflowExecutions).where(eq(workflowExecutions.id, executionId)).limit(1);
+      const verified = verifyActionConfirmationToken(confirmationToken, {
+        userId: (req as any).auth?.userId || "public_visitor",
+        projectId,
+        sessionId: execRecord?.sessionId || "",
+        actionId,
+        actionType: step.actionType || "",
+        actionTarget: step.actionTarget || "",
+      });
+
+      if (!verified) {
+        req.log.warn({ actionId, executionId }, "Failed action confirmation token verification");
+        await db.update(executionSteps).set({ status: "failed", error: "Invalid action confirmation token." }).where(eq(executionSteps.id, actionId));
+        return res.status(403).json({ error: "Action confirmation token invalid or expired." });
+      }
+    }
     
     // Update execution steps
     await db.update(executionSteps)
@@ -1093,7 +1187,7 @@ router.post("/:widgetToken/action-result", async (req: Request, res: Response): 
 // Public Lead Capture Endpoint
 router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<any> => {
   const { widgetToken } = req.params;
-  const { name, email, phone } = req.body;
+  const { name, email, phone, company, sessionId, sourcePageUrl, userIntent } = req.body;
   try {
     const token = Array.isArray(widgetToken) ? widgetToken[0] : widgetToken;
     const settings = await db.query.projectWidgetSettings.findFirst({
@@ -1102,13 +1196,36 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
     if (!settings) {
       return res.status(404).json({ error: "Widget token invalid or not found" });
     }
-    const [lead] = await db.insert(widgetLeads).values({
+
+    const lead = await processAndSaveLead({
+      projectId: settings.projectId,
+      sessionId,
+      sourcePageUrl,
+      userMessage: [name, email, phone, company, userIntent].filter(Boolean).join(" "),
+    });
+
+    if (lead) {
+      return res.json({ success: true, lead });
+    }
+
+    // Direct fallback insertion if signals were not triggered
+    const [insertedLead] = await db.insert(widgetLeads).values({
       projectId: settings.projectId,
       name: name || "Anonymous Lead",
       email: email || null,
       phone: phone || null,
+      company: company || null,
+      sessionId: sessionId || null,
+      sourcePageUrl: sourcePageUrl || null,
+      userIntent: userIntent || "direct_form",
+      status: "NEW",
+      score: (email || phone) ? "HIGH" : "MEDIUM",
+      scoreValue: (email || phone) ? 80 : 50,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     }).returning();
-    return res.json({ success: true, lead });
+
+    return res.json({ success: true, lead: insertedLead });
   } catch (err: any) {
     req.log.error("Failed to capture public lead:", err);
     return res.status(500).json({ error: "Failed to capture lead" });

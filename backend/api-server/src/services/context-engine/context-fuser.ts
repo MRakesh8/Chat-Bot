@@ -20,6 +20,7 @@ import type {
 } from "./types";
 import { searchProjectKnowledge } from "../knowledge";
 import { intentClassifier } from "./intent-classifier";
+import { redactSensitiveContext } from "../../security";
 
 // ---------------------------------------------------------------------------
 // Context Fuser
@@ -59,9 +60,10 @@ export class ContextFuser {
     const needsKbContext = ["Knowledge Question", "Website Question", "General Question", "Pricing"].includes(userIntent);
 
     // ── 1. Format website context ──
-    const websiteContextString = (websiteContext && needsWebsiteContext)
+    const rawWebsiteContextString = (websiteContext && needsWebsiteContext)
       ? this.formatWebsiteContext(websiteContext, settings)
       : "";
+    const websiteContextString = redactSensitiveContext(rawWebsiteContextString);
 
     // ── 2. Detect mistakes ──
     const detectedMistakes: DetectedMistake[] =

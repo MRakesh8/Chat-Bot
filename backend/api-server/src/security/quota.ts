@@ -1,0 +1,174 @@
+import { db, withBypassRLS, withTenantContext } from "@workspace/db";
+import { projects, projectLicenses, plans, organizationUsage, usageEvents } from "@workspace/db/schema";
+import { eq, and, sql } from "drizzle-orm";
+import { logger } from "../lib/logger";
+
+export interface QuotaCheckResult {
+  allowed: boolean;
+  reason?: string;
+  current?: number;
+  limit?: number;
+}
+
+/**
+  * Validates and increments tenant usage counts inside the active billing cycle.
+  * Writes to usage_events for audit trail.
+  */
+export async function checkAndIncrementUsage(
+  projectId: string,
+  eventType: "message" | "crawl" | "parse" | "action",
+  quantity: number = 1
+): Promise<QuotaCheckResult> {
+  try {
+    return await withBypassRLS(async (tx: any) => {
+      // 1. Resolve project details & organizationId
+      const [project] = await tx
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+
+      if (!project) {
+        return { allowed: false, reason: "Project not found" };
+      }
+
+      const organizationId = project.organizationId;
+      if (!organizationId) {
+        // Fallback for unlinked legacy rows: bypass RLS limits
+        return { allowed: true };
+      }
+
+      // 2. Fetch active paid license to check plan features
+      const [license] = await tx
+        .select()
+        .from(projectLicenses)
+        .where(
+          and(
+            eq(projectLicenses.projectId, projectId),
+            eq(projectLicenses.licenseStatus, "active"),
+            eq(projectLicenses.paymentStatus, "paid")
+          )
+        )
+        .limit(1);
+
+      let limits = {
+        messages: 100, // Trial limit
+        crawls: 10,
+        actions: 50
+      };
+
+      if (license && license.planId) {
+        const [plan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, license.planId))
+          .limit(1);
+
+        if (plan && plan.features) {
+          const feat = typeof plan.features === "string" ? JSON.parse(plan.features) : plan.features;
+          limits = {
+            messages: feat.messagesLimit ?? 10000,
+            crawls: feat.crawlsLimit ?? 500,
+            actions: feat.actionsLimit ?? 5000
+          };
+        } else {
+          limits = {
+            messages: 10000,
+            crawls: 500,
+            actions: 5000
+          };
+        }
+      }
+
+      // 3. Resolve active billing cycle
+      const now = new Date();
+      const billingCycleStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const billingCycleEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      // Check / Upsert organization usage record
+      let [usageRecord] = await tx
+        .select()
+        .from(organizationUsage)
+        .where(
+          and(
+            eq(organizationUsage.organizationId, organizationId),
+            eq(organizationUsage.billingCycleStart, billingCycleStart)
+          )
+        )
+        .limit(1);
+
+      if (!usageRecord) {
+        const [inserted] = await tx
+          .insert(organizationUsage)
+          .values({
+            organizationId,
+            billingCycleStart,
+            billingCycleEnd,
+            messagesSent: 0,
+            crawlCount: 0,
+            actionCount: 0,
+            updatedAt: now
+          })
+          .returning();
+        usageRecord = inserted;
+      }
+
+      // 4. Verify against limits
+      let currentVal = 0;
+      let limitVal = 0;
+
+      if (eventType === "message") {
+        currentVal = usageRecord.messagesSent;
+        limitVal = limits.messages;
+      } else if (eventType === "crawl") {
+        currentVal = usageRecord.crawlCount;
+        limitVal = limits.crawls;
+      } else if (eventType === "parse" || eventType === "action") {
+        currentVal = usageRecord.actionCount;
+        limitVal = limits.actions;
+      }
+
+      if (currentVal + quantity > limitVal) {
+        return {
+          allowed: false,
+          reason: `Quota exceeded for ${eventType}. Limit: ${limitVal}, Current: ${currentVal}`,
+          current: currentVal,
+          limit: limitVal
+        };
+      }
+
+      // 5. Update usage counters
+      const updates: any = { updatedAt: now };
+      if (eventType === "message") {
+        updates.messagesSent = usageRecord.messagesSent + quantity;
+      } else if (eventType === "crawl") {
+        updates.crawlCount = usageRecord.crawlCount + quantity;
+      } else if (eventType === "parse" || eventType === "action") {
+        updates.actionCount = usageRecord.actionCount + quantity;
+      }
+
+      await tx
+        .update(organizationUsage)
+        .set(updates)
+        .where(eq(organizationUsage.id, usageRecord.id));
+
+      // 6. Log a usage event
+      await tx.insert(usageEvents).values({
+        organizationId,
+        projectId,
+        eventType,
+        quantity,
+        createdAt: now
+      });
+
+      return {
+        allowed: true,
+        current: currentVal + quantity,
+        limit: limitVal
+      };
+    });
+  } catch (err) {
+    logger.error(err, `Error checking quota for project ${projectId}`);
+    return { allowed: true }; // Safe fallback
+  }
+}

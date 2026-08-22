@@ -14,6 +14,7 @@ import { Deployment } from "../components/project/deployment";
 import { ApiKeys } from "../components/project/api-keys";
 import { Analytics } from "../components/project/analytics";
 import { ContextSettings } from "../components/project/context-settings";
+import { OnboardingWizard } from "../components/project/onboarding-wizard";
 import { supabase } from "@/lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -185,6 +186,11 @@ export default function AdminProjectEditPage() {
       setIsGenerating(false);
     }
   };
+
+  // When creating a new project, show the guided onboarding wizard
+  if (isNew) {
+    return <OnboardingWizard />;
+  }
 
   return (
     <>

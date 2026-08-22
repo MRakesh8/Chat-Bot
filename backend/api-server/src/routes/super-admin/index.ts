@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { db, withBypassRLS } from "@workspace/db";
-import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs } from "@workspace/db";
+import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs, projectEntitlements } from "@workspace/db";
+import { logSecurityEvent } from "../../security/middleware";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
 
@@ -88,6 +89,130 @@ router.get("/projects", async (req, res) => {
     res.json(allProjects);
   } catch (err: any) {
     req.log.error({ err }, "Error listing projects for super-admin");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /api/super-admin/projects/:id/trial
+router.patch("/projects/:id/trial", async (req, res) => {
+  const { customTrialDays } = req.body;
+  if (typeof customTrialDays !== "number" || customTrialDays < 0) {
+    res.status(400).json({ error: "Invalid customTrialDays. Must be a non-negative number." });
+    return;
+  }
+
+  try {
+    await withBypassRLS(async (tx: any) => {
+      const [existing] = await tx
+        .select()
+        .from(projectEntitlements)
+        .where(eq(projectEntitlements.projectId, req.params.id))
+        .limit(1);
+
+      const now = new Date();
+      if (existing) {
+        const started = existing.trialStartedAt || now;
+        const ends = new Date(started.getTime() + customTrialDays * 24 * 60 * 60 * 1000);
+        await tx
+          .update(projectEntitlements)
+          .set({
+            customTrialDays,
+            trialStartedAt: started,
+            trialEndsAt: ends,
+            entitlementStatus: now <= ends ? "TRIAL_ACTIVE" : "TRIAL_EXPIRED",
+            updatedAt: now,
+          })
+          .where(eq(projectEntitlements.projectId, req.params.id));
+      } else {
+        const ends = new Date(now.getTime() + customTrialDays * 24 * 60 * 60 * 1000);
+        await tx
+          .insert(projectEntitlements)
+          .values({
+            projectId: req.params.id,
+            trialStartedAt: now,
+            trialEndsAt: ends,
+            customTrialDays,
+            entitlementStatus: now <= ends ? "TRIAL_ACTIVE" : "TRIAL_EXPIRED",
+            subscriptionStatus: "inactive",
+            createdAt: now,
+            updatedAt: now,
+          });
+      }
+
+      // Update projects table as fallback
+      await tx
+        .update(projects)
+        .set({
+          customTrialDays,
+          trialStartedAt: existing?.trialStartedAt || now,
+          trialEndsAt: new Date((existing?.trialStartedAt || now).getTime() + customTrialDays * 24 * 60 * 60 * 1000),
+        })
+        .where(eq(projects.id, req.params.id));
+    });
+
+    await logSecurityEvent({
+      eventName: "ADMIN_TRIAL_OVERRIDE",
+      req,
+      projectId: req.params.id,
+      details: { customTrialDays }
+    });
+
+    res.json({ success: true, customTrialDays });
+  } catch (err: any) {
+    req.log.error({ err }, "Error overriding project trial days");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /api/super-admin/projects/:id/status
+router.patch("/projects/:id/status", async (req, res) => {
+  const { status } = req.body;
+  if (status !== "active" && status !== "suspended" && status !== "cancelled") {
+    res.status(400).json({ error: "Invalid status. Must be active, suspended, or cancelled." });
+    return;
+  }
+
+  try {
+    await withBypassRLS(async (tx: any) => {
+      await tx
+        .update(projects)
+        .set({
+          status,
+          isActive: status === "active"
+        })
+        .where(eq(projects.id, req.params.id));
+
+      const entitlementStatus =
+        status === "suspended" ? "SUSPENDED" :
+        status === "cancelled" ? "CANCELLED" :
+        "TRIAL_ACTIVE";
+
+      await tx
+        .insert(projectEntitlements)
+        .values({
+          projectId: req.params.id,
+          entitlementStatus,
+          subscriptionStatus: "inactive",
+        })
+        .onConflictDoUpdate({
+          target: projectEntitlements.projectId,
+          set: {
+            entitlementStatus,
+            updatedAt: new Date()
+          }
+        });
+    });
+
+    await logSecurityEvent({
+      eventName: "ADMIN_STATUS_OVERRIDE",
+      req,
+      projectId: req.params.id,
+      details: { status }
+    });
+
+    res.json({ success: true, status });
+  } catch (err: any) {
+    req.log.error({ err }, "Error overriding project status");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -305,6 +430,30 @@ router.post("/payments/:id/approve", async (req, res) => {
           updatedAt: new Date()
         })
         .where(eq(projectLicenses.projectId, payment.projectId));
+
+      // 4. Sync to projectEntitlements
+      const now = new Date();
+      await tx
+        .insert(projectEntitlements)
+        .values({
+          projectId: payment.projectId,
+          subscriptionStatus: "active",
+          entitlementStatus: "SUBSCRIPTION_ACTIVE",
+          subscriptionStartedAt: now,
+          subscriptionEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: projectEntitlements.projectId,
+          set: {
+            subscriptionStatus: "active",
+            entitlementStatus: "SUBSCRIPTION_ACTIVE",
+            subscriptionStartedAt: now,
+            subscriptionEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+            updatedAt: now,
+          }
+        });
     });
 
     res.json({ success: true });
@@ -349,6 +498,15 @@ router.post("/payments/:id/reject", async (req, res) => {
           updatedAt: new Date()
         })
         .where(and(eq(projectLicenses.projectId, payment.projectId), eq(projectLicenses.paymentStatus, "pending")));
+
+      // 4. Sync status to projectEntitlements as inactive subscription
+      await tx
+        .update(projectEntitlements)
+        .set({
+          subscriptionStatus: "inactive",
+          updatedAt: new Date(),
+        })
+        .where(eq(projectEntitlements.projectId, payment.projectId));
     });
 
     res.json({ success: true });
@@ -362,4 +520,64 @@ router.post("/payments/:id/reject", async (req, res) => {
   }
 });
 
+// PATCH /api/super-admin/projects/:id/trial
+// Admin-only endpoint to configure custom trial duration or override entitlement status
+router.patch("/projects/:id/trial", async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const { customTrialDays, entitlementStatus } = req.body;
+
+    const [existing] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId));
+
+    if (!existing) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
+    const { projectEntitlements } = await import("@workspace/db/schema");
+
+    const [entitlement] = await db
+      .select()
+      .from(projectEntitlements)
+      .where(eq(projectEntitlements.projectId, projectId));
+
+    const updateFields: any = { updatedAt: new Date() };
+    if (typeof customTrialDays === "number") {
+      updateFields.customTrialDays = customTrialDays;
+      // Re-calculate trialEndsAt if trial was started
+      if (entitlement?.trialStartedAt) {
+        const start = new Date(entitlement.trialStartedAt);
+        updateFields.trialEndsAt = new Date(start.getTime() + customTrialDays * 24 * 60 * 60 * 1000);
+      }
+    }
+    if (entitlementStatus && ["TRIAL_ACTIVE", "TRIAL_EXPIRED", "SUBSCRIPTION_ACTIVE", "SUSPENDED"].includes(entitlementStatus)) {
+      updateFields.entitlementStatus = entitlementStatus;
+    }
+
+    if (entitlement) {
+      await db
+        .update(projectEntitlements)
+        .set(updateFields)
+        .where(eq(projectEntitlements.projectId, projectId));
+    } else {
+      await db.insert(projectEntitlements).values({
+        projectId,
+        customTrialDays: typeof customTrialDays === "number" ? customTrialDays : undefined,
+        entitlementStatus: entitlementStatus || "TRIAL_ACTIVE",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    res.json({ success: true, projectId, updated: updateFields });
+  } catch (err: any) {
+    req.log.error({ err }, "Error updating project trial settings");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
+
