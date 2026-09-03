@@ -53,7 +53,7 @@ export async function withTenantContext<T>(
   cb: (tx: any) => Promise<T>
 ): Promise<T> {
   return await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.current_organization_id = ${orgId}`);
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
     return await cb(tx);
   });
 }
@@ -62,7 +62,7 @@ export async function withBypassRLS<T>(
   cb: (tx: any) => Promise<T>
 ): Promise<T> {
   return await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.bypass_rls = 'true'`);
+    await tx.execute(sql`SELECT set_config('app.bypass_rls', 'true', true)`);
     return await cb(tx);
   });
 }

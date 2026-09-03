@@ -9,10 +9,13 @@ import { logger } from "../../lib/logger";
 const router = Router();
 const DEPLOYMENT_PRICE_PAISE = 49900; // ₹499 in paise
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || "",
-  key_secret: process.env.RAZORPAY_KEY_SECRET || "",
-});
+let razorpay: Razorpay | null = null;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+}
 
 const manualPaymentSchema = z.object({
   projectId: z.string(),
@@ -204,6 +207,9 @@ router.post("/razorpay/create-subscription", async (req, res): Promise<any> => {
       // In production, the admin will have mapped Razorpay plan IDs to database plans.
       // If not configured, we create a dynamic Plan on Razorpay or fallback.
       try {
+        if (!razorpay) {
+          throw new Error("Razorpay credentials are not configured on the server.");
+        }
         const rpPlan = await razorpay.plans.create({
           period: plan.interval === "yearly" ? "yearly" : "monthly",
           interval: 1,
@@ -223,6 +229,10 @@ router.post("/razorpay/create-subscription", async (req, res): Promise<any> => {
         req.log.error(rpErr, "Failed to dynamically create Razorpay plan. Using fallback.");
         return res.status(500).json({ error: "Razorpay integration is not configured correctly." });
       }
+    }
+
+    if (!razorpay) {
+      return res.status(500).json({ error: "Razorpay credentials are not configured on the server." });
     }
 
     // Create Subscription on Razorpay
