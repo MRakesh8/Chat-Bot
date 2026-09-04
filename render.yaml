@@ -8,6 +8,11 @@ services:
     startCommand: pnpm --filter @workspace/api-server start
     healthCheckPath: /api/healthz
     envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: chat-bot-redis
+          property: connectionString
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/project/src/.cache/puppeteer
       - key: NODE_ENV
@@ -28,3 +33,9 @@ services:
         value: https://generativelanguage.googleapis.com/v1beta
       - key: AI_INTEGRATIONS_GEMINI_API_KEY
         sync: false
+
+  - type: redis
+    name: chat-bot-redis
+    plan: free
+    ipAllowList: []
+

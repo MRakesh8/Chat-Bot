@@ -125,7 +125,6 @@ const paymentLimiter = rateLimit({
 });
 app.use("/api/payments/manual", paymentLimiter);
 
-// Strict Widget API Rate Limiter
 const widgetLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 30, // 30 requests per minute
@@ -134,6 +133,17 @@ const widgetLimiter = rateLimit({
   message: { error: "Too many requests to the widget API. Please try again later." },
 });
 app.use("/api/widget", widgetLimiter);
+
+// Strict API Rate Limiter for Integrations and Tools (Phase 2E)
+const integrationLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many integration requests. Please wait a minute." }
+});
+app.use("/api/projects/:projectId/integrations", integrationLimiter);
+app.use("/api/projects/:projectId/tools", integrationLimiter);
 
 import { databaseHealthMiddleware } from "./middlewares/databaseHealth";
 app.use(databaseHealthMiddleware);

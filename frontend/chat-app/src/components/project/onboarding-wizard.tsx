@@ -1,34 +1,33 @@
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { Deployment } from "./deployment";
 import {
   Sparkles,
-  Database,
-  MessageSquare,
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle2,
   Globe,
-  Upload,
   Loader2,
-  Bot,
-  Wand2,
-  ExternalLink,
+  CheckCircle2,
+  ArrowRight,
+  Activity,
+  ArrowLeft,
+  AlertCircle,
+  RefreshCw,
+  Search,
+  Check
 } from "lucide-react";
-
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { Badge } from "@/components/ui/badge";
 
 const STEPS = [
-  { id: 1, label: "Profile", icon: Bot },
-  { id: 2, label: "Knowledge", icon: Database },
-  { id: 3, label: "Preview", icon: MessageSquare },
+  { id: 1, label: "Connect", icon: Globe },
+  { id: 2, label: "Analysis", icon: Activity },
+  { id: 3, label: "Intelligence", icon: Search },
+  { id: 4, label: "Install Agent", icon: Sparkles },
 ];
 
 function useAuthFetch() {
@@ -58,124 +57,124 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
   const authFetch = useAuthFetch();
 
   const [step, setStep] = useState(1);
-  const [isCreating, setIsCreating] = useState(false);
-
-  // Step 1 state
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState(
-    "You are a helpful AI assistant for {business_name}. Answer questions about our products, services, and policies clearly and accurately. If you don't know something, say so and offer to connect them with a human agent."
-  );
-
-  // Step 2 state
-  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
-  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
-  const [isCrawling, setIsCrawling] = useState(false);
-  const [crawledSources, setCrawledSources] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
 
-  // Step 3 – live preview
-  const shareUrl = shareToken
-    ? `${window.location.origin}${basePath}/p/${shareToken}`
-    : null;
-
-  const createProject = async () => {
-    if (!projectName.trim()) {
-      toast({ title: "Project name is required", variant: "destructive" });
-      return;
-    }
-    if (!systemPrompt.trim()) {
-      toast({ title: "AI persona / instructions are required", variant: "destructive" });
-      return;
-    }
-    setIsCreating(true);
-    try {
+  // 1. Create Project Mutation
+  const createProjectMutation = useMutation({
+    mutationFn: async () => {
+      // Create a minimal safe default for API compatibility
+      const systemPrompt = `You are an AI assistant for ${businessName}.`;
+      
       const res = await authFetch(apiUrl("/api/projects"), {
         method: "POST",
-        body: JSON.stringify({
-          name: projectName.trim(),
-          description: projectDescription.trim(),
-          systemPrompt: systemPrompt.trim(),
-        }),
+        body: JSON.stringify({ name: businessName, systemPrompt }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as any).error || "Failed to create project");
       }
-      const data = await res.json();
+      return res.json();
+    },
+    onSuccess: (data) => {
       setCreatedProjectId(data.id);
-      setShareToken(data.shareToken);
-      queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
       onProjectCreated?.(data.id, data.shareToken);
-      toast({ title: "Project created! ✅", description: "Now let's add some knowledge." });
+      queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
+      // Immediately start discovery
+      startDiscoveryMutation.mutate(data.id);
+    },
+    onError: (err: any) => {
+      toast({ title: "Project Error", description: err.message, variant: "destructive" });
+    }
+  });
+
+  // 2. Start Discovery Mutation
+  const startDiscoveryMutation = useMutation({
+    mutationFn: async (projectId: string) => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/discovery/start`), {
+        method: "POST",
+        body: JSON.stringify({ url: websiteUrl }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to analyze website");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
       setStep(2);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setIsCreating(false);
+      toast({ title: "Analysis started", description: "RAGHUB is crawling the website..." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Analysis Error", description: err.message, variant: "destructive" });
     }
+  });
+
+  // 3. Polling Discovery Status
+  const { data: discoveryData, error: discoveryError, refetch: refetchDiscovery } = useQuery({
+    queryKey: ["discovery-status", createdProjectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}/discovery/status`));
+      if (!res.ok) throw new Error("Failed to fetch discovery status");
+      return res.json();
+    },
+    enabled: !!createdProjectId && (step === 2 || step === 3),
+    refetchInterval: (query) => {
+      const status = query.state.data?.discoveryStatus;
+      if (status === "READY" || status === "FAILED") return false;
+      return 2000;
+    },
+  });
+
+  // Derived state for status
+  const discoveryStatus = discoveryData?.discoveryStatus;
+  const isReady = discoveryStatus === "READY";
+  const isFailed = discoveryStatus === "FAILED";
+  const isAnalyzing = discoveryStatus === "ANALYZING" || discoveryStatus === "PENDING";
+
+  // 4. Intelligence & Capabilities Queries
+  const { data: capabilitiesData } = useQuery({
+    queryKey: ["capabilities", createdProjectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}/capabilities`));
+      if (!res.ok) throw new Error("Failed to load capabilities");
+      return res.json();
+    },
+    enabled: !!createdProjectId && isReady && step >= 2,
+  });
+
+  const { data: projectData } = useQuery({
+    queryKey: ["admin-project", createdProjectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}`));
+      if (!res.ok) throw new Error("Failed to load intelligence");
+      return res.json();
+    },
+    enabled: !!createdProjectId && isReady && step >= 2,
+  });
+
+  const intelligence = projectData?.intelligence || {};
+  const capabilities = capabilitiesData?.capabilities || {};
+
+  const handleConnect = () => {
+    if (!businessName.trim() || !websiteUrl.trim()) {
+      toast({ title: "Required", description: "Please enter both Business Name and URL.", variant: "destructive" });
+      return;
+    }
+    
+    // Basic frontend URL validation (backend is the true source of SSRF protection)
+    if (!websiteUrl.startsWith("http://") && !websiteUrl.startsWith("https://")) {
+      toast({ title: "Invalid URL", description: "URL must start with http:// or https://", variant: "destructive" });
+      return;
+    }
+
+    createProjectMutation.mutate();
   };
 
-  const crawlWebsite = async () => {
-    if (!websiteUrl.trim() || !createdProjectId) return;
-    setIsCrawling(true);
-    try {
-      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}/files/url`), {
-        method: "POST",
-        body: JSON.stringify({
-          url: websiteUrl.trim(),
-          sourceType: "website",
-          categoryName: "Onboarding",
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to crawl website");
-      setCrawledSources((prev) => [...prev, websiteUrl.trim()]);
-      setWebsiteUrl("");
-      toast({ title: "Website crawled ✅", description: "Added to knowledge base." });
-    } catch (err: any) {
-      toast({ title: "Crawl failed", description: err.message, variant: "destructive" });
-    } finally {
-      setIsCrawling(false);
-    }
-  };
-
-  const { session } = useAuth();
-
-  const uploadFile = async (file: File) => {
+  const handleReanalyze = () => {
     if (!createdProjectId) return;
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("projectId", createdProjectId);
-      formData.append("categoryName", "Onboarding");
-
-      const token = session?.access_token;
-
-      const res = await fetch(apiUrl(`/api/projects/${createdProjectId}/files/upload`), {
-        method: "POST",
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      setUploadedFiles((prev) => [...prev, file.name]);
-      toast({ title: `${file.name} uploaded ✅` });
-    } catch (err: any) {
-      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    Array.from(files).forEach(uploadFile);
-    e.target.value = "";
+    startDiscoveryMutation.mutate(createdProjectId);
   };
 
   const goToEditor = () => {
@@ -187,29 +186,30 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
   const progressValue = (step / STEPS.length) * 100;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-background">
       <div className="w-full max-w-2xl">
-
         {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-sm font-medium px-4 py-2 rounded-full mb-4">
-            <Wand2 className="w-4 h-4" />
-            Project Setup Wizard
+            <Sparkles className="w-4 h-4" />
+            AI Business Agent Setup
           </div>
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60 tracking-tight mb-3">
-            {step === 1 && "Create your AI Assistant"}
-            {step === 2 && "Add Knowledge Base"}
-            {step === 3 && "Preview your Chatbot"}
+          <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-foreground to-foreground/70 tracking-tight mb-3">
+            {step === 1 && "Connect your website"}
+            {step === 2 && "RAGHUB analyzes your website"}
+            {step === 3 && "Business Intelligence"}
+            {step === 4 && "Install your AI Agent"}
           </h1>
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            {step === 1 && "Give your bot a name, persona, and instructions to get started."}
-            {step === 2 && "Upload documents or crawl a website to train your AI."}
-            {step === 3 && "Your chatbot is live! Test it and then open the full editor."}
+            {step === 1 && "Enter your website URL and we'll automatically understand your business and discover capabilities."}
+            {step === 2 && "We are scanning the website structure to prepare the agent."}
+            {step === 3 && "Here is what we discovered. Business integrations can be connected later."}
+            {step === 4 && "Add this code to your website to deploy the agent."}
           </p>
         </div>
 
         {/* Step indicators */}
-        <div className="flex items-center justify-center gap-4 mb-8">
+        <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mb-8">
           {STEPS.map((s, i) => {
             const Icon = s.icon;
             const isDone = step > s.id;
@@ -217,268 +217,230 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
             return (
               <div key={s.id} className="flex items-center gap-2">
                 <div
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                  className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-medium transition-all duration-300 ${
                     isDone
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
                       : isActive
                       ? "bg-primary/20 text-primary border border-primary/30"
                       : "bg-foreground/5 text-muted-foreground border border-foreground/10"
                   }`}
                 >
-                  {isDone ? (
-                    <CheckCircle2 className="w-4 h-4" />
-                  ) : (
-                    <Icon className="w-4 h-4" />
-                  )}
-                  {s.label}
+                  {isDone ? <CheckCircle2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Icon className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                  <span className="hidden sm:inline">{s.label}</span>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`w-8 h-px ${step > s.id ? "bg-emerald-500/50" : "bg-foreground/10"}`} />
+                  <div className={`w-4 md:w-8 h-px ${step > s.id ? "bg-emerald-500/50" : "bg-foreground/10"}`} />
                 )}
               </div>
             );
           })}
         </div>
 
-        {/* Progress bar */}
         <Progress value={progressValue} className="h-1 mb-8 bg-foreground/10" />
 
-        {/* --- STEP 1: Profile --- */}
+        {/* --- STEP 1: Connect --- */}
         {step === 1 && (
-          <div className="bg-card border border-border rounded-2xl p-8 space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Project Name *</label>
+              <label className="text-sm font-medium text-foreground">Business Name</label>
               <Input
-                placeholder="e.g. Acme Support Bot"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                className="h-12 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:border-primary/50"
+                placeholder="e.g. Acme Corp"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="h-12 rounded-xl bg-background border-border focus:border-primary/50"
                 autoFocus
               />
             </div>
-
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Description (optional)</label>
+              <label className="text-sm font-medium text-foreground">Website URL</label>
               <Input
-                placeholder="What does this chatbot do?"
-                value={projectDescription}
-                onChange={(e) => setProjectDescription(e.target.value)}
-                className="h-12 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:border-primary/50"
+                placeholder="https://example.com"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                className="h-12 rounded-xl bg-background border-border focus:border-primary/50"
               />
             </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">AI Persona & Instructions *</label>
-              <p className="text-xs text-muted-foreground">
-                Tell the AI who it is and how to behave. Use <code className="bg-foreground/10 px-1 py-0.5 rounded text-xs">{"{business_name}"}</code> as a placeholder.
-              </p>
-              <Textarea
-                placeholder="You are a helpful AI assistant for..."
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                rows={6}
-                className="rounded-xl bg-foreground/[0.02] border-foreground/10 focus:border-primary/50 font-mono text-sm resize-none"
-              />
-            </div>
-
             <Button
-              onClick={createProject}
-              disabled={isCreating || !projectName.trim() || !systemPrompt.trim()}
+              onClick={handleConnect}
+              disabled={createProjectMutation.isPending || !businessName.trim() || !websiteUrl.trim()}
               className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground gap-2 font-medium"
             >
-              {isCreating ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Creating project...</>
+              {createProjectMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</>
               ) : (
-                <>Create Project <ArrowRight className="w-4 h-4" /></>
+                <>Analyze Website <ArrowRight className="w-4 h-4" /></>
               )}
             </Button>
           </div>
         )}
 
-        {/* --- STEP 2: Knowledge --- */}
+        {/* --- STEP 2: Analysis Polling --- */}
         {step === 2 && (
-          <div className="bg-card border border-border rounded-2xl p-8 space-y-8">
-
-            {/* Website crawl */}
+          <div className="bg-card border border-border rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+            
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Globe className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold text-foreground">Crawl a Website</h3>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Enter your website URL and we'll extract the text content automatically.
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="https://yourwebsite.com"
-                  value={websiteUrl}
-                  onChange={(e) => setWebsiteUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && crawlWebsite()}
-                  className="flex-1 h-11 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:border-primary/50"
-                />
-                <Button
-                  onClick={crawlWebsite}
-                  disabled={isCrawling || !websiteUrl.trim()}
-                  className="h-11 px-5 rounded-xl gap-2 shrink-0"
-                >
-                  {isCrawling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                  Crawl
-                </Button>
-              </div>
-              {crawledSources.length > 0 && (
-                <div className="space-y-1">
-                  {crawledSources.map((url) => (
-                    <div key={url} className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                      <CheckCircle2 className="w-3 h-3 shrink-0" />
-                      {url}
-                    </div>
-                  ))}
+              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
+                <div className="flex items-center gap-3">
+                  <Globe className="w-5 h-5 text-muted-foreground" />
+                  <span className="font-medium text-sm">Website reachable</span>
                 </div>
-              )}
-            </div>
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+              </div>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-foreground/10" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-3 text-muted-foreground">or</span>
-              </div>
-            </div>
-
-            {/* File upload */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Upload className="w-5 h-5 text-primary" />
-                <h3 className="font-semibold text-foreground">Upload Documents</h3>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Supported: PDF, DOCX, TXT, CSV, PPTX, XLSX and more.
-              </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                accept=".pdf,.doc,.docx,.txt,.md,.csv,.pptx,.ppt,.xlsx,.xls,.json,.xml"
-                onChange={handleFileSelect}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="w-full border-2 border-dashed border-foreground/20 hover:border-primary/40 rounded-xl p-8 text-center cursor-pointer transition-colors duration-200 group"
-              >
-                {isUploading ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Uploading...</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Upload className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
-                    <p className="text-sm text-foreground font-medium group-hover:text-primary transition-colors">
-                      Click to upload files
-                    </p>
-                    <p className="text-xs text-muted-foreground">PDF, DOCX, TXT, CSV, etc.</p>
-                  </div>
-                )}
-              </button>
-              {uploadedFiles.length > 0 && (
-                <div className="space-y-1">
-                  {uploadedFiles.map((fname) => (
-                    <div key={fname} className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                      <CheckCircle2 className="w-3 h-3 shrink-0" />
-                      {fname}
-                    </div>
-                  ))}
+              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
+                <div className="flex items-center gap-3">
+                  <Activity className="w-5 h-5 text-muted-foreground" />
+                  <span className="font-medium text-sm">Analyzing website</span>
                 </div>
-              )}
-            </div>
+                {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+              </div>
 
-            {/* Navigation */}
-            <div className="flex gap-3 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setStep(1)}
-                className="flex-1 h-11 rounded-xl border-foreground/10 gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" /> Back
-              </Button>
-              <Button
-                onClick={() => setStep(3)}
-                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-primary to-primary/80 gap-2"
-              >
-                {crawledSources.length > 0 || uploadedFiles.length > 0 ? (
-                  <>Preview Chatbot <ArrowRight className="w-4 h-4" /></>
-                ) : (
-                  <>Skip & Preview <ArrowRight className="w-4 h-4" /></>
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* --- STEP 3: Preview --- */}
-        {step === 3 && (
-          <div className="space-y-6">
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-sm font-medium text-foreground">Live Preview — {projectName}</span>
+              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
+                <div className="flex items-center gap-3">
+                  <Search className="w-5 h-5 text-muted-foreground" />
+                  <span className="font-medium text-sm">Discovering capabilities</span>
                 </div>
-                {shareUrl && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => window.open(shareUrl, "_blank")}
-                    className="gap-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <ExternalLink className="w-3 h-3" /> Open
+                {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-muted-foreground" />
+                  <span className="font-medium text-sm">Intelligence ready</span>
+                </div>
+                {isAnalyzing ? <span className="text-xs text-muted-foreground">Pending</span> : <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+              </div>
+            </div>
+
+            {isFailed && (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-lg text-sm flex gap-2">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <div>
+                  <p className="font-semibold">Website analysis failed.</p>
+                  <p className="text-xs mt-1 opacity-90">We couldn't reach the website or it returned an error. You can try again.</p>
+                  <Button variant="outline" size="sm" onClick={handleReanalyze} className="mt-3 text-xs border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10">
+                    <RefreshCw className="w-3 h-3 mr-2" /> Try Again
                   </Button>
-                )}
-              </div>
-              {shareUrl ? (
-                <iframe
-                  src={shareUrl}
-                  className="w-full h-[500px] border-0"
-                  title="Chatbot Preview"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-[500px] text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                  Loading preview...
                 </div>
+              </div>
+            )}
+
+            <Button
+              onClick={() => setStep(3)}
+              disabled={!isReady}
+              className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground gap-2 font-medium"
+            >
+              {!isReady ? (
+                <>Analyzing... <Loader2 className="w-4 h-4 animate-spin" /></>
+              ) : (
+                <>View Intelligence <ArrowRight className="w-4 h-4" /></>
               )}
+            </Button>
+          </div>
+        )}
+
+        {/* --- STEP 3: Intelligence & Capabilities --- */}
+        {step === 3 && (
+          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+            
+            <div className="p-6 md:p-8 border-b border-border bg-background">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Website Knowledge Connected</h3>
+                  <p className="text-sm text-muted-foreground mt-1">We have analyzed the website structure.</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleReanalyze} disabled={startDiscoveryMutation.isPending} className="h-8 text-xs shrink-0">
+                  {startDiscoveryMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} 
+                  Analyze Again
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mt-6">
+                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Business Type</p>
+                  <p className="font-medium text-sm truncate" title={intelligence?.businessType || "Unknown"}>{intelligence?.businessType || "Unknown"}</p>
+                </div>
+                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Platform</p>
+                  <p className="font-medium text-sm truncate" title={intelligence?.platform || "Custom"}>{intelligence?.platform || "Custom"}</p>
+                </div>
+                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Pages Found</p>
+                  <p className="font-medium text-sm">{intelligence?.crawledPages?.length || 0}</p>
+                </div>
+                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Knowledge</p>
+                  <div className="flex items-center gap-1 text-sm font-medium text-emerald-500">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* CTA */}
-            <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-6 flex flex-col sm:flex-row gap-4 items-center">
-              <div className="flex-1">
-                <h3 className="font-semibold text-foreground mb-1">Your chatbot is ready! 🎉</h3>
-                <p className="text-sm text-muted-foreground">
-                  Add more knowledge, customize the widget, configure channels, and deploy.
-                </p>
+            <div className="p-6 md:p-8 space-y-4">
+              <h4 className="text-sm font-semibold text-foreground">Discovered Capabilities</h4>
+              <p className="text-xs text-muted-foreground mb-4">The following features were detected on your website. Execution is not configured yet.</p>
+              
+              <div className="space-y-3">
+                {Object.keys(capabilities).length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground border border-dashed border-border rounded-xl text-sm">
+                    No specific interactive capabilities were detected on the crawled pages.
+                  </div>
+                ) : (
+                  Object.entries(capabilities).map(([key, cap]: [string, any]) => (
+                    <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-foreground/[0.02] border border-border rounded-xl gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-sm capitalize text-foreground">{key.replace(/_/g, ' ')}</span>
+                          <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20 font-medium h-5">Detected</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Detected on your website</p>
+                      </div>
+                      <div className="text-left sm:text-right flex flex-row sm:flex-col items-center sm:items-end gap-2 sm:gap-0">
+                        <span className="text-[11px] text-muted-foreground bg-foreground/5 border border-border px-2 py-0.5 rounded font-medium whitespace-nowrap">Execution not configured</span>
+                        {cap.riskLevel && cap.riskLevel !== "LOW" && (
+                          <span className="text-[10px] text-amber-500 sm:mt-1.5 font-medium whitespace-nowrap">Risk: {cap.riskLevel}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-              <div className="flex gap-3 shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(2)}
-                  className="gap-2 border-foreground/10"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Add Knowledge
-                </Button>
-                <Button
-                  onClick={goToEditor}
-                  className="gap-2 bg-gradient-to-r from-primary to-primary/80"
-                >
-                  <Sparkles className="w-4 h-4" /> Open Full Editor
-                </Button>
-              </div>
+            </div>
+
+            <div className="p-6 md:p-8 border-t border-border bg-background flex gap-3">
+              <Button onClick={() => setStep(4)} className="flex-1 h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground gap-2 font-medium">
+                Continue to Installation <ArrowRight className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         )}
+
+        {/* --- STEP 4: Installation --- */}
+        {step === 4 && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="text-center bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-6 md:p-8">
+              <h3 className="font-semibold text-foreground mb-2 text-lg">Installation code ready! 🎉</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                Add this code to your website to deploy the AI agent. You can customize its appearance in the Widget Studio afterwards.
+              </p>
+            </div>
+
+            {createdProjectId && (
+              <div className="bg-card border border-border rounded-2xl p-6 md:p-8 shadow-sm">
+                <Deployment projectId={createdProjectId} />
+              </div>
+            )}
+
+            <div className="flex justify-center pt-2">
+              <Button onClick={goToEditor} variant="outline" className="gap-2 rounded-xl px-8 h-12 border-primary/30 hover:bg-primary/5 text-primary font-medium">
+                Customize AI Agent <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

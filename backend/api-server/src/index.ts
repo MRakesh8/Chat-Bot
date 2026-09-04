@@ -31,7 +31,51 @@ async function start() {
     
     // Add columns
     await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "deployment_paid" boolean DEFAULT false;`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "trial_started_at" timestamp;`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "trial_ends_at" timestamp;`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "custom_trial_days" integer;`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "status" varchar(50) DEFAULT 'active' NOT NULL;`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "website_url" varchar(2048);`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "discovery_status" varchar(50) DEFAULT 'pending' NOT NULL;`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "platform" varchar(100);`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "platform_confidence" varchar(50);`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "business_type" varchar(100);`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "business_type_confidence" varchar(50);`);
+    await pool.query(`ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "intelligence" jsonb DEFAULT '{}'::jsonb NOT NULL;`);
     await pool.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "features" jsonb DEFAULT '{"canCreateProject":true,"canUseWidgetStudio":false,"canUseContextEngine":false}'::jsonb NOT NULL;`);
+    
+    // Create Project Entitlements table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "project_entitlements" (
+        "project_id" uuid PRIMARY KEY REFERENCES "projects"("id") ON DELETE CASCADE,
+        "trial_started_at" timestamp,
+        "trial_ends_at" timestamp,
+        "subscription_status" varchar(50) DEFAULT 'inactive' NOT NULL,
+        "entitlement_status" varchar(50) DEFAULT 'TRIAL_ACTIVE' NOT NULL,
+        "custom_trial_days" integer,
+        "plan_id" uuid,
+        "subscription_id" varchar(255),
+        "subscription_started_at" timestamp,
+        "subscription_ends_at" timestamp,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    // Create Security Audit Logs table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "security_audit_logs" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "event" varchar(100) NOT NULL,
+        "user_id" uuid,
+        "project_id" uuid,
+        "request_id" varchar(100),
+        "ip_address" varchar(100),
+        "origin" varchar(255),
+        "details" jsonb,
+        "created_at" timestamp DEFAULT now() NOT NULL
+      );
+    `);
     
     // Create Plans table
     await pool.query(`

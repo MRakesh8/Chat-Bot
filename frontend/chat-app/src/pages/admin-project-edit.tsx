@@ -3,10 +3,11 @@ import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check, Smartphone } from "lucide-react";
+import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle } from "lucide-react";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
 import { ChannelsManager } from "../components/project/channels-manager";
@@ -15,6 +16,7 @@ import { ApiKeys } from "../components/project/api-keys";
 import { Analytics } from "../components/project/analytics";
 import { ContextSettings } from "../components/project/context-settings";
 import { OnboardingWizard } from "../components/project/onboarding-wizard";
+import { IntegrationsList } from "../components/project/integrations/IntegrationsList";
 import { supabase } from "@/lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +34,12 @@ type Project = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  entitlement?: {
+    allowed: boolean;
+    status: "TRIAL_ACTIVE" | "TRIAL_EXPIRED" | "SUBSCRIPTION_ACTIVE" | "SUSPENDED";
+    expiresAt?: string | null;
+    message?: string | null;
+  };
 };
 
 function useAuthFetch() {
@@ -250,6 +258,50 @@ export default function AdminProjectEditPage() {
                 ? "Build a custom AI assistant with your own knowledge"
                 : "Update your project settings and knowledge"}
             </p>
+
+            {project?.entitlement && (
+              <div className="mt-3">
+                {project.entitlement.status === "SUBSCRIPTION_ACTIVE" && (
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs">
+                    <ShieldCheck className="w-4 h-4" /> Active Pro Plan
+                  </Badge>
+                )}
+                {project.entitlement.status === "TRIAL_ACTIVE" && (
+                  <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1.5 px-3 py-1 text-xs">
+                    <Sparkles className="w-4 h-4" /> Free Trial Active
+                    {project.entitlement.expiresAt && (
+                      <span className="text-muted-foreground/80 font-normal">
+                        • Ends {new Date(project.entitlement.expiresAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </Badge>
+                )}
+                {project.entitlement.status === "TRIAL_EXPIRED" && (
+                  <div className="mt-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h4 className="font-bold text-rose-500 flex items-center gap-2 text-sm">
+                        <ShieldAlert className="w-4 h-4" /> Free Trial Expired
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Your chatbot AI generation is currently paused on your website. Upgrade your plan to keep your widget active.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 shadow-md flex-none"
+                      onClick={() => setLocation("/settings")}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" /> Upgrade Plan
+                    </Button>
+                  </div>
+                )}
+                {project.entitlement.status === "SUSPENDED" && (
+                  <Badge variant="destructive" className="gap-1.5 px-3 py-1 text-xs">
+                    <ShieldAlert className="w-4 h-4" /> Project Access Suspended
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -294,6 +346,9 @@ export default function AdminProjectEditPage() {
               </TabsTrigger>
               <TabsTrigger value="analytics" className="flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
                 <LayoutDashboard className="w-4 h-4 mr-2" /> Analytics
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+                <Sparkles className="w-4 h-4 mr-2" /> Integrations
               </TabsTrigger>
             </TabsList>
 
@@ -512,6 +567,24 @@ export default function AdminProjectEditPage() {
                 </div>
               ) : (
                 <Analytics projectId={projectId!} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="integrations">
+              {isNew ? (
+                <div className="text-center py-12 bg-muted border border-border rounded-xl mt-8">
+                  <Sparkles className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Create Project First</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can manage integrations.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-xl font-medium mb-1">Integrations</h3>
+                    <p className="text-white/60 text-sm">Connect authorized business systems to give your AI agent capabilities.</p>
+                  </div>
+                  <IntegrationsList projectId={projectId!} />
+                </div>
               )}
             </TabsContent>
 

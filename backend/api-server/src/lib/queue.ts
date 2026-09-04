@@ -8,6 +8,8 @@ const REDIS_URL = process.env.REDIS_URL;
 let redisConnection: Redis | null = null;
 let knowledgeQueue: Queue | null = null;
 let knowledgeWorker: Worker | null = null;
+let discoveryQueue: Queue | null = null;
+let discoveryWorker: Worker | null = null;
 
 if (REDIS_URL) {
   try {
@@ -37,6 +39,16 @@ if (REDIS_URL) {
     });
 
     logger.info("[QUEUE] BullMQ Queue initialized successfully.");
+    
+    discoveryQueue = new Queue("discovery-processing", {
+      connection: redisConnection,
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: { type: "exponential", delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      }
+    });
   } catch (err) {
     logger.error(err, "[QUEUE_ERROR] Failed to initialize Redis connection");
   }
@@ -59,6 +71,26 @@ export async function enqueueKnowledgeProcessing(sourceId: string): Promise<void
   logger.info(`[QUEUE_FALLBACK] Processing source ${sourceId} in-process`);
   processKnowledgeSource(sourceId).catch((err) => {
     logger.error(err, `[QUEUE_FALLBACK_ERROR] Async processing failed for source ${sourceId}`);
+  });
+}
+
+export async function enqueueDiscoveryProcessing(projectId: string, url: string, orgId: string): Promise<void> {
+  if (discoveryQueue) {
+    try {
+      await discoveryQueue.add("process-discovery", { projectId, url, orgId });
+      logger.info(`[QUEUE] Enqueued discovery job for project ${projectId}`);
+      return;
+    } catch (err) {
+      logger.error(err, `[QUEUE_ERROR] Failed to enqueue discovery job for project ${projectId}, falling back to in-process execution.`);
+    }
+  }
+
+  // Fallback: Run in-process asynchronously
+  logger.info(`[QUEUE_FALLBACK] Processing discovery for project ${projectId} in-process`);
+  import("../services/discovery").then(m => {
+    m.WebsiteDiscoveryService.runDiscovery(projectId, url, orgId).catch((err) => {
+      logger.error(err, `[QUEUE_FALLBACK_ERROR] Async discovery failed for project ${projectId}`);
+    });
   });
 }
 
@@ -91,4 +123,26 @@ export function startQueueWorker(): void {
   });
 
   logger.info("[WORKER] BullMQ Worker started successfully.");
+
+  discoveryWorker = new Worker(
+    "discovery-processing",
+    async (job: Job) => {
+      const { projectId, url, orgId } = job.data;
+      logger.info(`[WORKER] Processing discovery job ${job.id} for project ${projectId}`);
+      const m = await import("../services/discovery");
+      await m.WebsiteDiscoveryService.runDiscovery(projectId, url, orgId);
+    },
+    {
+      connection: redisConnection,
+      concurrency: 2,
+    }
+  );
+
+  discoveryWorker.on("completed", (job) => {
+    logger.info(`[WORKER] Discovery job ${job.id} completed successfully`);
+  });
+
+  discoveryWorker.on("failed", (job, err) => {
+    logger.error(err, `[WORKER_ERROR] Discovery job ${job?.id} failed`);
+  });
 }

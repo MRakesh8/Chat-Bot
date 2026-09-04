@@ -54,6 +54,8 @@ router.get("/", async (req, res) => {
     return;
   }
 
+  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+
   // Resolve active organization context
   let orgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(orgId)) orgId = orgId[0];
@@ -65,49 +67,46 @@ router.get("/", async (req, res) => {
     }
   }
 
-  if (!orgId) {
-    res.json([]);
-    return;
-  }
-
-  // Authorize user membership
-  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
-  const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === orgId);
-  if (!isSuperAdmin && !membership) {
-    res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
-    return;
-  }
-
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
-      return await tx
-        .select({
-          project: projects,
-          knowledgeCount: sql<number>`count(${knowledgeSources.id})`.mapWith(Number)
-        })
-        .from(projects)
-        .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
-        .groupBy(projects.id)
-        .orderBy(desc(projects.createdAt));
-    });
-      
-    // Flatten the result so it matches the expected Project[] type but with knowledgeCount
+    let result: any[] = [];
+
+    if (orgId) {
+      const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === orgId);
+      if (!isSuperAdmin && !membership) {
+        res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+        return;
+      }
+
+      result = await withTenantContext(orgId as string, async (tx: any) => {
+        return await tx
+          .select({
+            project: projects,
+            knowledgeCount: sql<number>`count(${knowledgeSources.id})`.mapWith(Number)
+          })
+          .from(projects)
+          .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
+          .groupBy(projects.id)
+          .orderBy(desc(projects.createdAt));
+      });
+    } else {
+      // If the user has no memberships, they cannot have active tenant context.
+      // We do not bypass RLS for security reasons.
+      result = [];
+    }
+
     const flattened = result.map((r: any) => ({
-      ...r.project,
-      knowledgeCount: r.knowledgeCount
+      ...(r.project || r),
+      knowledgeCount: r.knowledgeCount || 0
     }));
-    
+
     res.json(flattened);
   } catch (err: any) {
-    const isMissingColumn = err.message?.includes("column") && err.message?.includes("does not exist");
     req.log.error({ 
       endpoint: "GET /api/projects",
-      failureType: isMissingColumn ? "Missing Column / Migration Missing" : "Database Error",
       errorMessage: err.message,
       stack: err.stack,
-      rootCause: isMissingColumn ? "The database schema does not match the Drizzle schema. A migration is required." : "Unknown database or execution failure"
     }, "Error listing projects");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ error: "Failed to fetch projects", message: err.message });
   }
 });
 
@@ -209,7 +208,18 @@ router.get("/:id", async (req, res) => {
       return await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
     });
 
-    res.json(securedProject);
+    // 4. Fetch server-side entitlement status
+    const entitlement = await checkProjectEntitlement(id);
+
+    res.json({
+      ...securedProject,
+      entitlement: {
+        allowed: entitlement.allowed,
+        status: entitlement.status,
+        expiresAt: entitlement.expiresAt || null,
+        message: entitlement.message || null,
+      },
+    });
   } catch (err: any) {
     req.log.error({ err }, "Error getting project");
     res.status(500).json({ success: false, error: err.message || "Internal server error" });
@@ -914,7 +924,142 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 import widgetRouter from "./widget";
 router.use("/:projectId/widget", widgetRouter);
 
+import { enqueueDiscoveryProcessing } from "../../lib/queue";
+
+router.post("/:projectId/discovery/start", async (req: any, res) => {
+  const { projectId } = req.params;
+  const { url } = req.body;
+  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({ error: "URL is required" });
+  }
+
+  try {
+    await withTenantContext(orgId as string, async (tx: any) => {
+      const [project] = await tx.select().from(projects).where(eq(projects.id, projectId));
+      if (!project) {
+        throw new Error("Project not found");
+      }
+      if (project.discoveryStatus === "PENDING") {
+        throw new Error("Discovery is already running for this project");
+      }
+
+      await tx.update(projects).set({ discoveryStatus: "PENDING", websiteUrl: url }).where(eq(projects.id, projectId));
+    });
+
+    // Fire and forget discovery job
+    enqueueDiscoveryProcessing(projectId, url, orgId as string).catch(e => {
+       req.log.error(e, "Failed to enqueue discovery process");
+    });
+
+    res.status(202).json({ message: "Discovery started", status: "PENDING" });
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error starting discovery");
+    res.status(error.message === "Project not found" ? 404 : 500).json({ error: error.message || "Failed to start discovery" });
+  }
+});
+
+router.get("/:projectId/discovery/status", async (req: any, res) => {
+  const { projectId } = req.params;
+  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+
+  try {
+    const result = await withTenantContext(orgId as string, async (tx: any) => {
+      const [project] = await tx
+        .select({
+          discoveryStatus: projects.discoveryStatus,
+          businessType: projects.businessType,
+          businessTypeConfidence: projects.businessTypeConfidence,
+          platform: projects.platform,
+          platformConfidence: projects.platformConfidence,
+          websiteUrl: projects.websiteUrl
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId));
+      return project;
+    });
+
+    if (!result) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error getting discovery status");
+    res.status(500).json({ error: "Failed to get discovery status" });
+  }
+});
+
+router.get("/:projectId/intelligence", async (req: any, res) => {
+  const { projectId } = req.params;
+  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+
+  try {
+    const result = await withTenantContext(orgId as string, async (tx: any) => {
+      const [project] = await tx
+        .select({
+          discoveryStatus: projects.discoveryStatus,
+          businessType: projects.businessType,
+          businessTypeConfidence: projects.businessTypeConfidence,
+          platform: projects.platform,
+          platformConfidence: projects.platformConfidence,
+          intelligence: projects.intelligence,
+          websiteUrl: projects.websiteUrl
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId));
+      return project;
+    });
+
+    if (!result) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error getting intelligence profile");
+    res.status(500).json({ error: "Failed to get intelligence profile" });
+  }
+});
+
+router.get("/:projectId/capabilities", async (req: any, res) => {
+  const { projectId } = req.params;
+  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+
+  try {
+    const result = await withTenantContext(orgId as string, async (tx: any) => {
+      const [project] = await tx
+        .select({
+          intelligence: projects.intelligence,
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId));
+      return project;
+    });
+
+    if (!result) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    const capabilities = (result.intelligence as any)?.capabilities || {};
+    res.json(capabilities);
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error getting capabilities");
+    res.status(500).json({ error: "Failed to get capabilities" });
+  }
+});
+
 export default router;
 
 import whatsappRouter from './whatsapp-config';
+import integrationsRouter from './integrations';
+import toolsRouter from './tools';
+
 router.use('/:projectId/whatsapp', whatsappRouter);
+router.use('/:projectId/integrations', integrationsRouter);
+router.use('/:projectId/tools', toolsRouter);

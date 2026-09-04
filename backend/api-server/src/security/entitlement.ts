@@ -17,25 +17,24 @@ export interface EntitlementCheckResult {
   message?: string;
 }
 
-/**
- * Priority: project customTrialDays -> global DEFAULT_TRIAL_DAYS -> fallback 7 days
- */
-export async function getEffectiveTrialDays(tx: any, customTrialDays?: number | null): Promise<number> {
+export async function getEffectiveTrialDays(tx?: any, customTrialDays?: number | null): Promise<number> {
   if (customTrialDays && customTrialDays > 0) {
     return customTrialDays;
   }
-  try {
-    const [setting] = await tx
-      .select()
-      .from(globalSettings)
-      .where(eq(globalSettings.id, "DEFAULT_TRIAL_DAYS"))
-      .limit(1);
-    if (setting?.value) {
-      const val = parseInt(setting.value, 10);
-      if (!isNaN(val) && val > 0) return val;
+  if (tx && typeof tx.select === "function") {
+    try {
+      const [setting] = await tx
+        .select()
+        .from(globalSettings)
+        .where(eq(globalSettings.id, "DEFAULT_TRIAL_DAYS"))
+        .limit(1);
+      if (setting?.value) {
+        const val = parseInt(setting.value, 10);
+        if (!isNaN(val) && val > 0) return val;
+      }
+    } catch {
+      // Proceed to env default if DB query fails or uninitialized
     }
-  } catch (e) {
-    logger.error(e as any, "Failed to load DEFAULT_TRIAL_DAYS config from DB");
   }
   const envDefault = parseInt(process.env.DEFAULT_TRIAL_DAYS || "", 10);
   if (!isNaN(envDefault) && envDefault > 0) {

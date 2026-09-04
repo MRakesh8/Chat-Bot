@@ -10,6 +10,8 @@ import {
   vector,
   index,
   uniqueIndex,
+  unique,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -151,6 +153,13 @@ export const projects = pgTable("projects", {
   trialEndsAt: timestamp("trial_ends_at"),
   customTrialDays: integer("custom_trial_days"),
   status: varchar("status", { length: 50 }).default("active").notNull(),
+  websiteUrl: varchar("website_url", { length: 2048 }),
+  discoveryStatus: varchar("discovery_status", { length: 50 }).default("pending").notNull(),
+  platform: varchar("platform", { length: 100 }),
+  platformConfidence: varchar("platform_confidence", { length: 50 }),
+  businessType: varchar("business_type", { length: 100 }),
+  businessTypeConfidence: varchar("business_type_confidence", { length: 50 }),
+  intelligence: jsonb("intelligence").default({}).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("projects_user_id_idx").on(table.userId),
@@ -926,3 +935,52 @@ export const securityAuditLogs = pgTable("security_audit_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// --- Phase 2E: Authorized Business Integrations ---
+
+export const projectIntegrations = pgTable("project_integrations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  status: varchar("status", { length: 50 }).default("NOT_CONNECTED").notNull(),
+  encryptedCredentials: text("encrypted_credentials"),
+  config: jsonb("config").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("project_integrations_project_id_idx").on(table.projectId),
+  idProjectUnique: unique("project_integrations_id_project_unique").on(table.id, table.projectId),
+}));
+
+export const integrationTools = pgTable("integration_tools", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  integrationId: uuid("integration_id").notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  actionName: varchar("action_name", { length: 255 }).notNull(),
+  description: text("description"),
+  inputSchema: jsonb("input_schema").default({}).notNull(),
+  outputSchema: jsonb("output_schema").default({}).notNull(),
+  riskLevel: varchar("risk_level", { length: 50 }).default("READ_ONLY").notNull(),
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  status: varchar("status", { length: 50 }).default("DISCOVERED").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  integrationIdIdx: index("integration_tools_integration_id_idx").on(table.integrationId),
+  projectIdIdx: index("integration_tools_project_id_idx").on(table.projectId),
+  actionNameIdx: index("integration_tools_action_name_idx").on(table.integrationId, table.actionName),
+  integrationProjectFk: foreignKey({
+    columns: [table.integrationId, table.projectId],
+    foreignColumns: [projectIntegrations.id, projectIntegrations.projectId],
+    name: "integration_tools_integration_project_fk"
+  }).onDelete("cascade"),
+}));
+
+export const projectIntegrationsRelations = relations(projectIntegrations, ({ one, many }) => ({
+  project: one(projects, { fields: [projectIntegrations.projectId], references: [projects.id] }),
+  tools: many(integrationTools),
+}));
+
+export const integrationToolsRelations = relations(integrationTools, ({ one }) => ({
+  integration: one(projectIntegrations, { fields: [integrationTools.integrationId], references: [projectIntegrations.id] }),
+  project: one(projects, { fields: [integrationTools.projectId], references: [projects.id] }),
+}));

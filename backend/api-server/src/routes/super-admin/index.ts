@@ -579,5 +579,170 @@ router.patch("/projects/:id/trial", async (req, res) => {
   }
 });
 
+// GET /api/super-admin/subscriptions
+// Returns all projects with owner emails, trial details, subscription statuses, and entitlement info
+router.get("/subscriptions", async (req, res) => {
+  try {
+    const list = await withBypassRLS(async (tx: any) => {
+      const rows = await tx
+        .select({
+          id: projects.id,
+          name: projects.name,
+          userId: projects.userId,
+          userEmail: users.email,
+          isActive: projects.isActive,
+          createdAt: projects.createdAt,
+          entitlement: projectEntitlements,
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .leftJoin(projectEntitlements, eq(projects.id, projectEntitlements.projectId))
+        .orderBy(desc(projects.createdAt));
+
+      return rows.map((r: any) => {
+        const ent = r.entitlement || {};
+        const now = new Date();
+        const trialStartedAt = ent.trialStartedAt || null;
+        const trialEndsAt = ent.trialEndsAt || null;
+
+        let derivedStatus = ent.entitlementStatus;
+        if (!derivedStatus) {
+          if (ent.subscriptionStatus === "active") {
+            derivedStatus = "SUBSCRIPTION_ACTIVE";
+          } else if (trialEndsAt && now > new Date(trialEndsAt)) {
+            derivedStatus = "TRIAL_EXPIRED";
+          } else {
+            derivedStatus = "TRIAL_ACTIVE";
+          }
+        }
+
+        return {
+          projectId: r.id,
+          projectName: r.name,
+          userId: r.userId,
+          userEmail: r.userEmail || "Unknown",
+          isActive: r.isActive,
+          createdAt: r.createdAt,
+          customTrialDays: ent.customTrialDays ?? null,
+          trialStartedAt,
+          trialEndsAt,
+          entitlementStatus: derivedStatus,
+          subscriptionStatus: ent.subscriptionStatus || "inactive",
+          subscriptionStartedAt: ent.subscriptionStartedAt || null,
+          subscriptionEndsAt: ent.subscriptionEndsAt || null,
+        };
+      });
+    });
+
+    res.json(list);
+  } catch (err: any) {
+    req.log.error({ err }, "Error listing subscriptions for super-admin");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /api/super-admin/subscriptions/:projectId
+// Updates entitlement status, custom trial days, or grants subscription days
+router.patch("/subscriptions/:projectId", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { customTrialDays, entitlementStatus, subscriptionStatus, grantSubscriptionDays } = req.body;
+
+    await withBypassRLS(async (tx: any) => {
+      const [existingProject] = await tx
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId));
+
+      if (!existingProject) {
+        throw new Error("Project not found");
+      }
+
+      const [existingEnt] = await tx
+        .select()
+        .from(projectEntitlements)
+        .where(eq(projectEntitlements.projectId, projectId));
+
+      const now = new Date();
+      const updateData: any = { updatedAt: now };
+
+      if (typeof customTrialDays === "number" && customTrialDays >= 0) {
+        updateData.customTrialDays = customTrialDays;
+        const started = existingEnt?.trialStartedAt || now;
+        updateData.trialStartedAt = started;
+        updateData.trialEndsAt = new Date(started.getTime() + customTrialDays * 24 * 60 * 60 * 1000);
+      }
+
+      if (entitlementStatus) {
+        updateData.entitlementStatus = entitlementStatus;
+      }
+
+      if (subscriptionStatus) {
+        updateData.subscriptionStatus = subscriptionStatus;
+        if (subscriptionStatus === "active") {
+          updateData.entitlementStatus = "SUBSCRIPTION_ACTIVE";
+        }
+      }
+
+      if (typeof grantSubscriptionDays === "number" && grantSubscriptionDays > 0) {
+        const subStart = existingEnt?.subscriptionStartedAt || now;
+        const currentEnd = existingEnt?.subscriptionEndsAt && new Date(existingEnt.subscriptionEndsAt) > now
+          ? new Date(existingEnt.subscriptionEndsAt)
+          : now;
+        const subEnd = new Date(currentEnd.getTime() + grantSubscriptionDays * 24 * 60 * 60 * 1000);
+
+        updateData.subscriptionStatus = "active";
+        updateData.entitlementStatus = "SUBSCRIPTION_ACTIVE";
+        updateData.subscriptionStartedAt = subStart;
+        updateData.subscriptionEndsAt = subEnd;
+      }
+
+      if (existingEnt) {
+        await tx
+          .update(projectEntitlements)
+          .set(updateData)
+          .where(eq(projectEntitlements.projectId, projectId));
+      } else {
+        await tx.insert(projectEntitlements).values({
+          projectId,
+          subscriptionStatus: updateData.subscriptionStatus || "inactive",
+          entitlementStatus: updateData.entitlementStatus || "TRIAL_ACTIVE",
+          customTrialDays: updateData.customTrialDays,
+          trialStartedAt: updateData.trialStartedAt,
+          trialEndsAt: updateData.trialEndsAt,
+          subscriptionStartedAt: updateData.subscriptionStartedAt,
+          subscriptionEndsAt: updateData.subscriptionEndsAt,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      if (updateData.subscriptionStatus === "active" || updateData.entitlementStatus === "SUBSCRIPTION_ACTIVE") {
+        await tx
+          .update(projects)
+          .set({ deploymentPaid: true })
+          .where(eq(projects.id, projectId));
+      }
+    });
+
+    await logSecurityEvent({
+      eventName: "ADMIN_SUBSCRIPTION_UPDATE",
+      req,
+      projectId: req.params.projectId,
+      details: { customTrialDays, entitlementStatus, subscriptionStatus, grantSubscriptionDays }
+    });
+
+    res.json({ success: true, projectId: req.params.projectId });
+  } catch (err: any) {
+    req.log.error({ err }, "Error updating subscription for admin");
+    if (err.message === "Project not found") {
+      res.status(404).json({ error: "Project not found" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+});
+
 export default router;
+
 

@@ -98,11 +98,14 @@ export default function AdminProjectsPage() {
   const isUnrestricted = user?.email === "rakesh837m@gmail.com" || user?.email === "rakesh0837m@gmail.com";
   const canCreate = dbUser?.features?.canCreateProject !== false || isUnrestricted;
 
-  const { data: projectList, isLoading, isError, isFetching } = useQuery({
+  const { data: projectList, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["admin-projects"],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/projects"));
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || errJson.error || `Server responded with status ${res.status}`);
+      }
       return res.json() as Promise<Project[]>;
     },
     retry: 3,
@@ -285,17 +288,18 @@ export default function AdminProjectsPage() {
             </div>
             <div>
               <p className="text-foreground font-medium mb-1">Failed to load projects</p>
-              <p className="text-muted-foreground text-sm max-w-xs">
-                Could not connect to the server. Please check your connection and try again.
+              <p className="text-muted-foreground text-sm max-w-sm">
+                {(error as Error)?.message || "Could not connect to the server. Please check your connection and try again."}
               </p>
             </div>
             <Button
               variant="outline"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-projects"] })}
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-2"
             >
-              <Loader2 className="w-4 h-4 mr-2" />
-              Retry
+              <Loader2 className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
+              {isFetching ? "Retrying..." : "Retry"}
             </Button>
           </div>
         ) : isFetching && !projectList?.length ? (

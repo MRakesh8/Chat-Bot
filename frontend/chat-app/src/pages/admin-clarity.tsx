@@ -18,7 +18,14 @@ import {
   Save,
   Upload,
   CreditCard,
-  Loader2
+  Loader2,
+  Check,
+  X,
+  Search,
+  Eye,
+  Plus,
+  ShieldCheck,
+  BadgePercent
 } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeletons";
 import { useAuth } from "@/contexts/AuthContext";
@@ -99,8 +106,14 @@ export default function AdminConsolePage() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const [activeTab, setActiveTab] = useState<"users" | "projects" | "keys" | "clarity" | "settings" | "errors" | "supabase" | "payments">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "projects" | "subscriptions" | "keys" | "clarity" | "settings" | "errors" | "supabase" | "payments">("users");
   
+  // Subscriptions & Payments state
+  const [viewingScreenshotUrl, setViewingScreenshotUrl] = useState<string | null>(null);
+  const [subFilter, setSubFilter] = useState<string>("");
+  const [editingTrialProjectId, setEditingTrialProjectId] = useState<string | null>(null);
+  const [editingTrialDaysInput, setEditingTrialDaysInput] = useState<string>("");
+
   // System Settings state
   const [globalAiPrompt, setGlobalAiPrompt] = useState("");
   const [globalUpiId, setGlobalUpiId] = useState("");
@@ -135,6 +148,17 @@ export default function AdminConsolePage() {
     enabled: isAdmin && activeTab === "users",
   });
 
+  // Fetch Subscriptions & Entitlements
+  const { data: subscriptions, isLoading: subscriptionsLoading } = useQuery({
+    queryKey: ["super-admin-subscriptions"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl("/api/super-admin/subscriptions"));
+      if (!res.ok) throw new Error("Failed to load subscriptions");
+      return res.json() as Promise<any[]>;
+    },
+    enabled: isAdmin && (activeTab === "subscriptions" || activeTab === "projects"),
+  });
+
   // Fetch Global Settings
   const { data: globalSettings, isLoading: settingsLoading } = useQuery({
     queryKey: ["super-admin-global-settings"],
@@ -143,7 +167,7 @@ export default function AdminConsolePage() {
       if (!res.ok) throw new Error("Failed to load global settings");
       return res.json() as Promise<Record<string, string>>;
     },
-    enabled: isAdmin && (activeTab === "settings" || activeTab === "payments"),
+    enabled: isAdmin && (activeTab === "settings" || activeTab === "subscriptions" || activeTab === "payments"),
   });
 
   useEffect(() => {
@@ -182,8 +206,65 @@ export default function AdminConsolePage() {
       if (!res.ok) throw new Error("Failed to load payments");
       return res.json() as Promise<any[]>;
     },
-    enabled: isAdmin && activeTab === "payments",
+    enabled: isAdmin && (activeTab === "subscriptions" || activeTab === "payments"),
   });
+
+  // Update Subscription Mutation
+  const updateSubscriptionMutation = useMutation({
+    mutationFn: async ({ projectId, ...payload }: { projectId: string; customTrialDays?: number; entitlementStatus?: string; subscriptionStatus?: string; grantSubscriptionDays?: number }) => {
+      const res = await authFetch(apiUrl(`/api/super-admin/subscriptions/${projectId}`), {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to update subscription");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["super-admin-subscriptions"] });
+      toast({ title: "Subscription Updated", description: "Project entitlement & trial settings updated." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Approve Payment Mutation
+  const approvePaymentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await authFetch(apiUrl(`/api/super-admin/payments/${id}/approve`), { method: "POST" });
+      if (!res.ok) throw new Error("Failed to approve payment");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["super-admin-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["super-admin-subscriptions"] });
+      toast({ title: "Payment Verified", description: "30 days subscription activated for project." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Approval Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Reject Payment Mutation
+  const rejectPaymentMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const res = await authFetch(apiUrl(`/api/super-admin/payments/${id}/reject`), {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) throw new Error("Failed to reject payment");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["super-admin-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["super-admin-subscriptions"] });
+      toast({ title: "Payment Rejected", description: "Payment status set to rejected." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Rejection Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
 
   // Supabase Stats Fetch
   const { data: supabaseStats, isLoading: supabaseLoading } = useQuery({
@@ -372,6 +453,7 @@ export default function AdminConsolePage() {
           {[
             { id: "users", label: "Users & Roles", icon: Users },
             { id: "projects", label: "Global Projects", icon: LayoutDashboard },
+            { id: "subscriptions", label: "Subscriptions & Billing", icon: CreditCard },
             { id: "settings", label: "System Settings", icon: Settings2 },
             { id: "keys", label: "System Keys Health", icon: Key },
             { id: "errors", label: "System Errors", icon: AlertCircle },
@@ -522,141 +604,444 @@ export default function AdminConsolePage() {
           </div>
         )}
 
-        {/* PAYMENTS TAB (temporarily disabled) */}
-        {/*
-        {activeTab === "payments" && (
+        {/* SUBSCRIPTIONS & BILLING TAB */}
+        {activeTab === "subscriptions" && (
           <div className="max-w-7xl mx-auto space-y-6">
-            <h2 className="text-2xl font-bold">Manual Payments</h2>
-            {settingsLoading ? (
-              <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground w-8 h-8" /></div>
-            ) : (
-              <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-4 mb-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Subscriptions & Trial Management</h2>
+                <p className="text-sm text-muted-foreground">
+                  Manage project entitlements, free trial durations, active subscriptions, and verify manual payments.
+                </p>
+              </div>
+            </div>
+
+            {/* Metrics Overview Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-card border border-border p-5 rounded-2xl shadow-sm flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold mb-1">Manual Payment Configuration</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Configure the UPI ID and QR code image shown on the Deployment Paywall.
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Projects</p>
+                  <p className="text-2xl font-bold mt-1 text-foreground">{subscriptions?.length || 0}</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                  <LayoutDashboard className="w-6 h-6" />
+                </div>
+              </div>
+
+              <div className="bg-card border border-border p-5 rounded-2xl shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wider">Active Subscriptions</p>
+                  <p className="text-2xl font-bold mt-1 text-foreground">
+                    {subscriptions?.filter((s: any) => s.entitlementStatus === "SUBSCRIPTION_ACTIVE" || s.subscriptionStatus === "active").length || 0}
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground uppercase">UPI ID</label>
-                      <Input 
-                        value={globalUpiId}
-                        onChange={(e) => setGlobalUpiId(e.target.value)}
-                        placeholder="e.g. yourname@okaxis"
-                        className="font-mono bg-background"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-muted-foreground uppercase">QR Code Image</label>
-                      <div className="flex items-center gap-3">
-                        {globalQrCodeUrl && (
-                          <div className="w-12 h-12 rounded-lg border border-border bg-white overflow-hidden flex-none">
-                            <img src={globalQrCodeUrl} className="w-full h-full object-contain" alt="QR Code preview" />
-                          </div>
-                        )}
-                        <Input 
-                          type="file" 
-                          accept="image/*" 
-                          disabled={isUploadingQr}
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setIsUploadingQr(true);
-                            try {
-                              const ext = file.name.split('.').pop();
-                              const fileName = `qr_config_${Date.now()}.${ext}`;
-                              const filePath = `payments/${fileName}`;
-                              
-                              const formData = new FormData();
-                              formData.append("file", file);
-                              formData.append("storagePath", filePath);
+                </div>
+                <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-500">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+              </div>
 
-                              const token = session?.access_token;
-                              const res = await fetch(apiUrl("/api/files/upload-public"), {
-                                method: "POST",
-                                headers: token ? { Authorization: `Bearer ${token}` } : {},
-                                body: formData
-                              });
+              <div className="bg-card border border-border p-5 rounded-2xl shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider">Active Trials</p>
+                  <p className="text-2xl font-bold mt-1 text-foreground">
+                    {subscriptions?.filter((s: any) => s.entitlementStatus === "TRIAL_ACTIVE").length || 0}
+                  </p>
+                </div>
+                <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500">
+                  <Clock className="w-6 h-6" />
+                </div>
+              </div>
 
-                              if (!res.ok) {
-                                const errData = await res.json().catch(() => ({}));
-                                throw new Error(errData.error || "Upload failed");
-                              }
+              <div className="bg-card border border-border p-5 rounded-2xl shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-rose-500 uppercase tracking-wider">Expired / Suspended</p>
+                  <p className="text-2xl font-bold mt-1 text-foreground">
+                    {subscriptions?.filter((s: any) => s.entitlementStatus === "TRIAL_EXPIRED" || s.entitlementStatus === "SUSPENDED").length || 0}
+                  </p>
+                </div>
+                <div className="p-3 bg-rose-500/10 rounded-xl text-rose-500">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
 
-                              const data = await res.json();
-                              setGlobalQrCodeUrl(data.publicUrl);
-                              toast({ title: "QR Code Uploaded", description: "Remember to save settings." });
-                            } catch (err: any) {
-                              toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
-                            } finally {
-                              setIsUploadingQr(false);
-                            }
-                          }}
-                          className="cursor-pointer bg-background"
-                        />
-                      </div>
-                    </div>
+            {/* Section 1: Pending Manual Payment Approvals */}
+            {payments && payments.filter((p: any) => p.status === "pending").length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-500">
+                    <AlertCircle className="w-5 h-5 flex-none" />
+                    <h3 className="text-lg font-bold text-foreground">Pending Payment Verifications ({payments.filter((p: any) => p.status === "pending").length})</h3>
+                  </div>
+                  <Badge variant="outline" className="border-amber-500/30 text-amber-500">Action Required</Badge>
+                </div>
+                <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-muted/50 text-muted-foreground border-b border-border">
+                      <tr>
+                        <th className="p-4 font-medium">Date</th>
+                        <th className="p-4 font-medium">User Email</th>
+                        <th className="p-4 font-medium">Project Name</th>
+                        <th className="p-4 font-medium">Amount</th>
+                        <th className="p-4 font-medium">UTR / Tx ID</th>
+                        <th className="p-4 font-medium">Receipt</th>
+                        <th className="p-4 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {payments.filter((p: any) => p.status === "pending").map((p: any) => (
+                        <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="p-4">{new Date(p.createdAt).toLocaleDateString()}</td>
+                          <td className="p-4 font-medium">{p.user?.email || "Unknown"}</td>
+                          <td className="p-4">{p.project?.name || "N/A"}</td>
+                          <td className="p-4 font-bold text-emerald-500">₹{p.amount / 100 || p.amount}</td>
+                          <td className="p-4 font-mono text-xs text-muted-foreground">{p.utrTransactionId || "N/A"}</td>
+                          <td className="p-4">
+                            {p.screenshotUrl ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 gap-1.5 text-xs"
+                                onClick={() => setViewingScreenshotUrl(p.screenshotUrl)}
+                              >
+                                <Eye className="w-3.5 h-3.5" /> View Receipt
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">No image</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs font-semibold gap-1"
+                                disabled={approvePaymentMutation.isPending}
+                                onClick={() => approvePaymentMutation.mutate(p.id)}
+                              >
+                                <Check className="w-3.5 h-3.5" /> Verify & Grant 30 Days
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                className="h-8 text-xs font-semibold gap-1"
+                                disabled={rejectPaymentMutation.isPending}
+                                onClick={() => rejectPaymentMutation.mutate({ id: p.id })}
+                              >
+                                <X className="w-3.5 h-3.5" /> Reject
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Section 2: Projects Entitlements & Subscription Table */}
+            <div className="bg-card border border-border rounded-2xl p-6 space-y-4 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Project Entitlements & Subscription Control</h3>
+                  <p className="text-xs text-muted-foreground">View and override free trial durations, activate subscription plans, or suspend access.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by project or user email..."
+                      value={subFilter}
+                      onChange={(e) => setSubFilter(e.target.value)}
+                      className="pl-9 h-9 w-64 bg-background text-xs"
+                    />
                   </div>
                 </div>
-                <div className="flex justify-end pt-4 border-t border-border mt-4">
-                  <Button onClick={updateGlobalSettings} disabled={savingSettings} className="gap-2">
-                    {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save Payment Config
-                  </Button>
+              </div>
+
+              {subscriptionsLoading ? (
+                <TableSkeleton rows={8} />
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-muted/50 text-muted-foreground border-b border-border">
+                      <tr>
+                        <th className="p-4 font-medium">Project & Owner</th>
+                        <th className="p-4 font-medium">Entitlement Status</th>
+                        <th className="p-4 font-medium">Trial Timeline</th>
+                        <th className="p-4 font-medium">Custom Trial</th>
+                        <th className="p-4 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {subscriptions
+                        ?.filter((s: any) => {
+                          if (!subFilter) return true;
+                          const q = subFilter.toLowerCase();
+                          return (
+                            s.projectName?.toLowerCase().includes(q) ||
+                            s.userEmail?.toLowerCase().includes(q) ||
+                            s.projectId?.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((s: any) => {
+                          const isSubActive = s.entitlementStatus === "SUBSCRIPTION_ACTIVE" || s.subscriptionStatus === "active";
+                          const isTrialActive = s.entitlementStatus === "TRIAL_ACTIVE";
+                          const isTrialExpired = s.entitlementStatus === "TRIAL_EXPIRED";
+                          const isSuspended = s.entitlementStatus === "SUSPENDED";
+
+                          return (
+                            <tr key={s.projectId} className="hover:bg-muted/30 transition-colors">
+                              <td className="p-4">
+                                <div className="font-semibold text-foreground">{s.projectName}</div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <span>{s.userEmail}</span>
+                                  <span className="text-muted-foreground/40">•</span>
+                                  <span className="font-mono text-[10px]">{s.projectId.slice(0, 8)}...</span>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                {isSubActive && (
+                                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 gap-1">
+                                    <ShieldCheck className="w-3.5 h-3.5" /> Subscription Active
+                                  </Badge>
+                                )}
+                                {isTrialActive && (
+                                  <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/30 gap-1">
+                                    <Clock className="w-3.5 h-3.5" /> Trial Active
+                                  </Badge>
+                                )}
+                                {isTrialExpired && (
+                                  <Badge variant="destructive" className="gap-1">
+                                    <AlertTriangle className="w-3.5 h-3.5" /> Trial Expired
+                                  </Badge>
+                                )}
+                                {isSuspended && (
+                                  <Badge className="bg-rose-500/20 text-rose-400 border-rose-500/40 gap-1">
+                                    <ShieldAlert className="w-3.5 h-3.5" /> Suspended
+                                  </Badge>
+                                )}
+                              </td>
+                              <td className="p-4 text-xs space-y-1">
+                                <div>
+                                  <span className="text-muted-foreground">Started: </span>
+                                  <span className="font-medium text-foreground">
+                                    {s.trialStartedAt ? new Date(s.trialStartedAt).toLocaleDateString() : "Not started (lazy)"}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Ends: </span>
+                                  <span className="font-medium text-foreground">
+                                    {s.trialEndsAt ? new Date(s.trialEndsAt).toLocaleDateString() : "N/A"}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                {editingTrialProjectId === s.projectId ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max="365"
+                                      value={editingTrialDaysInput}
+                                      onChange={(e) => setEditingTrialDaysInput(e.target.value)}
+                                      className="w-20 h-8 text-xs bg-background"
+                                      placeholder="Days"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      className="h-8 text-xs px-2"
+                                      disabled={updateSubscriptionMutation.isPending}
+                                      onClick={() => {
+                                        const days = parseInt(editingTrialDaysInput, 10);
+                                        if (!isNaN(days)) {
+                                          updateSubscriptionMutation.mutate({
+                                            projectId: s.projectId,
+                                            customTrialDays: days,
+                                          });
+                                        }
+                                        setEditingTrialProjectId(null);
+                                      }}
+                                    >
+                                      Save
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 text-xs px-2 text-muted-foreground"
+                                      onClick={() => setEditingTrialProjectId(null)}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-foreground text-xs">
+                                      {s.customTrialDays != null ? `${s.customTrialDays} Days (Custom)` : "Global Default (7 Days)"}
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 text-[10px] px-2 border-border"
+                                      onClick={() => {
+                                        setEditingTrialProjectId(s.projectId);
+                                        setEditingTrialDaysInput(String(s.customTrialDays ?? 7));
+                                      }}
+                                    >
+                                      Edit
+                                    </Button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                  <Button
+                                    size="sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs font-medium px-2.5 gap-1"
+                                    disabled={updateSubscriptionMutation.isPending}
+                                    onClick={() =>
+                                      updateSubscriptionMutation.mutate({
+                                        projectId: s.projectId,
+                                        grantSubscriptionDays: 30,
+                                      })
+                                    }
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5" /> Grant +30d Pro
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs px-2.5 gap-1 border-border"
+                                    disabled={updateSubscriptionMutation.isPending}
+                                    onClick={() =>
+                                      updateSubscriptionMutation.mutate({
+                                        projectId: s.projectId,
+                                        customTrialDays: (s.customTrialDays || 7) + 7,
+                                      })
+                                    }
+                                  >
+                                    <Plus className="w-3 h-3" /> +7d Trial
+                                  </Button>
+                                  {isSuspended ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs px-2.5 text-blue-500 border-blue-500/30 hover:bg-blue-500/10"
+                                      disabled={updateSubscriptionMutation.isPending}
+                                      onClick={() =>
+                                        updateSubscriptionMutation.mutate({
+                                          projectId: s.projectId,
+                                          entitlementStatus: "TRIAL_ACTIVE",
+                                        })
+                                      }
+                                    >
+                                      Re-activate
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs px-2.5 text-rose-500 border-rose-500/30 hover:bg-rose-500/10"
+                                      disabled={updateSubscriptionMutation.isPending}
+                                      onClick={() =>
+                                        updateSubscriptionMutation.mutate({
+                                          projectId: s.projectId,
+                                          entitlementStatus: "SUSPENDED",
+                                        })
+                                      }
+                                    >
+                                      Suspend
+                                    </Button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Section 3: Payment Gateway Configuration (UPI & QR Code) */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Manual Payment Gateway Config</h3>
+                <p className="text-xs text-muted-foreground">Configure the UPI ID and QR code displayed on user deployment paywalls.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">UPI ID</label>
+                  <Input
+                    value={globalUpiId}
+                    onChange={(e) => setGlobalUpiId(e.target.value)}
+                    placeholder="e.g. yourname@okaxis"
+                    className="font-mono bg-background text-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase">QR Code Image</label>
+                  <div className="flex items-center gap-3">
+                    {globalQrCodeUrl && (
+                      <div className="w-12 h-12 rounded-lg border border-border bg-white overflow-hidden flex-none">
+                        <img src={globalQrCodeUrl} className="w-full h-full object-contain" alt="QR Code preview" />
+                      </div>
+                    )}
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      disabled={isUploadingQr}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setIsUploadingQr(true);
+                        try {
+                          const ext = file.name.split(".").pop();
+                          const fileName = `qr_config_${Date.now()}.${ext}`;
+                          const filePath = `payments/${fileName}`;
+
+                          const formData = new FormData();
+                          formData.append("file", file);
+                          formData.append("storagePath", filePath);
+
+                          const token = session?.access_token;
+                          const res = await fetch(apiUrl("/api/files/upload-public"), {
+                            method: "POST",
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            body: formData,
+                          });
+
+                          if (!res.ok) {
+                            const errData = await res.json().catch(() => ({}));
+                            throw new Error(errData.error || "Upload failed");
+                          }
+
+                          const data = await res.json();
+                          setGlobalQrCodeUrl(data.publicUrl);
+                          toast({ title: "QR Code Uploaded", description: "Remember to save settings." });
+                        } catch (err: any) {
+                          toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+                        } finally {
+                          setIsUploadingQr(false);
+                        }
+                      }}
+                      className="cursor-pointer bg-background text-xs"
+                    />
+                  </div>
                 </div>
               </div>
-            )}
-            {paymentsLoading ? (
-              <TableSkeleton rows={8} />
-            ) : (
-              <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground border-b border-border">
-                    <tr>
-                      <th className="p-4 font-medium">Date</th>
-                      <th className="p-4 font-medium">User</th>
-                      <th className="p-4 font-medium">Amount</th>
-                      <th className="p-4 font-medium">UTR</th>
-                      <th className="p-4 font-medium">Status</th>
-                      <th className="p-4 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {payments?.map((p) => (
-                      <tr key={p.id} className="hover:bg-muted/30">
-                        <td className="p-4">{new Date(p.createdAt).toLocaleDateString()}</td>
-                        <td className="p-4">{p.user?.email}</td>
-                        <td className="p-4 font-bold">₹{p.amount / 100}</td>
-                        <td className="p-4 font-mono text-xs">{p.utrTransactionId || "N/A"}</td>
-                        <td className="p-4">
-                          <Badge variant={p.status === 'verified' ? 'default' : p.status === 'rejected' ? 'destructive' : 'secondary'}>
-                            {p.status}
-                          </Badge>
-                        </td>
-                        <td className="p-4 gap-2 flex">
-                          {p.status === 'pending' && (
-                            <>
-                              <Button size="sm" onClick={async () => {
-                                await authFetch(apiUrl(`/api/super-admin/payments/${p.id}/approve`), { method: 'POST' });
-                                queryClient.invalidateQueries({ queryKey: ["super-admin-payments"] });
-                              }}>Approve</Button>
-                              <Button size="sm" variant="destructive" onClick={async () => {
-                                await authFetch(apiUrl(`/api/super-admin/payments/${p.id}/reject`), { method: 'POST' });
-                                queryClient.invalidateQueries({ queryKey: ["super-admin-payments"] });
-                              }}>Reject</Button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex justify-end pt-4 border-t border-border mt-4">
+                <Button onClick={updateGlobalSettings} disabled={savingSettings} className="gap-2">
+                  {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save Payment Gateway Settings
+                </Button>
               </div>
-            )}
+            </div>
           </div>
         )}
-        */}
+
 
         {/* KEYS TAB */}
         {activeTab === "keys" && (
@@ -1086,6 +1471,25 @@ export default function AdminConsolePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Receipt Screenshot Viewer Modal */}
+      <Dialog open={!!viewingScreenshotUrl} onOpenChange={(open) => !open && setViewingScreenshotUrl(null)}>
+        <DialogContent className="max-w-xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Payment Receipt Screenshot</DialogTitle>
+            <DialogDescription>Uploaded by user for manual payment verification.</DialogDescription>
+          </DialogHeader>
+          {viewingScreenshotUrl && (
+            <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-black/40 p-2 flex justify-center">
+              <img src={viewingScreenshotUrl} alt="Payment Receipt" className="max-w-full h-auto object-contain rounded" />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingScreenshotUrl(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

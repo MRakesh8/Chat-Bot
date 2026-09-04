@@ -120,16 +120,16 @@ async function runSecurityTests() {
   // 6. EFFECTIVE TRIAL DAYS PRIORITY
   process.env.DEFAULT_TRIAL_DAYS = "14";
   assert(
-    getEffectiveTrialDays(30) === 30,
+    (await getEffectiveTrialDays(null, 30)) === 30,
     "Trial Configuration: Custom project trial days has highest priority"
   );
   assert(
-    getEffectiveTrialDays(null) === 14,
+    (await getEffectiveTrialDays(null, null)) === 14,
     "Trial Configuration: Global DEFAULT_TRIAL_DAYS used when no project custom value set"
   );
   delete process.env.DEFAULT_TRIAL_DAYS;
   assert(
-    getEffectiveTrialDays(null) === 7,
+    (await getEffectiveTrialDays(null, null)) === 7,
     "Trial Configuration: Fallback to 7 days when no env or project custom value set"
   );
 
