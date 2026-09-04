@@ -2,6 +2,7 @@ import { BaseAgent, AgentContext, AgentResult } from "./base";
 import { PlannerAgent } from "./planner";
 import { VerificationAgent } from "./verification";
 import { SecurityAgent } from "./security";
+import { BusinessAgent } from "./businessAgent";
 import { generateActionConfirmationToken } from "../security";
 import { db } from "@workspace/db";
 import { workflowExecutions, executionSteps } from "@workspace/db/schema";
@@ -11,20 +12,22 @@ export class CoordinatorAgent extends BaseAgent {
   private plannerAgent: PlannerAgent;
   private verificationAgent: VerificationAgent;
   private securityAgent: SecurityAgent;
+  private businessAgent: BusinessAgent;
 
   constructor() {
     super("CoordinatorAgent");
     this.plannerAgent = new PlannerAgent();
     this.verificationAgent = new VerificationAgent();
     this.securityAgent = new SecurityAgent();
+    this.businessAgent = new BusinessAgent();
   }
 
   async execute(context: AgentContext): Promise<AgentResult> {
     try {
       const { projectId, sessionId, payload, userId } = context;
 
+      // 1. Resume Execution from Legacy Client Browser Workflow Result
       if (payload?.resumeExecution) {
-        // RESUME FROM ACTION RESULT
         const executionId = payload.executionId;
         const result = payload.actionResult;
         
@@ -33,12 +36,12 @@ export class CoordinatorAgent extends BaseAgent {
 
         let status = result.status; // success or failed
         
-        // 1. Verification Step
+        // Verification Step for browser actions
         const verRes = await this.verificationAgent.execute({
           projectId, sessionId, payload: { result }
         });
         
-        if (!verRes.data.verified) {
+        if (!verRes.data?.verified) {
            status = "failed";
         }
 
@@ -49,7 +52,6 @@ export class CoordinatorAgent extends BaseAgent {
             const retryCount = (currentStep?.retryCount || 0) + 1;
             if (retryCount <= 3) {
                 await db.update(executionSteps).set({ status: "retry", retryCount }).where(eq(executionSteps.id, result.actionId));
-                // In a real system, we might ask planner for alternative selector, but for now we re-issue the same step or generic retry
                 return { success: true, data: { action: { ...currentStep, type: "retry" }, executionId } };
             } else {
                 await db.update(executionSteps).set({ status: "failed_final" }).where(eq(executionSteps.id, result.actionId));
@@ -67,7 +69,7 @@ export class CoordinatorAgent extends BaseAgent {
             await db.update(workflowExecutions).set({ currentStepIndex: nextIndex }).where(eq(workflowExecutions.id, executionId));
             const nextAction = plan[nextIndex];
             
-            // Security Check for next action
+            // Security Check for next browser action
             const secRes = await this.securityAgent.execute({ projectId, sessionId, userId, payload: { proposedAction: nextAction } });
             
             const [newStep] = await db.insert(executionSteps).values({
@@ -98,11 +100,21 @@ export class CoordinatorAgent extends BaseAgent {
         }
       }
 
-      // NEW EXECUTION
+      // 2. Primary Phase 2F Delegation: BusinessAgent Evaluation
+      if (payload?.intent || payload?.message) {
+        const businessResult = await this.businessAgent.execute(context);
+        
+        // If BusinessAgent handled an action, RAG information query, clarification, or unsupported intent, return it directly
+        if (businessResult.success || businessResult.data?.intent) {
+          return businessResult;
+        }
+      }
+
+      // 3. Fallback: PlannerAgent for Client Browser Multi-Step Workflows
       const planRes = await this.plannerAgent.execute({ projectId, sessionId, payload });
       if (!planRes.success) return planRes;
       
-      const plan = planRes.data.plan.steps;
+      const plan = planRes.data?.plan?.steps;
       if (!plan || plan.length === 0) return { success: true, data: { action: null } };
 
       const [newExec] = await db.insert(workflowExecutions).values({
@@ -149,4 +161,3 @@ export class CoordinatorAgent extends BaseAgent {
     }
   }
 }
-

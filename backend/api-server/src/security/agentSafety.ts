@@ -3,6 +3,7 @@
  */
 
 export type ActionRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type UnifiedActionRiskLevel = "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "IRREVERSIBLE";
 
 export interface AgentAction {
   name: string;
@@ -59,6 +60,22 @@ export function evaluateActionRisk(actionName: string | AgentAction): ActionRisk
 
   // Default unspecified actions to MEDIUM
   return "MEDIUM";
+}
+
+export function evaluateUnifiedActionRisk(actionName: string | AgentAction): UnifiedActionRiskLevel {
+  const risk = evaluateActionRisk(actionName);
+  switch (risk) {
+    case "LOW":
+      return "READ_ONLY";
+    case "MEDIUM":
+      return "LOW_RISK_WRITE";
+    case "HIGH":
+      return "HIGH_RISK_WRITE";
+    case "CRITICAL":
+      return "IRREVERSIBLE";
+    default:
+      return "LOW_RISK_WRITE";
+  }
 }
 
 import crypto from "crypto";

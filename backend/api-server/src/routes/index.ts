@@ -13,6 +13,7 @@ import integrationsRouter from "./integrations";
 
 import systemRouter from "./system";
 import superAdminRouter from "./super-admin";
+import agentRouter from "./agent";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,7 @@ router.use("/api-keys", apiKeysRouter);
 router.use("/services", servicesRouter);
 router.use("/payments", paymentsRouter);
 router.use("/integrations", integrationsRouter);
+router.use("/agent", agentRouter);
 router.use("/system", systemRouter);
 router.use("/super-admin", superAdminRouter);
 

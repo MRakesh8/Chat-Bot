@@ -974,38 +974,81 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
 
     try {
-      // If the intent is an ACTION_REQUEST, bypass the conversational LLM and route directly to the Coordinator
-      if (intentType === "ACTION_REQUEST") {
-        
-        // Let the user know we are processing the action immediately
-        res.write(`data: ${JSON.stringify({ content: "⚙️ *Executing action...*\n\n" })}\n\n`);
-        if (typeof (res as any).flush === 'function') (res as any).flush();
-
-        const { CoordinatorAgent } = require("../agents/coordinator");
-        const coordinator = new CoordinatorAgent();
-        const actionRes = await coordinator.execute({
-           projectId,
-           sessionId,
-           payload: { intent: lastUserMessage, context: finalWebsiteContext }
-        });
-        
-        if (actionRes.success && actionRes.data?.action && actionRes.data.action.type !== 'idle') {
-           const payload = { 
-              action: actionRes.data.action,
-              executionId: actionRes.data.executionId,
-              security: actionRes.data.security
-           };
-           res.write(`data: ${JSON.stringify(payload)}\n\n`);
-           if (typeof (res as any).flush === 'function') (res as any).flush();
-        } else if (!actionRes.success) {
-           res.write(`data: ${JSON.stringify({ content: `\n❌ *Failed to execute action:* ${actionRes.error}` })}\n\n`);
+      // 1. Delegate request to CoordinatorAgent -> BusinessAgent pipeline
+      const { CoordinatorAgent } = require("../agents/coordinator");
+      const coordinator = new CoordinatorAgent();
+      const coordRes = await coordinator.execute({
+        projectId,
+        sessionId,
+        userId: userId || "public_visitor",
+        payload: {
+          message: lastUserMessage,
+          intent: lastUserMessage,
+          confirmationToken: req.body?.confirmationToken,
+          context: finalWebsiteContext
         }
-        
+      });
+
+      if (coordRes.success && coordRes.data?.intent) {
+        const bData = coordRes.data;
+
+        if (bData.status === "PENDING_CONFIRMATION") {
+          res.write(`data: ${JSON.stringify({ activity: "Confirmation required" })}\n\n`);
+          res.write(`data: ${JSON.stringify({
+            status: "PENDING_CONFIRMATION",
+            requiresConfirmation: true,
+            confirmationToken: bData.confirmationToken,
+            actionId: bData.actionId,
+            riskLevel: bData.riskLevel,
+            toolExecuted: bData.toolExecuted,
+            content: bData.response
+          })}\n\n`);
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+          return res;
+        }
+
+        if (bData.intent === "action" && bData.status === "COMPLETED") {
+          res.write(`data: ${JSON.stringify({ activity: "Executing authorized server tool..." })}\n\n`);
+          if (typeof (res as any).flush === 'function') (res as any).flush();
+          res.write(`data: ${JSON.stringify({ activity: "Verifying execution status..." })}\n\n`);
+          if (typeof (res as any).flush === 'function') (res as any).flush();
+          res.write(`data: ${JSON.stringify({ activity: "Completed" })}\n\n`);
+          res.write(`data: ${JSON.stringify({ content: bData.response, toolExecuted: bData.toolExecuted, result: bData.result })}\n\n`);
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+          return res;
+        }
+
+        if (bData.intent === "clarification" || bData.intent === "unsupported") {
+          res.write(`data: ${JSON.stringify({ content: bData.response })}\n\n`);
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+          return res;
+        }
+
+        if (bData.intent === "information" && bData.response) {
+          res.write(`data: ${JSON.stringify({ content: bData.response })}\n\n`);
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+          return res;
+        }
+      }
+
+      // If intent was ACTION_REQUEST for browser steps
+      if (intentType === "ACTION_REQUEST" && coordRes.success && coordRes.data?.action) {
+        const payload = { 
+          action: coordRes.data.action,
+          executionId: coordRes.data.executionId,
+          security: coordRes.data.security
+        };
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
         return res;
       }
 
-      // OTHERWISE, normal conversational flow
+      // 2. Fallback to conversational LLM stream with context
       const llmPromptHash = nodeCrypto.createHash("sha256").update(JSON.stringify(chatMessages)).digest("hex");
       const cachedResponse = await llmResponseCache.get(llmPromptHash);
 
@@ -1044,30 +1087,6 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           confidence: "low",
           reason: isFallbackResponse(fullResponseText) ? "AI_FALLBACK" : "NO_RAG_MATCH",
         }).catch((e) => req.log.error({ err: e }, "Background knowledge gap tracking error"));
-      }
-
-      // After streaming chat, invoke Swarm Coordinator ONLY IF they explicitly asked for an action in a roundabout way
-      // But usually, ACTION_REQUEST handles this now. We'll leave a soft-invoke here just in case the LLM realizes it needs to act.
-      try {
-        const { CoordinatorAgent } = require("../agents/coordinator");
-        const coordinator = new CoordinatorAgent();
-        const actionRes = await coordinator.execute({
-           projectId,
-           sessionId,
-           payload: { intent: lastUserMessage, context: finalWebsiteContext }
-        });
-        
-        if (actionRes.success && actionRes.data?.action && actionRes.data.action.type !== 'idle') {
-           const payload = { 
-              action: actionRes.data.action,
-              executionId: actionRes.data.executionId,
-              security: actionRes.data.security
-           };
-           res.write(`data: ${JSON.stringify(payload)}\n\n`);
-           if (typeof (res as any).flush === 'function') (res as any).flush();
-        }
-      } catch(e) {
-         req.log.error({ err: e }, "Coordinator error during stream fallback");
       }
     } catch (err: any) {
       req.log.error({ err }, "executeLlmWithFailover threw an error");
