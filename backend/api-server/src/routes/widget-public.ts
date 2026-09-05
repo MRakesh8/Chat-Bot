@@ -945,7 +945,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       
       Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;
 
-      const intentHash = nodeCrypto.createHash("sha256").update(intentPrompt).digest("hex");
+      const intentHash = nodeCrypto.createHash("sha256").update(`${projectId}:${intentPrompt}`).digest("hex");
       const cachedIntent = await llmResponseCache.get(intentHash);
 
       if (cachedIntent) {
@@ -961,7 +961,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           const parsed = JSON.parse(intentRes.text || "{}");
           if (parsed.intent) {
             intentType = parsed.intent;
-            await llmResponseCache.set(intentHash, intentType, 86400); // 24 hours
+            await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL
           }
         } catch (e) {
           req.log.error({ err: e }, "Failed to parse intent JSON");
@@ -1027,7 +1027,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
           return res;
         }
 
-        if (bData.intent === "information" && bData.response) {
+        if ((bData.intent === "general_conversation" || bData.intent === "business_information" || bData.intent === "information") && bData.response) {
           res.write(`data: ${JSON.stringify({ content: bData.response })}\n\n`);
           res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
           res.end();

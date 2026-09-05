@@ -5,7 +5,8 @@ import {
   projectIntegrations,
   integrationTools,
   websitePermissions,
-  enterpriseAuditLogs
+  enterpriseAuditLogs,
+  users
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { executeServerTool } from "../src/services/tool-execution";
@@ -38,6 +39,7 @@ async function runVerification() {
   console.log("      PHASE 2F COMPREHENSIVE VERIFICATION SUITE   ");
   console.log("=================================================\n");
 
+  let testUserId: string = "";
   let testOrgId: string = "";
   let testProjectId: string = "";
   let testOrgBId: string = "";
@@ -50,6 +52,15 @@ async function runVerification() {
     // ─── SETUP MOCK DB ENVIRONMENT ──────────────────────────────────────────
     console.log("Setting up isolated test tenant and project environment...");
     
+    // Find or create test user
+    const [existingUser] = await db.select().from(users).limit(1);
+    if (existingUser) {
+      testUserId = existingUser.id;
+    } else {
+      const [newUser] = await db.insert(users).values({ email: "phase2f-test@example.com", role: "super_admin" }).returning();
+      testUserId = newUser.id;
+    }
+
     // Find or create test organization A
     const [existingOrg] = await db.select().from(organizations).limit(1);
     if (existingOrg) {
@@ -74,9 +85,9 @@ async function runVerification() {
       testProjectId = existingProj.id;
     } else {
       const [newProj] = await db.insert(projects).values({
+        userId: testUserId,
         organizationId: testOrgId,
-        name: "Phase2F Test Project",
-        slug: `phase2f-proj-${Date.now()}`
+        name: "Phase2F Test Project"
       }).returning();
       testProjectId = newProj.id;
     }
@@ -87,9 +98,9 @@ async function runVerification() {
       testProjectBId = existingProjB.id;
     } else {
       const [newProjB] = await db.insert(projects).values({
+        userId: testUserId,
         organizationId: testOrgBId,
-        name: "Phase2F Project B",
-        slug: `phase2f-proj-b-${Date.now()}`
+        name: "Phase2F Project B"
       }).returning();
       testProjectBId = newProjB.id;
     }
@@ -661,6 +672,8 @@ async function runVerification() {
   } else {
     console.log("FINAL VERIFICATION GATE: YELLOW / RED (Check blocked items)");
   }
+
+  process.exit(blocked === 0 ? 0 : 1);
 }
 
 runVerification().catch(console.error);

@@ -7,7 +7,9 @@ import {
   crypto,
   withTenantContext,
   enterpriseAuditLogs,
-  executionSteps
+  executionSteps,
+  users,
+  organizationMembers
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { providerRegistry } from "./integrations/provider-registry";
@@ -22,6 +24,14 @@ import {
 import { VerificationAgent } from "../agents/verification";
 import { logger } from "../lib/logger";
 
+export interface CustomerContext {
+  customerId?: string;
+  email?: string;
+  phone?: string;
+  verified?: boolean;
+  isBusinessAdmin?: boolean;
+}
+
 export interface ExecuteServerToolParams {
   projectId: string;
   orgId?: string;
@@ -32,6 +42,7 @@ export interface ExecuteServerToolParams {
   actionName?: string;
   input?: any;
   confirmationToken?: string;
+  customerContext?: CustomerContext;
 }
 
 export interface ExecuteServerToolResult {
@@ -67,7 +78,8 @@ export async function executeServerTool(
     toolId,
     actionName,
     input = {},
-    confirmationToken
+    confirmationToken,
+    customerContext
   } = params;
 
   if (!projectId) {
@@ -309,6 +321,67 @@ export async function executeServerTool(
         success: false,
         status: "EXECUTION_FAILED",
         error: `Provider ${providerName} execution engine is not registered.`
+      };
+    }
+
+    // 7.5 Authoritative Server-Side Customer Identity & Parameter Scoping
+    // Derive isBusinessAdmin strictly from trusted server-side database role checks.
+    // Never infer admin privileges from userId existence, orgId, or untrusted LLM input.
+    let isBusinessAdmin = false;
+    if (userId && userId !== "public_visitor" && userId !== "whatsapp_contact") {
+      try {
+        const [dbUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+        if (dbUser?.role === "super_admin") {
+          isBusinessAdmin = true;
+        } else if (effectiveOrgId) {
+          const [membership] = await db
+            .select({ role: organizationMembers.role })
+            .from(organizationMembers)
+            .where(and(eq(organizationMembers.organizationId, effectiveOrgId), eq(organizationMembers.userId, userId)))
+            .limit(1);
+          if (membership && (membership.role === "owner" || membership.role === "admin" || membership.role === "manager")) {
+            isBusinessAdmin = true;
+          }
+        }
+      } catch (e) {
+        // Fail closed on DB check error
+        isBusinessAdmin = false;
+      }
+    }
+
+    if (!isBusinessAdmin) {
+      const verifiedEmail = customerContext?.email;
+      const verifiedCustId = customerContext?.customerId;
+      const verifiedPhone = customerContext?.phone;
+      const isVerified = customerContext?.verified === true;
+
+      // Extract parameters supplied in LLM/user input
+      const inputCustomerId = input?.customerId;
+      const inputEmail = input?.customerEmail || input?.email;
+
+      // Fail-closed: If input supplies a customer identifier that contradicts the verified context, block execution
+      if (inputCustomerId && verifiedCustId && String(inputCustomerId) !== String(verifiedCustId)) {
+        return {
+          success: false,
+          status: "FORBIDDEN",
+          error: "Access denied: Customer IDOR violation. Cannot access records belonging to another customer."
+        };
+      }
+      if (inputEmail && verifiedEmail && String(inputEmail).toLowerCase() !== String(verifiedEmail).toLowerCase()) {
+        return {
+          success: false,
+          status: "FORBIDDEN",
+          error: "Access denied: Customer IDOR violation. Cannot access records belonging to another customer."
+        };
+      }
+
+      // Attach authoritative customerScope object to input for provider execution
+      input.customerScope = {
+        isCustomerScoped: true,
+        verified: isVerified,
+        email: verifiedEmail,
+        customerId: verifiedCustId,
+        phone: verifiedPhone
       };
     }
 

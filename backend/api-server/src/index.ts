@@ -62,6 +62,26 @@ async function start() {
       );
     `);
 
+    // Create Browser Capabilities table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "browser_capabilities" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "project_id" uuid NOT NULL REFERENCES "projects"("id") ON DELETE CASCADE,
+        "action_name" varchar(255) NOT NULL,
+        "description" text,
+        "domain_allowlist" jsonb DEFAULT '[]'::jsonb NOT NULL,
+        "allowed_paths" jsonb DEFAULT '[]'::jsonb NOT NULL,
+        "allowed_actions" jsonb DEFAULT '["navigate","read","click","fill","wait","submit"]'::jsonb NOT NULL,
+        "risk_level" varchar(50) DEFAULT 'LOW_RISK_WRITE' NOT NULL,
+        "status" varchar(50) DEFAULT 'DISCOVERED' NOT NULL,
+        "is_enabled" boolean DEFAULT true NOT NULL,
+        "auth_required" boolean DEFAULT false NOT NULL,
+        "encrypted_auth_details" text,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
     // Create Security Audit Logs table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS "security_audit_logs" (

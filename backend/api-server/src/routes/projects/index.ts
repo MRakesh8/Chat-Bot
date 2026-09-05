@@ -77,20 +77,33 @@ router.get("/", async (req, res) => {
         return;
       }
 
+      const isWorkspaceAdmin = isSuperAdmin || (membership && hasRequiredRole(membership.role, "manager"));
+
       result = await withTenantContext(orgId as string, async (tx: any) => {
-        return await tx
+        const query = tx
           .select({
             project: projects,
             knowledgeCount: sql<number>`count(${knowledgeSources.id})`.mapWith(Number)
           })
           .from(projects)
-          .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId))
-          .groupBy(projects.id)
-          .orderBy(desc(projects.createdAt));
+          .leftJoin(knowledgeSources, eq(projects.id, knowledgeSources.projectId));
+
+        // Workspace admins (owner/admin/manager) see all projects in orgId
+        // Regular users (viewer/agent/standard) see ONLY projects they created
+        if (isWorkspaceAdmin) {
+          return await query
+            .where(eq(projects.organizationId, orgId as string))
+            .groupBy(projects.id)
+            .orderBy(desc(projects.createdAt));
+        } else {
+          return await query
+            .where(and(eq(projects.organizationId, orgId as string), eq(projects.userId, userId)))
+            .groupBy(projects.id)
+            .orderBy(desc(projects.createdAt));
+        }
       });
     } else {
-      // If the user has no memberships, they cannot have active tenant context.
-      // We do not bypass RLS for security reasons.
+      // If no tenant context can be resolved, fail closed
       result = [];
     }
 
@@ -192,13 +205,19 @@ router.get("/:id", async (req, res) => {
     const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
 
-    // 2. Authorize workspace membership
+    // 2. Authorize workspace membership and project access
     const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
     const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
     if (!isSuperAdmin && !membership) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+    const isWorkspaceAdmin = isSuperAdmin || (membership && hasRequiredRole(membership.role, "manager"));
+    if (!isWorkspaceAdmin && project.userId !== userId) {
+      res.status(403).json({ error: "Forbidden: Access denied to this project" });
+      return;
+    }
+
     if (isSuperAdmin && !membership) {
       await logAdminBypassIfNecessary(req, project.id, project.organizationId);
     }
@@ -253,10 +272,15 @@ router.patch("/:id", async (req, res) => {
     const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
 
-    // 2. Authorize manager/admin/owner role
+    // 2. Authorize manager/admin/owner role or project owner
     const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
     const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
-    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "manager"))) {
+    if (!isSuperAdmin && !membership) {
+      res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+      return;
+    }
+    const isWorkspaceAdmin = isSuperAdmin || (membership && hasRequiredRole(membership.role, "manager"));
+    if (!isWorkspaceAdmin && project.userId !== userId) {
       res.status(403).json({ error: "Forbidden: Insufficient privileges to update this project" });
       return;
     }
@@ -302,10 +326,15 @@ router.delete("/:id", async (req, res) => {
     const project = projectMeta[0];
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
 
-    // 2. Authorize owner/admin role
+    // 2. Authorize owner/admin role or project creator
     const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
     const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
-    if (!isSuperAdmin && (!membership || !hasRequiredRole(membership.role, "admin"))) {
+    if (!isSuperAdmin && !membership) {
+      res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+      return;
+    }
+    const isWorkspaceAdmin = isSuperAdmin || (membership && hasRequiredRole(membership.role, "admin"));
+    if (!isWorkspaceAdmin && project.userId !== userId) {
       res.status(403).json({ error: "Forbidden: Insufficient privileges to delete this project" });
       return;
     }
@@ -926,7 +955,7 @@ router.use("/:projectId/widget", widgetRouter);
 
 import { enqueueDiscoveryProcessing } from "../../lib/queue";
 
-router.post("/:projectId/discovery/start", async (req: any, res) => {
+router.post("/:projectId/discovery/start", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
   const { url } = req.body;
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
@@ -954,14 +983,14 @@ router.post("/:projectId/discovery/start", async (req: any, res) => {
        req.log.error(e, "Failed to enqueue discovery process");
     });
 
-    res.status(202).json({ message: "Discovery started", status: "PENDING" });
+    return res.status(202).json({ message: "Discovery started", status: "PENDING" });
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error starting discovery");
-    res.status(error.message === "Project not found" ? 404 : 500).json({ error: error.message || "Failed to start discovery" });
+    return res.status(error.message === "Project not found" ? 404 : 500).json({ error: error.message || "Failed to start discovery" });
   }
 });
 
-router.get("/:projectId/discovery/status", async (req: any, res) => {
+router.get("/:projectId/discovery/status", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
@@ -986,14 +1015,14 @@ router.get("/:projectId/discovery/status", async (req: any, res) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    res.json(result);
+    return res.json(result);
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error getting discovery status");
-    res.status(500).json({ error: "Failed to get discovery status" });
+    return res.status(500).json({ error: "Failed to get discovery status" });
   }
 });
 
-router.get("/:projectId/intelligence", async (req: any, res) => {
+router.get("/:projectId/intelligence", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
@@ -1019,14 +1048,14 @@ router.get("/:projectId/intelligence", async (req: any, res) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    res.json(result);
+    return res.json(result);
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error getting intelligence profile");
-    res.status(500).json({ error: "Failed to get intelligence profile" });
+    return res.status(500).json({ error: "Failed to get intelligence profile" });
   }
 });
 
-router.get("/:projectId/capabilities", async (req: any, res) => {
+router.get("/:projectId/capabilities", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
@@ -1047,14 +1076,12 @@ router.get("/:projectId/capabilities", async (req: any, res) => {
     }
 
     const capabilities = (result.intelligence as any)?.capabilities || {};
-    res.json(capabilities);
+    return res.json(capabilities);
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error getting capabilities");
-    res.status(500).json({ error: "Failed to get capabilities" });
+    return res.status(500).json({ error: "Failed to get capabilities" });
   }
 });
-
-export default router;
 
 import whatsappRouter from './whatsapp-config';
 import integrationsRouter from './integrations';
@@ -1063,3 +1090,5 @@ import toolsRouter from './tools';
 router.use('/:projectId/whatsapp', whatsappRouter);
 router.use('/:projectId/integrations', integrationsRouter);
 router.use('/:projectId/tools', toolsRouter);
+
+export default router;

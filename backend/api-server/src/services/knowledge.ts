@@ -508,17 +508,25 @@ export async function searchProjectKnowledge(params: {
 }): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
   if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
 
-  // Global RAG Cache (5m TTL)
-  const queryHash = nodeCrypto.createHash("sha256").update(params.projectIds.join(",") + ":" + params.query.trim().toLowerCase()).digest("hex");
-  const cachedResultStr = await llmResponseCache.get(`rag_search_${queryHash}`);
-  if (cachedResultStr) {
-    try {
-      const parsed = JSON.parse(cachedResultStr);
-      if (parsed && parsed.contextString !== undefined) {
-        return parsed;
+  // RAG Cache (5m TTL) — Bypassed for anonymous/public visitors to prevent cross-customer cache leakage.
+  // Cache is strictly used when a trusted user/customer identity scope exists.
+  const isAnonymousPublic = !params.userId || params.userId === "public_visitor" || params.userId === "public";
+  const userScopeKey = params.userId ? `usr_${params.userId}` : null;
+  const queryHash = userScopeKey
+    ? nodeCrypto.createHash("sha256").update(`${params.projectIds.join(",")}:${userScopeKey}:${params.query.trim().toLowerCase()}`).digest("hex")
+    : null;
+
+  if (queryHash && !isAnonymousPublic) {
+    const cachedResultStr = await llmResponseCache.get(`rag_search_${queryHash}`);
+    if (cachedResultStr) {
+      try {
+        const parsed = JSON.parse(cachedResultStr);
+        if (parsed && parsed.contextString !== undefined) {
+          return parsed;
+        }
+      } catch (e) {
+        // Ignore parse error and proceed with search
       }
-    } catch (e) {
-      // Ignore parse error and proceed with search
     }
   }
 
@@ -732,8 +740,10 @@ export async function searchProjectKnowledge(params: {
     candidates: topCandidates
   };
 
-  // Save to cache for 5 minutes
-  await llmResponseCache.set(`rag_search_${queryHash}`, JSON.stringify(finalResult), 300);
+  // Save to cache for 5 minutes only for authenticated/scoped requests
+  if (queryHash && !isAnonymousPublic) {
+    await llmResponseCache.set(`rag_search_${queryHash}`, JSON.stringify(finalResult), 300);
+  }
 
   return finalResult;
 }

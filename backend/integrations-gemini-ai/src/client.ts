@@ -102,9 +102,12 @@ class GeminiFailoverModels {
   private async _fetchAndResetKeys(userId: string | null, projectId?: string | null): Promise<RoutingKey[]> {
     // 1. Fetch Mode
     let mode = "auto";
-    if (userId) {
-      const settings = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
-      if (settings.length > 0) mode = settings[0].apiMode;
+    const isUuid = userId && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId);
+    if (isUuid) {
+      try {
+        const settings = await db.select().from(userApiSettings).where(eq(userApiSettings.userId, userId));
+        if (settings.length > 0) mode = settings[0].apiMode;
+      } catch (e) {}
     }
 
     // 2. Fetch Keys
@@ -118,8 +121,10 @@ class GeminiFailoverModels {
     }
 
     let userKeys: any[] = [];
-    if (userId) {
-       userKeys = await db.select().from(userApiKeys).where(and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true)));
+    if (isUuid) {
+      try {
+        userKeys = await db.select().from(userApiKeys).where(and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true)));
+      } catch (e) {}
     }
     let systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     

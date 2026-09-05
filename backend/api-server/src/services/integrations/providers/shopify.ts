@@ -146,7 +146,43 @@ export class ShopifyProvider implements IntegrationProvider {
         }
       });
       if (!response.ok) throw new Error(`Shopify API error: ${response.statusText}`);
-      return await response.json();
+      const data: any = await response.json();
+
+      // Customer-Scoped Execution: Enforce real customer ownership validation
+      if (input.customerScope?.isCustomerScoped) {
+        const scope = input.customerScope;
+        if (!scope.verified || (!scope.email && !scope.customerId && !scope.phone)) {
+          throw new Error("Access denied: Unauthenticated customer access to customer-private tool blocked.");
+        }
+
+        const targetEmail = (scope.email || "").toLowerCase();
+        const targetCustId = scope.customerId ? String(scope.customerId) : "";
+
+        // Filter orders by verified customer identity
+        const customerOrders = (data.orders || []).filter((ord: any) => {
+          const ordEmail = (ord.email || ord.customer?.email || "").toLowerCase();
+          const ordCustId = ord.customer?.id ? String(ord.customer.id) : "";
+          if (targetEmail && ordEmail === targetEmail) return true;
+          if (targetCustId && ordCustId === targetCustId) return true;
+          return false;
+        });
+
+        // If a specific target orderId was requested, verify that the requested order belongs to the caller
+        if (input.orderId) {
+          const requestedOrderIdStr = String(input.orderId);
+          const matchedOrder = customerOrders.find(
+            (ord: any) => String(ord.id) === requestedOrderIdStr || String(ord.order_number) === requestedOrderIdStr || ord.name === requestedOrderIdStr
+          );
+          if (!matchedOrder) {
+            throw new Error(`Access denied: Target order ${input.orderId} does not belong to the current verified customer.`);
+          }
+          return { orders: [matchedOrder] };
+        }
+
+        return { orders: customerOrders };
+      }
+
+      return data;
     }
 
     throw new Error(`Action ${actionName} is not supported by ShopifyProvider`);

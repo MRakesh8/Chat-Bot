@@ -40,7 +40,7 @@ router.get("/", async (req: any, res: any) => {
     });
 
     // Mask credentials before sending
-    const masked = items.map(item => ({
+    const masked = items.map((item: any) => ({
       id: item.id,
       provider: item.provider,
       status: item.status,

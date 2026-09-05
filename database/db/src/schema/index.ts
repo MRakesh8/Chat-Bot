@@ -599,6 +599,26 @@ export const websitePermissions = pgTable("website_permissions", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const browserCapabilities = pgTable("browser_capabilities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  actionName: varchar("action_name", { length: 255 }).notNull(),
+  description: text("description"),
+  domainAllowlist: jsonb("domain_allowlist").$type<string[]>().default([]).notNull(),
+  allowedPaths: jsonb("allowed_paths").$type<string[]>().default([]).notNull(),
+  allowedActions: jsonb("allowed_actions").$type<string[]>().default(["navigate", "read", "click", "fill", "wait", "submit"]).notNull(),
+  riskLevel: varchar("risk_level", { length: 50 }).default("LOW_RISK_WRITE").notNull(),
+  status: varchar("status", { length: 50 }).default("DISCOVERED").notNull(),
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  authRequired: boolean("auth_required").default(false).notNull(),
+  encryptedAuthDetails: text("encrypted_auth_details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("browser_capabilities_project_id_idx").on(table.projectId),
+  projActionUniq: uniqueIndex("browser_cap_proj_action_uniq_idx").on(table.projectId, table.actionName),
+}));
+
 // Aria AI v2 - Relations
 export const websiteMemoryRelations = relations(websiteMemory, ({ one }) => ({
   session: one(chatSessions, { fields: [websiteMemory.sessionId], references: [chatSessions.id] }),

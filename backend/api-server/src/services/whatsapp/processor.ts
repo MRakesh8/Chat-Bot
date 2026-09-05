@@ -161,69 +161,31 @@ export class WhatsAppProcessor {
       const uKeys = await db.query.userApiKeys.findMany({ where: eq(userApiKeys.userId, project.userId) });
       const allKeys = [...keys, ...uKeys];
 
-      // 4. Build Context (WhatsApp-specific)
-      // Retrieve conversation history
-      const history = await db.query.whatsappMessages.findMany({
-        where: and(
-          eq(whatsappMessages.conversationId, conversation.id),
-          or(eq(whatsappMessages.status, "sent"), eq(whatsappMessages.status, "processed"), eq(whatsappMessages.status, "ignored"))
-        ),
-        orderBy: (msgs, { desc }) => [desc(msgs.createdAt)],
-        limit: 10
-      });
-
+      // 4. Build Trusted Customer Context & Delegate to CoordinatorAgent -> BusinessAgent pipeline
       const userMessage = claimedMsg.content || "";
-      let kbContext = "";
+      const { CoordinatorAgent } = require("../../agents/coordinator");
+      const coordinator = new CoordinatorAgent();
 
-      // RAG Retrieval
-      try {
-        const { contextString: similarContent } = await searchProjectKnowledge({
-          projectIds: [claimedMsg.projectId],
-          query: userMessage,
-          userId: project.userId,
-          limit: 4
-        });
-        if (similarContent) {
-          kbContext = similarContent;
+      const coordRes = await coordinator.execute({
+        projectId: claimedMsg.projectId,
+        sessionId: conversation.id,
+        userId: "whatsapp_contact",
+        customerContext: {
+          phone: conversation.customerIdentifier,
+          customerName: conversation.customerName || undefined,
+          verified: true, // Identified phone channel
+          isBusinessAdmin: false // Never elevated to business admin
+        },
+        payload: {
+          message: userMessage,
+          intent: userMessage
         }
-      } catch (err) {
-        logger.error({ err }, "Knowledge search failed during WA processing");
-      }
-
-      let systemPrompt = `You are a helpful assistant for ${project.name} responding on WhatsApp.
-Keep responses concise, friendly, and formatted for WhatsApp (use *bold* instead of markdown headings, no long code blocks).
-If you cannot answer the question using the provided context, or if the user asks to speak to a human, reply with EXACTLY "HANDOFF_REQUIRED". Do not guess.
-
-REPLY MODE: ${settings?.replyMode || 'all_business_questions'}
-${settings?.allowedTopics && settings.allowedTopics.length > 0 ? `ALLOWED TOPICS: You may ONLY answer questions related to: ${settings.allowedTopics.join(', ')}` : ''}
-${settings?.blockedTopics && settings.blockedTopics.length > 0 ? `BLOCKED TOPICS: You MUST NOT answer questions related to: ${settings.blockedTopics.join(', ')}` : ''}
-
-PROJECT RULES / SYSTEM PROMPT:
-${project.systemPrompt}
-
-KNOWLEDGE BASE:
-${kbContext ? kbContext : "No relevant knowledge found."}
-`;
-
-      const chatMessages = [
-        { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Understood." }] },
-        ...history.reverse().map((m: any) => ({
-          role: (m.sender === claimedMsg.sender && m.direction === "inbound" ? "user" : "model") as "user" | "model",
-          parts: [{ text: m.content || "" }]
-        })),
-        { role: "user", parts: [{ text: userMessage }] }
-      ];
-
-      // 5. Generate Response
-      const aiRes = await ai.models.generateContent(project.userId, {
-        model: "gemini-2.0-flash", // Use standard model
-        contents: chatMessages,
-        config: { temperature: 0.2 },
-        projectId: project.id
       });
 
-      const replyText = aiRes?.text?.trim() || "";
+      let replyText = coordRes.data?.response || "";
+      if (coordRes.data?.status === "PENDING_CONFIRMATION") {
+        replyText = `Action confirmation required: Executing ${coordRes.data.toolExecuted || "action"} requires explicit user approval. Please reply CONFIRM to proceed.`;
+      }
 
       // 6. Handle Handoff
       if (replyText === "HANDOFF_REQUIRED" || replyText.includes("HANDOFF_REQUIRED")) {

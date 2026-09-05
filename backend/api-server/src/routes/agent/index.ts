@@ -35,7 +35,7 @@ router.get("/capabilities/:projectId", async (req: Request, res: Response): Prom
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const projectId = req.params.projectId;
+    const projectId = req.params.projectId as string;
     const hasAccess = await userHasAccessToProject(
       userId,
       projectId,

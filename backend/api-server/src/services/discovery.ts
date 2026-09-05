@@ -281,7 +281,7 @@ export class WebsiteDiscoveryService {
     try {
       logger.info({ projectId, rawUrl }, "[DISCOVERY] Starting bounded multi-page discovery process");
       
-      await db.update(projects).set({ discoveryStatus: "ANALYZING" }).where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
+      await db.update(projects).set({ discoveryStatus: "ANALYZING" } as any).where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
 
       const visitedUrls = new Set<string>();
       const queue: { url: string, depth: number }[] = [{ url: rawUrl, depth: 0 }];
@@ -357,7 +357,7 @@ export class WebsiteDiscoveryService {
 
       // Seamless RAG Integration for Homepage only (to prevent queue flooding)
       let sourceId: string | null = null;
-      const [existingSource] = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.projectId, projectId), eq(knowledgeSources.sourceUrl, homepageUrl.toString())));
+      const [existingSource] = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.projectId, projectId), eq(knowledgeSources.sourceUrl, (homepageUrl as any).toString())));
       
       if (existingSource) {
          sourceId = existingSource.id;
@@ -365,7 +365,7 @@ export class WebsiteDiscoveryService {
          const [newSource] = await db.insert(knowledgeSources).values({
            projectId,
            sourceType: "website",
-           sourceUrl: homepageUrl.toString(),
+           sourceUrl: (homepageUrl as any).toString(),
            title: intelligenceSnapshot.title || "Website Homepage",
            rawContent: homepageHtml,
            status: "pending"
@@ -380,8 +380,8 @@ export class WebsiteDiscoveryService {
            businessType: businessType as any,
            intelligence: intelligenceSnapshot,
            discoveryStatus: "READY",
-           websiteUrl: homepageUrl.toString() as any,
-        })
+           websiteUrl: (homepageUrl as any).toString(),
+        } as any)
         .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
       
       logger.info({ projectId, pagesCrawled: visitedUrls.size }, "[DISCOVERY] Discovery process completed successfully");
@@ -393,7 +393,7 @@ export class WebsiteDiscoveryService {
     } catch (err: any) {
       logger.error({ err, projectId }, "[DISCOVERY] Unhandled error in discovery process");
       await db.update(projects)
-           .set({ discoveryStatus: "FAILED" })
+           .set({ discoveryStatus: "FAILED" } as any)
            .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
            .catch(e => logger.error({ err: e }, "Failed to update fallback status"));
     }

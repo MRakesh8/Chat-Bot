@@ -112,6 +112,31 @@ export class BusinessAgent extends BaseAgent {
         return { success: false, error: "Project ID is required." };
       }
 
+      // ─── STEP 0: FAST DETERMINISTIC STANDALONE GENERAL CONVERSATION GUARD ─────────
+      // Must match standalone conversational phrases ONLY. If message contains action verbs/inquiries (e.g. "hi, cancel my order"), it MUST NOT match here.
+      const cleanLowerMsg = userMessage.trim().toLowerCase().replace(/[^\w\s]/g, "");
+      const isGreeting = /^(hi|hello|hey|greetings|howdy|sup|good morning|good afternoon|good evening|good night|hello there|hi there|hey there)$/.test(cleanLowerMsg);
+      const isThanks = /^(thanks|thank you|thanks a lot|thank you so much|thx|ty)$/.test(cleanLowerMsg);
+      const isFarewell = /^(bye|goodbye|see you|see ya|later|take care|good night)$/.test(cleanLowerMsg);
+      const isSmalltalk = /^(how are you|how are you doing|hows it going|nice to meet you|okay|ok|great|cool|awesome)$/.test(cleanLowerMsg);
+      const isIdentityCap = /^(who are you|what are you|what can you do|what do you do|help|can you help me)$/.test(cleanLowerMsg);
+
+      if (isGreeting || isThanks || isFarewell || isSmalltalk || isIdentityCap) {
+        let generalReply = "Hello! How can I help you today?";
+        if (isThanks) generalReply = "You're welcome! Let me know if there's anything else I can assist with.";
+        if (isFarewell) generalReply = "Goodbye! Have a wonderful day!";
+        if (isSmalltalk) generalReply = "I'm doing well, thank you! How can I help you today?";
+        if (isIdentityCap) generalReply = "I am an AI Business Assistant. I can help answer questions about our business, check order statuses, or assist with supported services.";
+
+        return {
+          success: true,
+          data: {
+            intent: "general_conversation",
+            response: generalReply,
+          },
+        };
+      }
+
       // ─── STEP 1: ENTITLEMENT & SUBSCRIPTION CHECK ─────────────────────────
       const entitlement = await checkProjectEntitlement(projectId);
       if (!entitlement.allowed) {
@@ -131,7 +156,7 @@ export class BusinessAgent extends BaseAgent {
 
       // ─── STEP 3: INTENT & TOOL SELECTION BY LLM (UNTRUSTED INPUT) ─────────
       const systemPrompt = `You are RAGHUB's AI Business Agent.
-Your job is to analyze the user's message, classify their intent, and determine if an authorized business tool action should be executed or if a factual Knowledge Base response is required.
+Your job is to analyze the user's message, classify their intent into one of the exact categories below, and determine if an authorized business tool action should be executed or if a Knowledge Base response is required.
 
 AVAILABLE EXECUTABLE TOOLS:
 ${JSON.stringify(executableCapabilities, null, 2)}
@@ -144,21 +169,23 @@ ${JSON.stringify(
 )}
 
 DIRECTIVES:
-1. Intent MUST be one of: "information", "action", "clarification", "unsupported".
-2. "information": User asks a question about policies, FAQs, product details, services, business hours, or general project knowledge.
-3. "action": User asks to perform or view data using an EXECUTABLE tool (e.g. "show me orders", "get products").
-4. "clarification": User wants to perform an action, but required parameters (e.g. order ID, product name, email) are missing. Specify missing fields in missingInformation array. DO NOT GUESS OR INVENT PARAMETERS.
-5. "unsupported": User asks for a capability that is DISCOVERED but not AUTHORIZED, or an action that does not exist.
-6. Strictly return JSON format:
+1. Intent MUST be one of: "general_conversation", "business_information", "customer_information", "action", "clarification", "unsupported".
+2. "general_conversation": Greetings, farewells, thanks, small talk, identity questions, or capability questions. NO RAG, NO TOOL, NO CUSTOMER LOOKUP REQUIRED.
+3. "business_information": User asks a question about policies, FAQs, product specs, services, business hours, or general company knowledge (e.g. "What is your refund policy?").
+4. "customer_information": User asks about their personal customer data (e.g. "What is in my cart?", "Where is my order?").
+5. "action": User asks to perform or execute a business tool action (e.g. "create product", "cancel order").
+6. "clarification": User wants to perform an action, but required parameters are missing.
+7. "unsupported": Capability is not authorized or supported.
+8. Strictly return JSON format:
 {
-  "intent": "information | action | clarification | unsupported",
+  "intent": "general_conversation | business_information | customer_information | action | clarification | unsupported",
   "selectedTool": "tool_name_or_null",
   "arguments": {},
   "missingInformation": ["param1"],
   "userExplanation": "Direct response to user"
 }`;
 
-      let llmDecision: any = { intent: "information" };
+      let llmDecision: any = { intent: "business_information" };
       try {
         const aiRes = await ai.models.generateContent(userId || "system", {
           model: "gemini-2.0-flash",
@@ -172,14 +199,25 @@ DIRECTIVES:
         const jsonStr = aiRes.text?.replace(/```json/g, "").replace(/```/g, "").trim() || "{}";
         llmDecision = JSON.parse(jsonStr);
       } catch (e) {
-        logger.warn({ err: e }, "Fallback to information intent due to LLM decision parse error");
-        llmDecision = { intent: "information" };
+        logger.warn({ err: e }, "Fallback to business_information intent due to LLM decision parse error");
+        llmDecision = { intent: "business_information" };
       }
 
       // ─── STEP 4: INTENT DISPATCH ──────────────────────────────────────────
       
-      // Case A: Information Request -> Execute RAG
-      if (llmDecision.intent === "information" || !llmDecision.selectedTool) {
+      // Case 0: General Conversation -> Zero RAG, Zero Tool
+      if (llmDecision.intent === "general_conversation") {
+        return {
+          success: true,
+          data: {
+            intent: "general_conversation",
+            response: llmDecision.userExplanation || "Hello! How can I assist you today?",
+          },
+        };
+      }
+
+      // Case A: Business Information Request -> Execute RAG
+      if (llmDecision.intent === "business_information" || llmDecision.intent === "information" || (!llmDecision.selectedTool && llmDecision.intent !== "customer_information")) {
         const ragRes = await searchProjectKnowledge({
           projectIds: [projectId],
           userId: userId || "public",
@@ -191,7 +229,7 @@ DIRECTIVES:
           return {
             success: true,
             data: {
-              intent: "information",
+              intent: "business_information",
               response: "Relevant information was not found in this project's Knowledge Base.",
             },
           };
@@ -200,7 +238,7 @@ DIRECTIVES:
         return {
           success: true,
           data: {
-            intent: "information",
+            intent: "business_information",
             response: contextString,
             retrievedIds: ragRes?.retrievedIds || [],
           },
