@@ -506,6 +506,7 @@ export async function searchProjectKnowledge(params: {
   customerId?: string | null;
   query: string;
   limit?: number;
+  ragIntent?: string;
 }): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
   if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
 
@@ -666,7 +667,9 @@ export async function searchProjectKnowledge(params: {
     let categoryScore = 0;
     let keywordScore = 0;
     let entityScore = 0;
-    let vectorScore = candidate.isVectorMatch ? 20 : 0;
+    // Boost vector score to make semantic similarity more impactful, but still behind exact metadata match
+    let vectorScore = candidate.isVectorMatch ? 80 : 0; 
+    let intentScore = 0;
 
     if (lowerTag === queryStr) {
       tagScore = 200;
@@ -691,7 +694,32 @@ export async function searchProjectKnowledge(params: {
       keywordScore = 80;
     }
 
-    let score = tagScore + categoryScore + keywordScore + entityScore + vectorScore;
+    // Intent-Aware Ranking Boost
+    if (params.ragIntent) {
+      if (params.ragIntent === "GENERAL_OVERVIEW") {
+        if (lowerCategory.includes("overview") || lowerCategory.includes("website") || lowerCategory.includes("about") || lowerTag.includes("homepage") || lowerTag.includes("about")) {
+          intentScore += 250;
+        }
+        // Penalize highly specific/technical chunks for general questions
+        if (lowerCategory.includes("troubleshooting") || lowerCategory.includes("authentication") || lowerTag.includes("crud") || lowerTag.includes("login")) {
+          intentScore -= 100;
+        }
+      } else if (params.ragIntent === "HOW_TO") {
+        if (lowerCategory.includes("how-to") || lowerCategory.includes("instructions") || lowerCategory.includes("guide")) {
+          intentScore += 150;
+        }
+      } else if (params.ragIntent === "AUTHENTICATION") {
+        if (lowerCategory.includes("authentication") || lowerTag.includes("login") || lowerTag.includes("oauth") || lowerTag.includes("credentials")) {
+          intentScore += 200;
+        }
+      } else if (params.ragIntent === "PRICING") {
+        if (lowerCategory.includes("pricing") || lowerTag.includes("cost") || lowerTag.includes("billing")) {
+          intentScore += 200;
+        }
+      }
+    }
+
+    let score = tagScore + categoryScore + keywordScore + entityScore + vectorScore + intentScore;
     scoredCandidates.push({ ...candidate, retrievalScore: score });
   }
 

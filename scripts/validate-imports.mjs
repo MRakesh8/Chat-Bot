@@ -24,7 +24,7 @@ const files = getAllFiles(process.cwd());
 
 let hasError = false;
 // Also match single or double quotes, dynamic imports, etc.
-const internalImportRegex = /(?:from\s+|import\s*\(?\s*)['"]@workspace\/[^\/]+\/src.*['"]/g;
+const internalImportRegex = /(?:from\s+|import\s*\(?\s*)['"]@workspace\/[^\/"]+\/src[^'"]*['"]/g;
 
 for (const file of files) {
   const content = fs.readFileSync(file, 'utf-8');

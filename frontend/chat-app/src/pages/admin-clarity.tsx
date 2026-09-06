@@ -133,9 +133,7 @@ export default function AdminConsolePage() {
   const [jsonError, setJsonError] = useState<string | null>(null);
 
   // Strict client-side admin check
-  const isAdmin = user?.email === "rakesh837m@gmail.com" || 
-                  user?.email === "rakesh0837m@gmail.com" || 
-                  dbUser?.role === "super_admin";
+  const isAdmin = dbUser?.role === "super_admin";
 
   // Fetch Users
   const { data: users, isLoading: usersLoading } = useQuery({
@@ -506,52 +504,14 @@ export default function AdminConsolePage() {
                       <th className="p-4 font-medium">User Email</th>
                       <th className="p-4 font-medium">Role</th>
                       <th className="p-4 font-medium">Projects</th>
-                      <th className="p-4 font-medium">Create Projects</th>
-                      <th className="p-4 font-medium">Widget Studio</th>
-                      <th className="p-4 font-medium">Context Engine</th>
-                      <th className="p-4 font-medium">Advanced</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {users?.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                         <td className="p-4">{u.email}</td>
-                        <td className="p-4">
-                          <select 
-                            className="bg-transparent border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary text-xs capitalize"
-                            value={u.role}
-                            onChange={(e) => updateFeaturesMutation.mutate({ id: u.id, role: e.target.value })}
-                          >
-                            <option value="user">User</option>
-                            <option value="super_admin">Super Admin</option>
-                          </select>
-                        </td>
-                        <td className="p-4 text-center font-medium">
-                          {u.projectCount || 0}
-                        </td>
-                        <td className="p-4">
-                          <Switch
-                            checked={u.features?.canCreateProject ?? true}
-                            onCheckedChange={(c) => updateFeaturesMutation.mutate({ id: u.id, features: { ...u.features, canCreateProject: c }})}
-                          />
-                        </td>
-                        <td className="p-4">
-                          <Switch
-                            checked={u.features?.canUseWidgetStudio ?? false}
-                            onCheckedChange={(c) => updateFeaturesMutation.mutate({ id: u.id, features: { ...u.features, canUseWidgetStudio: c }})}
-                          />
-                        </td>
-                        <td className="p-4">
-                          <Switch
-                            checked={u.features?.canUseContextEngine ?? false}
-                            onCheckedChange={(c) => updateFeaturesMutation.mutate({ id: u.id, features: { ...u.features, canUseContextEngine: c }})}
-                          />
-                        </td>
-                        <td className="p-4">
-                          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => openCustomFeatureModal(u)}>
-                            <Settings2 className="w-3.5 h-3.5" /> Custom JSON
-                          </Button>
-                        </td>
+                        <td className="p-4 capitalize">{u.role}</td>
+                        <td className="p-4 text-center font-medium">{u.projectCount || 0}</td>
                       </tr>
                     ))}
                   </tbody>

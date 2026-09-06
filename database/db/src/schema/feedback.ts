@@ -1,4 +1,8 @@
 
+import { pgTable, uuid, varchar, text, timestamp, index, integer, boolean } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+import { projects, chatSessions, messages, customers } from "./index";
+
 export const messageFeedback = pgTable("message_feedback", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),

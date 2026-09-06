@@ -95,7 +95,7 @@ export default function AdminProjectsPage() {
   const authFetch = useAuthFetch();
   const { dbUser, user } = useAuth();
 
-  const isUnrestricted = user?.email === "rakesh837m@gmail.com" || user?.email === "rakesh0837m@gmail.com";
+  const isUnrestricted = dbUser?.role === "super_admin";
   const canCreate = dbUser?.features?.canCreateProject !== false || isUnrestricted;
 
   const { data: projectList, isLoading, isError, error, refetch, isFetching } = useQuery({

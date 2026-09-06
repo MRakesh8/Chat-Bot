@@ -23,7 +23,7 @@ export const entitlementMiddleware = async (
   }
 
   // 2. Evaluate entitlement status
-  const entitlement = await checkProjectEntitlement(projectId);
+  const entitlement = await checkProjectEntitlement(projectId, isSuperAdmin);
 
   if (!entitlement.allowed) {
     res.status(403).json({

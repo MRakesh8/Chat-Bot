@@ -79,7 +79,7 @@ router.get("/", async (req, res) => {
 
       const isWorkspaceAdmin = isSuperAdmin || (membership && hasRequiredRole(membership.role, "manager"));
 
-      result = await withTenantContext(orgId as string, async (tx: any) => {
+      result = await withTenantContext(resolvedOrgId as string, async (tx: any) => {
         const query = tx
           .select({
             project: projects,
@@ -119,7 +119,7 @@ router.get("/", async (req, res) => {
       errorMessage: err.message,
       stack: err.stack,
     }, "Error listing projects");
-    res.status(500).json({ error: "Failed to fetch projects", message: err.message });
+    res.status(500).json({ error: "Failed to fetch projects", errorId: req.id });
   }
 });
 
@@ -164,7 +164,7 @@ router.post("/", async (req, res) => {
 
   try {
     const shareToken = randomUUID().replace(/-/g, "").slice(0, 20);
-    const [project] = await withTenantContext(orgId as string, async (tx: any) => {
+    const [project] = await withTenantContext(resolvedOrgId as string, async (tx: any) => {
       return await tx
         .insert(projects)
         .values({
@@ -181,7 +181,7 @@ router.post("/", async (req, res) => {
     res.status(201).json(project);
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error creating project");
-    res.status(500).json({ error: "Internal server error", details: err.message });
+    res.status(500).json({ error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -228,7 +228,8 @@ router.get("/:id", async (req, res) => {
     });
 
     // 4. Fetch server-side entitlement status
-    const entitlement = await checkProjectEntitlement(id);
+    const isSuperAdminForEnt = (req as any).auth?.dbUser?.role === "super_admin";
+    const entitlement = await checkProjectEntitlement(id, isSuperAdminForEnt);
 
     res.json({
       ...securedProject,
@@ -241,7 +242,7 @@ router.get("/:id", async (req, res) => {
     });
   } catch (err: any) {
     req.log.error({ err }, "Error getting project");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -305,7 +306,7 @@ router.patch("/:id", async (req, res) => {
     res.json(updated);
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error updating project");
-    res.status(500).json({ error: "Internal server error", details: err.message });
+    res.status(500).json({ error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -349,7 +350,7 @@ router.delete("/:id", async (req, res) => {
     res.status(204).send();
   } catch (err: any) {
     req.log.error({ err }, "Error deleting project");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -410,7 +411,7 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
     res.status(200).json({ success: true });
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error adding knowledge from chat");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -436,7 +437,7 @@ router.get("/share/:token", async (req, res) => {
     res.json(project);
   } catch (err: any) {
     req.log.error({ err }, "Error getting shared project");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -467,7 +468,7 @@ router.post("/share/:token/conversations", async (req, res) => {
     res.status(201).json(conv);
   } catch (err: any) {
     req.log.error({ err }, "Error creating shared conversation");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -497,7 +498,7 @@ router.get("/share/:token/conversations/:convId", async (req, res) => {
     res.json({ ...conv, messages: msgs.map(serializeMessage) });
   } catch (err: any) {
     req.log.error({ err }, "Error getting shared conversation");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
   }
 });
 
@@ -966,7 +967,7 @@ router.post("/:projectId/discovery/start", async (req: any, res: any): Promise<a
   }
 
   try {
-    await withTenantContext(orgId as string, async (tx: any) => {
+    await withTenantContext(resolvedOrgId as string, async (tx: any) => {
       const [project] = await tx.select().from(projects).where(eq(projects.id, projectId));
       if (!project) {
         throw new Error("Project not found");
@@ -996,7 +997,7 @@ router.get("/:projectId/discovery/status", async (req: any, res: any): Promise<a
   if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
 
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
+    const result = await withTenantContext(resolvedOrgId as string, async (tx: any) => {
       const [project] = await tx
         .select({
           discoveryStatus: projects.discoveryStatus,
@@ -1028,7 +1029,7 @@ router.get("/:projectId/intelligence", async (req: any, res: any): Promise<any> 
   if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
 
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
+    const result = await withTenantContext(resolvedOrgId as string, async (tx: any) => {
       const [project] = await tx
         .select({
           discoveryStatus: projects.discoveryStatus,
@@ -1061,7 +1062,7 @@ router.get("/:projectId/capabilities", async (req: any, res: any): Promise<any> 
   if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
 
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
+    const result = await withTenantContext(resolvedOrgId as string, async (tx: any) => {
       const [project] = await tx
         .select({
           intelligence: projects.intelligence,

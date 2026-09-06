@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle } from "lucide-react";
+import { Loader2, Save, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Shield, CheckCircle2, Sparkles, Download, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, Trash2, ArrowLeft } from "lucide-react";
+import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
 import { ChannelsManager } from "../components/project/channels-manager";
@@ -78,7 +79,7 @@ export default function AdminProjectEditPage() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState("");
 
-  const { data: project, isLoading } = useQuery({
+  const { data: project, isLoading, isError, error } = useQuery({
     queryKey: ["admin-project", projectId],
     queryFn: async () => {
       const res = await authFetch(apiUrl(`/api/projects/${projectId}`));
@@ -388,6 +389,8 @@ export default function AdminProjectEditPage() {
                         </div>
                       )}
                       
+                      <br />
+                      {/* Dashboard Overview */}
                       {projectId && <DashboardOverview projectId={projectId} />}
                     </CardContent>
                   </Card>

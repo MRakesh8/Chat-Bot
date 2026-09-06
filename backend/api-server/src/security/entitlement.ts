@@ -49,9 +49,18 @@ export async function getEffectiveTrialDays(tx?: any, customTrialDays?: number |
  * Handles race-safe atomic trial initialization on first access.
  */
 export async function checkProjectEntitlement(
-  projectId: string
+  projectId: string,
+  isSuperAdmin?: boolean
 ): Promise<EntitlementCheckResult> {
   try {
+    if (isSuperAdmin) {
+      return {
+        allowed: true,
+        status: "SUBSCRIPTION_ACTIVE",
+        message: "Super Admin override",
+      };
+    }
+
     if (!projectId) {
       return {
         allowed: false,

@@ -514,7 +514,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[240px] bg-popover backdrop-blur-xl border-border text-popover-foreground mb-2 rounded-xl shadow-2xl p-1">
-            {(user?.email === "rakesh837m@gmail.com" || user?.email === "rakesh0837m@gmail.com" || dbUser?.role === "super_admin") && (
+            {dbUser?.role === "super_admin" && (
               <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
                 <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
                   <Shield className="w-4 h-4 text-primary" />

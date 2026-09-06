@@ -171,21 +171,23 @@ ${JSON.stringify(
 DIRECTIVES:
 1. Intent MUST be one of: "general_conversation", "business_information", "customer_information", "action", "clarification", "unsupported".
 2. "general_conversation": Greetings, farewells, thanks, small talk, identity questions, or capability questions. NO RAG, NO TOOL, NO CUSTOMER LOOKUP REQUIRED.
-3. "business_information": User asks a question about policies, FAQs, product specs, services, business hours, or general company knowledge (e.g. "What is your refund policy?").
+3. "business_information": User asks a question about policies, FAQs, product specs, services, business hours, or general company knowledge (e.g. "What is your refund policy?", "Tell about this website").
 4. "customer_information": User asks about their personal customer data (e.g. "What is in my cart?", "Where is my order?").
 5. "action": User asks to perform or execute a business tool action (e.g. "create product", "cancel order").
 6. "clarification": User wants to perform an action, but required parameters are missing.
 7. "unsupported": Capability is not authorized or supported.
-8. Strictly return JSON format:
+8. If intent is "business_information" or "customer_information", also classify "ragIntent" into ONE of: "GENERAL_OVERVIEW", "FEATURES", "HOW_TO", "SPECIFIC_ENTITY", "AUTHENTICATION", "PRICING", "CONTACT", "TROUBLESHOOTING", "POLICY", "PERSONAL_DATA", "UNKNOWN".
+9. Strictly return JSON format:
 {
   "intent": "general_conversation | business_information | customer_information | action | clarification | unsupported",
+  "ragIntent": "GENERAL_OVERVIEW | FEATURES | HOW_TO | SPECIFIC_ENTITY | ...",
   "selectedTool": "tool_name_or_null",
   "arguments": {},
   "missingInformation": ["param1"],
   "userExplanation": "Direct response to user"
 }`;
 
-      let llmDecision: any = { intent: "business_information" };
+      let llmDecision: any = { intent: "business_information", ragIntent: "UNKNOWN" };
       try {
         const aiRes = await ai.models.generateContent(userId || "system", {
           model: "gemini-2.0-flash",
@@ -239,6 +241,7 @@ DIRECTIVES:
           userId: userId || "public",
           customerId: context.customerContext?.customerId,
           query: userMessage,
+          ragIntent: llmDecision.ragIntent,
         });
 
         const contextString = ragRes?.contextString;
@@ -257,16 +260,38 @@ DIRECTIVES:
             success: true,
             data: {
               intent: "business_information",
-              response: "Relevant information was not found in this project's Knowledge Base.",
+              response: "I couldn't find that information in this website's connected knowledge.",
             },
           };
         }
+
+        // Synthesize final response
+        const synthesisPrompt = `You are a helpful AI Business Assistant. Answer the user's question using ONLY the provided knowledge context.
+User Question: ${userMessage}
+
+Context:
+${contextString}
+
+RULES:
+- Answer the user's ACTUAL QUESTION first.
+- If the knowledge base does not contain the answer, say "I couldn't find that information in this website's connected knowledge."
+- DO NOT answer with a raw dump of the context. Provide a natural, cohesive answer.
+- DO NOT expose internal source structure, IDs, tags, or metadata like "Category:", "Tag:", "Source URL:".
+- For general overviews ("Tell about this website"), explain what the website is, what it helps users do, and its main features.
+- Merge overlapping information naturally.
+- Be concise. Simple questions get 2-6 short paragraphs/bullets. Detailed questions get more detail.
+- Only provide a source link if the user asks for it or it's directly useful.`;
+
+        const synthRes = await ai.models.generateContent(userId || "system", {
+          model: "gemini-2.0-flash",
+          contents: [{ role: "user", parts: [{ text: synthesisPrompt }] }],
+        });
 
         return {
           success: true,
           data: {
             intent: llmDecision.intent,
-            response: contextString,
+            response: synthRes.text,
             retrievedIds: ragRes?.retrievedIds || [],
           },
         };
