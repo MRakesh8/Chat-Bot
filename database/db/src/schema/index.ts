@@ -207,6 +207,7 @@ export const knowledgeSources = pgTable("knowledge_sources", {
     .notNull(),
   categoryId: uuid("category_id")
     .references(() => knowledgeCategories.id, { onDelete: "set null" }),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "cascade" }), // Enforces customer RAG isolation
   tag: varchar("tag", { length: 255 }),
   title: text("title"),
   filename: text("filename"), // Optional, if it's a file
@@ -232,6 +233,7 @@ export const knowledgeSources = pgTable("knowledge_sources", {
 }, (table) => ({
   projectIdIdx: index("knowledge_sources_project_id_idx").on(table.projectId),
   categoryIdIdx: index("knowledge_sources_category_id_idx").on(table.categoryId),
+  customerIdIdx: index("knowledge_sources_customer_id_idx").on(table.customerId),
 }));
 
 export const knowledgeChunks = pgTable("knowledge_chunks", {
@@ -249,9 +251,28 @@ export const knowledgeChunks = pgTable("knowledge_chunks", {
   embeddingHnswIdx: index("knowledge_chunks_hnsw_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
 }));
 
+export const customers = pgTable("customers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  externalId: varchar("external_id", { length: 255 }), // Client's internal ID for their customer
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  name: varchar("name", { length: 255 }),
+  channel: varchar("channel", { length: 50 }).default("website").notNull(),
+  isVerified: boolean("is_verified").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("customers_project_id_idx").on(table.projectId),
+  emailIdx: index("customers_email_idx").on(table.projectId, table.email),
+  externalIdIdx: uniqueIndex("customers_external_id_idx").on(table.projectId, table.externalId),
+}));
+
 export const chatSessions = pgTable("chat_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }), // RAGHUB Platform user
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }), // End-customer
   projectId: uuid("project_id")
     .references(() => projects.id, { onDelete: "cascade" }),
   modeId: uuid("mode_id").references(() => projectModes.id),
@@ -262,6 +283,7 @@ export const chatSessions = pgTable("chat_sessions", {
 }, (table) => ({
   userIdIdx: index("chat_sessions_user_id_idx").on(table.userId),
   projectIdIdx: index("chat_sessions_project_id_idx").on(table.projectId),
+  customerIdIdx: index("chat_sessions_customer_id_idx").on(table.customerId),
 }));
 
 export const messages = pgTable("messages", {
@@ -619,6 +641,13 @@ export const browserCapabilities = pgTable("browser_capabilities", {
   projActionUniq: uniqueIndex("browser_cap_proj_action_uniq_idx").on(table.projectId, table.actionName),
 }));
 
+export const consumedConfirmations = pgTable("consumed_confirmations", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  actionId: varchar("action_id", { length: 255 }).notNull(),
+  consumedAt: timestamp("consumed_at").defaultNow().notNull(),
+});
+
 // Aria AI v2 - Relations
 export const websiteMemoryRelations = relations(websiteMemory, ({ one }) => ({
   session: one(chatSessions, { fields: [websiteMemory.sessionId], references: [chatSessions.id] }),
@@ -810,6 +839,7 @@ export const whatsappConversations = pgTable("whatsapp_conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   connectionId: uuid("connection_id").references(() => whatsappConnections.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }), // Unified customer link
   providerChatId: varchar("provider_chat_id", { length: 255 }).notNull(),
   customerIdentifier: varchar("customer_identifier", { length: 255 }).notNull(),
   customerName: varchar("customer_name", { length: 255 }),
@@ -821,6 +851,7 @@ export const whatsappConversations = pgTable("whatsapp_conversations", {
   projectIdIdx: index("whatsapp_conversations_project_id_idx").on(table.projectId),
   connectionIdIdx: index("whatsapp_conversations_connection_id_idx").on(table.connectionId),
   providerChatIdIdx: index("whatsapp_conversations_provider_chat_id_idx").on(table.providerChatId),
+  customerIdIdx: index("whatsapp_conversations_customer_id_idx").on(table.customerId),
 }));
 
 export const whatsappMessages = pgTable("whatsapp_messages", {
@@ -1004,3 +1035,69 @@ export const integrationToolsRelations = relations(integrationTools, ({ one }) =
   integration: one(projectIntegrations, { fields: [integrationTools.integrationId], references: [projectIntegrations.id] }),
   project: one(projects, { fields: [integrationTools.projectId], references: [projects.id] }),
 }));
+
+export const messageFeedback = pgTable("message_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  sessionId: uuid("session_id").references(() => chatSessions.id, { onDelete: "cascade" }).notNull(),
+  messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  type: varchar("type", { length: 50 }).notNull(),
+  comment: text("comment"),
+  channel: varchar("channel", { length: 50 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => ({
+  projectIdIdx: index("message_feedback_project_id_idx").on(table.projectId),
+  messageIdIdx: index("message_feedback_message_id_idx").on(table.messageId)
+}));
+
+export const messageFeedbackRelations = relations(messageFeedback, ({ one }) => ({
+  project: one(projects, { fields: [messageFeedback.projectId], references: [projects.id] }),
+  session: one(chatSessions, { fields: [messageFeedback.sessionId], references: [chatSessions.id] }),
+  message: one(messages, { fields: [messageFeedback.messageId], references: [messages.id] }),
+  customer: one(customers, { fields: [messageFeedback.customerId], references: [customers.id] })
+}));
+
+export const projectFeedback = pgTable("project_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  category: varchar("category", { length: 100 }),
+  rating: integer("rating"),
+  comment: text("comment").notNull(),
+  channel: varchar("channel", { length: 50 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => ({
+  projectIdIdx: index("project_feedback_project_id_idx").on(table.projectId)
+}));
+
+export const projectFeedbackRelations = relations(projectFeedback, ({ one }) => ({
+  project: one(projects, { fields: [projectFeedback.projectId], references: [projects.id] }),
+  customer: one(customers, { fields: [projectFeedback.customerId], references: [customers.id] })
+}));
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: varchar("organization_id", { length: 255 }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  type: varchar("type", { length: 50 }).notNull(),
+  severity: varchar("severity", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  referenceId: uuid("reference_id"),
+  readAt: timestamp("read_at"),
+  dedupeKey: varchar("dedupe_key", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => ({
+  projectIdIdx: index("notifications_project_id_idx").on(table.projectId),
+  orgIdIdx: index("notifications_org_id_idx").on(table.organizationId),
+  dedupeKeyIdx: index("notifications_dedupe_key_idx").on(table.dedupeKey)
+}));
+
+export const notificationSettings = pgTable("notification_settings", {
+  projectId: uuid("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  notifyOnDislikes: integer("notify_on_dislikes").default(3).notNull(),
+  notifyOnLikes: integer("notify_on_likes").default(3).notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});

@@ -1091,4 +1091,12 @@ router.use('/:projectId/whatsapp', whatsappRouter);
 router.use('/:projectId/integrations', integrationsRouter);
 router.use('/:projectId/tools', toolsRouter);
 
+import dashboardRouter from './dashboard';
+router.use('/:projectId/dashboard', dashboardRouter);
+
+import feedbackRouter from './feedback';
+import notificationsRouter from './notifications';
+router.use('/:projectId/feedback', feedbackRouter);
+router.use('/:projectId/notifications', notificationsRouter);
+
 export default router;

@@ -161,7 +161,7 @@ export async function executeApprovedBrowserAction(
       };
     }
 
-    const isValidToken = verifyActionConfirmationToken(confirmationToken, tokenPayload);
+    const isValidToken = await verifyActionConfirmationToken(confirmationToken, tokenPayload);
     if (!isValidToken) {
       return {
         success: false,

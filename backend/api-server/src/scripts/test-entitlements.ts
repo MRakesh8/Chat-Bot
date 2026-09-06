@@ -154,7 +154,7 @@ async function runTests() {
       actionTarget: "db_row_99",
     });
 
-    const verifySuccess = verifyActionConfirmationToken(token, {
+    const verifySuccess = await verifyActionConfirmationToken(token, {
       userId: testUserId,
       projectId: testProjectId,
       sessionId: "session-123",
@@ -163,7 +163,7 @@ async function runTests() {
       actionTarget: "db_row_99",
     });
 
-    const verifyFailIncorrectAction = verifyActionConfirmationToken(token, {
+    const verifyFailIncorrectAction = await verifyActionConfirmationToken(token, {
       userId: testUserId,
       projectId: testProjectId,
       sessionId: "session-123",

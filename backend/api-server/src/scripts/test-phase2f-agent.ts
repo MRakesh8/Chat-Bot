@@ -133,13 +133,13 @@ async function runPhase2FTestSuite() {
     const { token } = generateActionConfirmationToken(tokenParams);
     assert(typeof token === "string" && token.length > 20, "Generates valid base64 HMAC confirmation token");
 
-    const isValidToken = verifyActionConfirmationToken(token, tokenParams);
+    const isValidToken = await verifyActionConfirmationToken(token, tokenParams);
     assert(isValidToken === true, "Validates valid confirmation token successfully");
 
-    const isTamperedToken = verifyActionConfirmationToken(token, { ...tokenParams, actionType: "delete_all" });
+    const isTamperedToken = await verifyActionConfirmationToken(token, { ...tokenParams, actionType: "delete_all" });
     assert(isTamperedToken === false, "Rejects tampered confirmation token when actionType changes");
 
-    const isCrossTenantToken = verifyActionConfirmationToken(token, { ...tokenParams, projectId: projB_Id });
+    const isCrossTenantToken = await verifyActionConfirmationToken(token, { ...tokenParams, projectId: projB_Id });
     assert(isCrossTenantToken === false, "Rejects cross-tenant confirmation token replay");
 
     // ─── TEST 5: HIGH RISK ACTION CONFIRMATION FLOW ──────────────────────────

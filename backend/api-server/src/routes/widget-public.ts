@@ -1,7 +1,8 @@
+import { submitMessageFeedback, submitProjectFeedback } from '../services/feedback';
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
 import { db, crypto } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads } from "@workspace/db/schema";
+import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads, chatSessions, customers, workflowExecutions, executionSteps } from "@workspace/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
 import { minuteCache, llmResponseCache } from "../services/cache-provider";
@@ -973,6 +974,27 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     
     req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
 
+    let customerId: string | undefined = undefined;
+    let customerVerified = false;
+    try {
+      if (sessionId) {
+        const sessionRec = await db.query.chatSessions.findFirst({
+          where: eq(chatSessions.id, sessionId)
+        });
+        if (sessionRec?.customerId) {
+          customerId = sessionRec.customerId;
+          const custRec = await db.query.customers.findFirst({
+            where: eq(customers.id, customerId)
+          });
+          if (custRec) {
+            customerVerified = custRec.isVerified;
+          }
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err }, "Could not resolve customer identity for widget session");
+    }
+
     try {
       // 1. Delegate request to CoordinatorAgent -> BusinessAgent pipeline
       const { CoordinatorAgent } = require("../agents/coordinator");
@@ -981,6 +1003,11 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         projectId,
         sessionId,
         userId: userId || "public_visitor",
+        customerContext: {
+          customerId,
+          verified: customerVerified,
+          isBusinessAdmin: false
+        },
         payload: {
           message: lastUserMessage,
           intent: lastUserMessage,
@@ -1158,13 +1185,13 @@ router.post("/:widgetToken/action-result", async (req: Request, res: Response): 
 
     if (step.status === "pending_approval") {
       const [execRecord] = await db.select().from(workflowExecutions).where(eq(workflowExecutions.id, executionId)).limit(1);
-      const verified = verifyActionConfirmationToken(confirmationToken, {
+      const verified = await verifyActionConfirmationToken(confirmationToken, {
         userId: (req as any).auth?.userId || "public_visitor",
         projectId,
         sessionId: execRecord?.sessionId || "",
         actionId,
         actionType: step.actionType || "",
-        actionTarget: step.actionTarget || "",
+        actionTarget: step.actionTarget || ""
       });
 
       if (!verified) {
@@ -1216,6 +1243,49 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
       return res.status(404).json({ error: "Widget token invalid or not found" });
     }
 
+    // 1. Identify or Create Customer
+    let customerId: string | null = null;
+    let customerVerified = false;
+
+    // Check if customer exists by email
+    if (email) {
+      const existing = await db.query.customers.findFirst({
+        where: and(eq(customers.projectId, settings.projectId), eq(customers.email, email))
+      });
+      
+      if (existing) {
+        customerId = existing.id;
+        customerVerified = existing.isVerified; // Keep existing verification status
+        
+        // Update phone/name if missing
+        if (!existing.phone && phone || !existing.name && name) {
+          await db.update(customers).set({
+            phone: existing.phone || phone,
+            name: existing.name || name,
+            updatedAt: new Date()
+          }).where(eq(customers.id, existing.id));
+        }
+      }
+    }
+
+    // If still no customer, create an unverified customer record
+    if (!customerId && (email || phone || name)) {
+      const [newCust] = await db.insert(customers).values({
+        projectId: settings.projectId,
+        name: name || "Anonymous Lead",
+        email: email || null,
+        phone: phone || null,
+        channel: "website",
+        isVerified: false, // Widget leads are unverified by default unless proven otherwise
+      }).returning();
+      customerId = newCust.id;
+    }
+
+    // Also link the session to this customer if we have one
+    if (customerId && sessionId) {
+      await db.update(chatSessions).set({ customerId }).where(eq(chatSessions.id, sessionId));
+    }
+
     const lead = await processAndSaveLead({
       projectId: settings.projectId,
       sessionId,
@@ -1224,7 +1294,7 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
     });
 
     if (lead) {
-      return res.json({ success: true, lead });
+      return res.json({ success: true, lead, customerId });
     }
 
     // Direct fallback insertion if signals were not triggered
@@ -1244,7 +1314,7 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
       updatedAt: new Date(),
     }).returning();
 
-    return res.json({ success: true, lead: insertedLead });
+    return res.json({ success: true, lead: insertedLead, customerId });
   } catch (err: any) {
     req.log.error("Failed to capture public lead:", err);
     return res.status(500).json({ error: "Failed to capture lead" });
@@ -1252,3 +1322,45 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
 });
 
 export default router;
+
+
+
+router.post("/projects/:projectId/messages/:messageId/feedback", async (req, res): Promise<any> => {
+  try {
+    const { projectId, messageId } = req.params;
+    const { sessionId, type, comment, channel = "WEBSITE" } = req.body;
+    
+    if (!sessionId || !type) return res.status(400).json({ error: "Missing required fields" });
+    if (type !== "LIKE" && type !== "DISLIKE") return res.status(400).json({ error: "Invalid type" });
+    
+    const [session] = await db.select({ customerId: chatSessions.customerId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    
+    await submitMessageFeedback({ projectId, sessionId, messageId, customerId: session.customerId || undefined, type, comment, channel });
+    return res.json({ success: true });
+  } catch (err: any) {
+    req.log.error(err, "Error submitting message feedback");
+    return res.status(400).json({ error: err.message || "Error submitting feedback" });
+  }
+});
+
+router.post("/projects/:projectId/feedback", async (req, res): Promise<any> => {
+  try {
+    const { projectId } = req.params;
+    const { sessionId, category, rating, comment, channel = "WEBSITE" } = req.body;
+    
+    if (!comment) return res.status(400).json({ error: "Comment is required" });
+    
+    let customerId = undefined;
+    if (sessionId) {
+      const [session] = await db.select({ customerId: chatSessions.customerId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+      if (session && session.customerId) customerId = session.customerId;
+    }
+    
+    await submitProjectFeedback({ projectId, customerId, category, rating, comment, channel });
+    return res.json({ success: true });
+  } catch (err: any) {
+    req.log.error(err, "Error submitting project feedback");
+    return res.status(400).json({ error: err.message || "Error submitting feedback" });
+  }
+});

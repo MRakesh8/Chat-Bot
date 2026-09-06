@@ -251,10 +251,10 @@ export async function executeServerTool(
 
     if (needsConfirmation) {
       if (confirmationToken) {
-        const isValidToken = verifyActionConfirmationToken(confirmationToken, {
+        const isValidToken = await verifyActionConfirmationToken(confirmationToken, {
           userId,
           projectId,
-          sessionId,
+          sessionId: sessionId,
           actionId: matchedTool.id,
           actionType: resolvedActionName,
           actionTarget: providerName
@@ -312,15 +312,6 @@ export async function executeServerTool(
         success: false,
         status: "EXECUTION_FAILED",
         error: "Failed to decrypt integration credentials."
-      };
-    }
-
-    const providerImpl = providerRegistry.getProvider(providerName);
-    if (!providerImpl) {
-      return {
-        success: false,
-        status: "EXECUTION_FAILED",
-        error: `Provider ${providerName} execution engine is not registered.`
       };
     }
 
@@ -385,6 +376,27 @@ export async function executeServerTool(
       };
     }
 
+    let providerImpl;
+    try {
+        providerImpl = providerRegistry.getProvider(providerName);
+    } catch (e: any) {
+        return {
+          success: false,
+          status: "EXECUTION_FAILED",
+          error: e.message || `Provider ${providerName} execution engine is not registered.`
+        };
+    }
+
+    if (!providerImpl) {
+      return {
+        success: false,
+        status: "EXECUTION_FAILED",
+        error: `Provider ${providerName} execution engine is not registered.`
+      };
+    }
+
+
+
     let executionResult: any = null;
     let executionError: string | null = null;
 
@@ -392,6 +404,35 @@ export async function executeServerTool(
       executionResult = await providerImpl.executeTool(resolvedActionName, input, credentialsObj);
     } catch (execErr: any) {
       executionError = execErr.message || "Provider tool execution failed.";
+    }
+
+    // 7.8 Tool Result Sanitization - strip credentials/secrets, enforce size limits
+    if (executionResult) {
+      try {
+        const resultStr = JSON.stringify(executionResult);
+        const MAX_RESULT_SIZE = 50000; // 50KB max
+        if (resultStr.length > MAX_RESULT_SIZE) {
+          executionResult = { _truncated: true, _originalSize: resultStr.length, data: JSON.parse(resultStr.slice(0, MAX_RESULT_SIZE)) };
+        }
+        // Deep-strip sensitive fields from provider results
+        const sensitiveKeys = ['accessToken', 'access_token', 'api_key', 'apiKey', 'secret', 'password', 'credential', 'private_key', 'refresh_token', 'session_token'];
+        const stripSensitive = (obj: any): any => {
+          if (!obj || typeof obj !== 'object') return obj;
+          if (Array.isArray(obj)) return obj.map(stripSensitive);
+          const cleaned: any = {};
+          for (const [k, v] of Object.entries(obj)) {
+            if (sensitiveKeys.some(sk => k.toLowerCase().includes(sk.toLowerCase()))) {
+              cleaned[k] = '[REDACTED]';
+            } else {
+              cleaned[k] = stripSensitive(v);
+            }
+          }
+          return cleaned;
+        };
+        executionResult = stripSensitive(executionResult);
+      } catch (sanitizeErr) {
+        logger.warn({ sanitizeErr }, "Failed to sanitize tool execution result");
+      }
     }
 
     // 8. Output Verification Engine

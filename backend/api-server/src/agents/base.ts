@@ -3,6 +3,14 @@ export interface AgentContext {
   sessionId: string;
   userId?: string;
   payload?: any;
+  customerContext?: {
+    customerId?: string;
+    email?: string;
+    phone?: string;
+    customerName?: string;
+    verified?: boolean;
+    isBusinessAdmin?: boolean;
+  };
 }
 
 export interface AgentResult {

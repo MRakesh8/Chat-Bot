@@ -360,43 +360,38 @@ export default function AdminProjectEditPage() {
                   <p className="text-muted-foreground max-w-md mx-auto">You need to save the project settings before you can view the overview.</p>
                 </div>
               ) : (
-                <Card className="bg-card border-border text-card-foreground mt-8">
-                <CardHeader>
-                  <CardTitle>Project Overview</CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    Quick stats and access to your project.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-muted border border-border rounded-lg p-4">
-                      <h3 className="text-muted-foreground text-sm font-medium mb-1">Status</h3>
-                      <p className="text-xl font-semibold text-foreground flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                        Active
-                      </p>
-                    </div>
-                  </div>
-                  {shareUrl && (
-                    <div className="mt-6 p-4 bg-primary/10 border border-primary/20 rounded-xl">
-                      <p className="text-primary-foreground font-medium text-sm mb-2">
-                        Shareable Project Link
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 font-mono truncate border border-border">
-                          {shareUrl}
-                        </code>
-                        <Button type="button" size="sm" variant="outline" onClick={copyShareLink} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
-                          <Copy className="w-3 h-3" /> Copy
-                        </Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
-                          <Globe className="w-3 h-3" /> Open
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                <>
+                  <Card className="bg-card border-border text-card-foreground mt-8">
+                    <CardHeader>
+                      <CardTitle>Project Dashboard</CardTitle>
+                      <CardDescription className="text-muted-foreground">
+                        Business intelligence and project overview.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {shareUrl && (
+                        <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-xl">
+                          <p className="text-primary-foreground font-medium text-sm mb-2">
+                            Shareable Project Link
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 font-mono truncate border border-border">
+                              {shareUrl}
+                            </code>
+                            <Button type="button" size="sm" variant="outline" onClick={copyShareLink} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
+                              <Copy className="w-3 h-3" /> Copy
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
+                              <Globe className="w-3 h-3" /> Open
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {projectId && <DashboardOverview projectId={projectId} />}
+                    </CardContent>
+                  </Card>
+                </>
               )}
             </TabsContent>
 

@@ -503,6 +503,7 @@ Return strictly valid JSON:
 export async function searchProjectKnowledge(params: {
   projectIds: string[];
   userId: string | null;
+  customerId?: string | null;
   query: string;
   limit?: number;
 }): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
@@ -511,7 +512,7 @@ export async function searchProjectKnowledge(params: {
   // RAG Cache (5m TTL) — Bypassed for anonymous/public visitors to prevent cross-customer cache leakage.
   // Cache is strictly used when a trusted user/customer identity scope exists.
   const isAnonymousPublic = !params.userId || params.userId === "public_visitor" || params.userId === "public";
-  const userScopeKey = params.userId ? `usr_${params.userId}` : null;
+  const userScopeKey = params.customerId ? `cust_${params.customerId}` : (params.userId ? `usr_${params.userId}` : null);
   const queryHash = userScopeKey
     ? nodeCrypto.createHash("sha256").update(`${params.projectIds.join(",")}:${userScopeKey}:${params.query.trim().toLowerCase()}`).digest("hex")
     : null;
@@ -563,6 +564,11 @@ export async function searchProjectKnowledge(params: {
       ilike(knowledgeSources.keywordIndex, `%${word}%`),
       ilike(knowledgeSources.sourceUrl, `%${word}%`),
     ]);
+
+    const customerCondition = params.customerId
+      ? or(sql`${knowledgeSources.customerId} IS NULL`, eq(knowledgeSources.customerId, params.customerId))
+      : sql`${knowledgeSources.customerId} IS NULL`;
+
     metadataMatches = await db
       .select({
         id: knowledgeSources.id,
@@ -580,7 +586,7 @@ export async function searchProjectKnowledge(params: {
       })
       .from(knowledgeSources)
       .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
-      .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions)))
+      .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions), customerCondition))
       .limit(fetchLimit);
   }
 
@@ -593,6 +599,10 @@ export async function searchProjectKnowledge(params: {
     });
     const userVector = embedRes.embeddings?.[0]?.values;
     if (userVector) {
+      const customerCondition = params.customerId
+        ? or(sql`${knowledgeSources.customerId} IS NULL`, eq(knowledgeSources.customerId, params.customerId))
+        : sql`${knowledgeSources.customerId} IS NULL`;
+
       similarChunks = await db
         .select({
           chunkText: knowledgeChunks.chunkText,
@@ -612,7 +622,7 @@ export async function searchProjectKnowledge(params: {
         .from(knowledgeChunks)
         .innerJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
         .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
-        .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding)))
+        .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding), customerCondition))
         .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
         .limit(fetchLimit);
     }

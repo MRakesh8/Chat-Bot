@@ -14,7 +14,7 @@ import {
   X,
   Copy,
   ArrowLeft,
-  CheckCircle2,
+  CheckCircle2, ThumbsUp, ThumbsDown,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -72,10 +72,20 @@ async function loadConversation(token: string, convId: string): Promise<{ messag
 const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
   msg,
   onCopy,
+  onFeedback,
 }: {
   msg: Message;
   onCopy: (content: string) => void;
+  onFeedback?: (messageId: string, type: "LIKE" | "DISLIKE") => void;
 }) {
+  const [feedbackStatus, setFeedbackStatus] = useState<"LIKE" | "DISLIKE" | null>(null);
+
+  const handleFeedback = (type: "LIKE" | "DISLIKE") => {
+    if (feedbackStatus === type) return;
+    setFeedbackStatus(type);
+    if (onFeedback) onFeedback(msg.id, type);
+  };
+
   return (
     <div className={cn("flex gap-3 group", msg.role === "user" ? "justify-end" : "justify-start")}>
       {msg.role === "assistant" && (
@@ -83,57 +93,76 @@ const SharedMemoizedMessage = memo(function SharedMemoizedMessage({
           <Bot className="w-3.5 h-3.5 text-primary-foreground" />
         </div>
       )}
-      <div
-        className={cn(
-          "max-w-[80%] rounded-2xl px-4 py-3 text-sm relative",
-          msg.role === "user"
-            ? "bg-[#2B2B2B] text-[#FFFFFF]"
-            : "bg-card border border-border text-foreground rounded-bl-sm"
+      <div className={cn("max-w-[80%] flex flex-col gap-1", msg.role === "user" ? "items-end" : "items-start")}>
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-3 text-sm relative",
+            msg.role === "user"
+              ? "bg-[#2B2B2B] text-[#FFFFFF]"
+              : "bg-card border border-border text-foreground rounded-bl-sm"
+          )}
+        >
+          {msg.role === "assistant" ? (
+            <>
+              <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeHighlight]}
+                  components={{
+                    a({ node, children, href, ...props }: any) {
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline font-semibold"
+                          {...props}
+                        >
+                          {children}
+                        </a>
+                      );
+                    }
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </div>
+            </>
+          ) : (
+            <p className="whitespace-pre-wrap">{msg.content}</p>
+          )}
+        </div>
+        {msg.role === "user" && (
+          <div className="text-muted-foreground flex shrink-0 mt-1 mr-1">
+            <CheckCircle2 className="h-4 w-4" />
+          </div>
         )}
-      >
-        {msg.role === "assistant" ? (
-          <>
-            <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-muted prose-pre:border prose-pre:border-border">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={{
-                  a({ node, children, href, ...props }: any) {
-                    return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline font-semibold"
-                        {...props}
-                      >
-                        {children}
-                      </a>
-                    );
-                  }
-                }}
-              >
-                {msg.content}
-              </ReactMarkdown>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 right-2 h-6 w-6 transition-opacity text-muted-foreground hover:text-foreground opacity-100"
+        {msg.role === "assistant" && (
+          <div className="flex items-center gap-2 mt-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              onClick={() => handleFeedback("LIKE")}
+              className={cn("p-1.5 rounded bg-muted text-muted-foreground hover:text-green-500 transition-colors", feedbackStatus === "LIKE" && "text-green-500")}
+              title="Helpful"
+            >
+              <ThumbsUp className="w-3 h-3" />
+            </button>
+            <button 
+              onClick={() => handleFeedback("DISLIKE")}
+              className={cn("p-1.5 rounded bg-muted text-muted-foreground hover:text-red-500 transition-colors", feedbackStatus === "DISLIKE" && "text-red-500")}
+              title="Not helpful"
+            >
+              <ThumbsDown className="w-3 h-3" />
+            </button>
+            <button
               onClick={() => onCopy(msg.content)}
+              className="p-1.5 rounded bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Copy"
             >
               <Copy className="w-3 h-3" />
-            </Button>
-          </>
-        ) : (
-          <p className="whitespace-pre-wrap">{msg.content}</p>
+            </button>
+          </div>
         )}
       </div>
-      {msg.role === "user" && (
-        <div className="mb-4 text-muted-foreground flex shrink-0">
-          <CheckCircle2 className="h-4 w-4" />
-        </div>
-      )}
     </div>
   );
 }, (prevProps, nextProps) => {
@@ -416,6 +445,20 @@ export default function SharedChatPage() {
     toast({ title: "Copied!" });
   }, [toast]);
 
+  const handleMessageFeedback = useCallback(async (messageId: string, type: 'LIKE' | 'DISLIKE') => {
+    if (!project || !convId) return;
+    try {
+      await fetch(apiUrl('/api/widget/projects/' + project.id + '/messages/' + messageId + '/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: convId, type, channel: 'WEBSITE' })
+      });
+      toast({ title: 'Feedback received, thank you!' });
+    } catch (e) {
+      console.error(e);
+    }
+  }, [project, convId, toast]);
+
   const startNewChat = async () => {
     if (!token) return;
     localStorage.removeItem(storageKey);
@@ -529,7 +572,7 @@ export default function SharedChatPage() {
           )}
 
           {messages.map((msg) => (
-            <SharedMemoizedMessage key={msg.id} msg={msg} onCopy={copyToClipboard} />
+            <SharedMemoizedMessage key={msg.id} msg={msg} onCopy={copyToClipboard} onFeedback={handleMessageFeedback} />
           ))}
 
           {/* Streaming */}

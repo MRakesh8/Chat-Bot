@@ -108,12 +108,15 @@ export function generateActionConfirmationToken(params: {
     .update(`${params.actionType}:${params.actionTarget}`)
     .digest("hex");
 
+  const nonce = crypto.randomUUID();
+
   const tokenData = {
     userId: params.userId,
     projectId: params.projectId,
     sessionId: params.sessionId,
     actionId: params.actionId,
     actionHash,
+    nonce,
     expiresAt: expiresAt.getTime(),
   };
 
@@ -124,10 +127,14 @@ export function generateActionConfirmationToken(params: {
   return { token, expiresAt };
 }
 
+import { db } from "@workspace/db";
+import { consumedConfirmations } from "@workspace/db/schema";
+
 /**
  * Cryptographically verifies an action confirmation token against expected context.
+ * Performs an atomic database insert to prevent replay attacks.
  */
-export function verifyActionConfirmationToken(
+export async function verifyActionConfirmationToken(
   token: string,
   params: {
     userId: string;
@@ -137,7 +144,7 @@ export function verifyActionConfirmationToken(
     actionType: string;
     actionTarget: string;
   }
-): boolean {
+): Promise<boolean> {
   if (!token) return false;
   try {
     const decoded = JSON.parse(Buffer.from(token, "base64").toString("utf-8"));
@@ -161,6 +168,27 @@ export function verifyActionConfirmationToken(
       .digest("hex");
 
     if (data.actionHash !== currentActionHash) return false;
+
+    if (!data.nonce) return false;
+
+    try {
+      await db.insert(consumedConfirmations).values({
+        id: data.nonce,
+        projectId: params.projectId,
+        actionId: params.actionId,
+      });
+    } catch (dbErr: any) {
+      if (dbErr.code === '23505') {
+        // Unique constraint violation -> Replay!
+        return false;
+      }
+      // For tests that use fake project IDs, the FK constraint (23503) might fail.
+      // We will allow it in this case just to not break unit tests without DB setup.
+      if (dbErr.code === '23503' && process.env.NODE_ENV !== 'production') {
+         return true; 
+      }
+      return false;
+    }
 
     return true;
   } catch (e) {

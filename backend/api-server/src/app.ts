@@ -145,6 +145,16 @@ const integrationLimiter = rateLimit({
 app.use("/api/projects/:projectId/integrations", integrationLimiter);
 app.use("/api/projects/:projectId/tools", integrationLimiter);
 
+// Rate Limiter for AI Agent (Phase 2F) - expensive AI operations
+const agentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 15, // 15 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many agent requests. Please wait a minute." }
+});
+app.use("/api/agent", agentLimiter);
+
 import { databaseHealthMiddleware } from "./middlewares/databaseHealth";
 app.use(databaseHealthMiddleware);
 

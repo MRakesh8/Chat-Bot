@@ -216,16 +216,43 @@ DIRECTIVES:
         };
       }
 
-      // Case A: Business Information Request -> Execute RAG
-      if (llmDecision.intent === "business_information" || llmDecision.intent === "information" || (!llmDecision.selectedTool && llmDecision.intent !== "customer_information")) {
+      // Case A: Business Information or Customer Information Request -> Execute RAG
+      if (
+        llmDecision.intent === "business_information" || 
+        llmDecision.intent === "information" || 
+        (!llmDecision.selectedTool)
+      ) {
+        
+        // If customer_information is requested but we have no verified customer identity, reject immediately
+        if (llmDecision.intent === "customer_information" && !context.customerContext?.verified) {
+            return {
+              success: true,
+              data: {
+                intent: "customer_information",
+                response: "I cannot access private customer information because you are not authenticated.",
+              }
+            };
+        }
+
         const ragRes = await searchProjectKnowledge({
           projectIds: [projectId],
           userId: userId || "public",
+          customerId: context.customerContext?.customerId,
           query: userMessage,
         });
 
         const contextString = ragRes?.contextString;
         if (!contextString) {
+          // If customer data was expected, return unsupported if no RAG data found and no tool triggered.
+          if (llmDecision.intent === "customer_information" && !llmDecision.selectedTool) {
+             return {
+              success: true,
+              data: {
+                intent: "unsupported",
+                response: "I could not find the requested customer information.",
+              },
+            };
+          }
           return {
             success: true,
             data: {
@@ -238,7 +265,7 @@ DIRECTIVES:
         return {
           success: true,
           data: {
-            intent: "business_information",
+            intent: llmDecision.intent,
             response: contextString,
             retrievedIds: ragRes?.retrievedIds || [],
           },
@@ -287,7 +314,8 @@ DIRECTIVES:
         sessionId: sessionId || "temp_session",
         actionName: targetToolName,
         input: llmDecision.arguments || {},
-        confirmationToken
+        confirmationToken,
+        customerContext: context.customerContext
       });
 
       if (execResult.status === "PENDING_CONFIRMATION") {
