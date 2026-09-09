@@ -1,5 +1,6 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { ApiKeysSettings } from "@/components/ApiKeysSettings";
+import { BillingSection } from "@/components/project/billing-section";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -51,6 +52,8 @@ export default function SettingsPage() {
               <button disabled className="w-full sm:w-auto px-6 py-2 bg-foreground/5 rounded-xl text-sm text-foreground font-medium border border-foreground/10">Select</button>
             </div>
           </section>
+
+          <BillingSection />
 
           <ApiKeysSettings />
         </div>

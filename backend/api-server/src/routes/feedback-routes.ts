@@ -1,6 +1,12 @@
-import { submitMessageFeedback, submitProjectFeedback } from "../services/feedback";
+﻿import { submitMessageFeedback, submitProjectFeedback } from "../services/feedback";
+import { Router, Request, Response } from "express";
+import { db } from "@workspace/db";
+import { chatSessions } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
-router.post("/projects/:projectId/messages/:messageId/feedback", async (req, res): Promise<any> => {
+export const router = Router();
+
+router.post("/projects/:projectId/messages/:messageId/feedback", async (req: any, res: any): Promise<any> => {
   try {
     const { projectId, messageId } = req.params;
     const { sessionId, type, comment, channel = "WEBSITE" } = req.body;
@@ -15,11 +21,11 @@ router.post("/projects/:projectId/messages/:messageId/feedback", async (req, res
     return res.json({ success: true });
   } catch (err: any) {
     req.log.error(err, "Error submitting message feedback");
-    return res.status(400).json({ error: err.message || "Error submitting feedback" });
+    return res.status(400).json({ error: "Error submitting feedback" });
   }
 });
 
-router.post("/projects/:projectId/feedback", async (req, res): Promise<any> => {
+router.post("/projects/:projectId/feedback", async (req: any, res: any): Promise<any> => {
   try {
     const { projectId } = req.params;
     const { sessionId, category, rating, comment, channel = "WEBSITE" } = req.body;
@@ -36,6 +42,6 @@ router.post("/projects/:projectId/feedback", async (req, res): Promise<any> => {
     return res.json({ success: true });
   } catch (err: any) {
     req.log.error(err, "Error submitting project feedback");
-    return res.status(400).json({ error: err.message || "Error submitting feedback" });
+    return res.status(400).json({ error: "Error submitting feedback" });
   }
 });

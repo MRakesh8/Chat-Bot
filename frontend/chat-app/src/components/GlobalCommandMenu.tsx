@@ -80,13 +80,13 @@ export function GlobalCommandMenu() {
             {projects?.map((project) => (
               <CommandItem
                 key={project.id}
-                onSelect={() => runCommand(() => setLocation(`/admin/projects/${project.id}/edit`))}
+                onSelect={() => runCommand(() => setLocation(`/projects/${project.id}/edit`))}
               >
                 <Folder className="mr-2 h-4 w-4" />
                 <span>{project.name}</span>
               </CommandItem>
             ))}
-            <CommandItem onSelect={() => runCommand(() => setLocation("/admin/projects/new"))}>
+            <CommandItem onSelect={() => runCommand(() => setLocation("/projects/new"))}>
               <Sparkle className="mr-2 h-4 w-4" />
               <span>Create New Project</span>
             </CommandItem>

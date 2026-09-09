@@ -2,7 +2,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Link, Redirect, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { ArrowRight, BrainCircuit, Zap, Lock, Sparkles, Loader2 } from "lucide-react";
+import { ArrowRight, BrainCircuit, Zap, Lock, Sparkles, Loader2, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -249,6 +249,45 @@ export default function Home() {
                 <h3 className="text-xl font-semibold text-card-foreground mb-3">Private & Secure</h3>
                 <p className="text-muted-foreground">Your conversations are yours. Enterprise-grade security keeps your data protected.</p>
               </motion.div>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing Section */}
+        <section className="px-6 py-24 bg-background z-10 border-t border-border">
+          <div className="max-w-5xl mx-auto text-center">
+            <h2 className="text-3xl md:text-5xl font-bold mb-6 text-foreground tracking-tight">Simple, transparent pricing</h2>
+            <p className="text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">Start for free, upgrade when you need more power and automation.</p>
+            
+            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto text-left">
+              <div className="p-8 rounded-3xl bg-card border border-border shadow-sm flex flex-col justify-between">
+                <div>
+                  <h3 className="text-2xl font-semibold mb-2">Free Trial</h3>
+                  <div className="text-4xl font-bold mb-6">₹0 <span className="text-lg text-muted-foreground font-normal">/ initial test</span></div>
+                  <ul className="space-y-4 mb-8 text-muted-foreground">
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-emerald-500" /> 1 AI Project Assistant</li>
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-emerald-500" /> Website Crawling & Knowledge</li>
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-emerald-500" /> Embeddable Widget</li>
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-emerald-500" /> 100 Messages Limit</li>
+                  </ul>
+                </div>
+                <Button onClick={handleGoogleAuth} variant="outline" className="w-full py-6 text-lg">Start Free Trial</Button>
+              </div>
+
+              <div className="p-8 rounded-3xl bg-primary/5 border border-primary/40 shadow-lg relative flex flex-col justify-between">
+                <div className="absolute top-0 right-8 -translate-y-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">Recommended</div>
+                <div>
+                  <h3 className="text-2xl font-semibold mb-2">Pro Business</h3>
+                  <div className="text-4xl font-bold mb-6">₹499 <span className="text-lg text-muted-foreground font-normal">/ month</span></div>
+                  <ul className="space-y-4 mb-8 text-foreground/90">
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-primary" /> High-volume AI responses</li>
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-primary" /> Live Shopify & Webhook Actions</li>
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-primary" /> Custom Branding & Context Engine</li>
+                    <li className="flex items-center gap-3"><Check className="w-5 h-5 text-primary" /> Priority Support</li>
+                  </ul>
+                </div>
+                <Button onClick={handleGoogleAuth} className="w-full py-6 text-lg bg-primary text-primary-foreground hover:bg-primary/90">Get Pro</Button>
+              </div>
             </div>
           </div>
         </section>

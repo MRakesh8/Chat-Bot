@@ -99,6 +99,21 @@ export async function executeServerTool(
   }
 
   try {
+    let isSuperAdmin = false;
+    let isBusinessAdmin = false;
+    
+    if (userId && userId !== "public_visitor" && userId !== "whatsapp_contact") {
+      try {
+        const [dbUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+        if (dbUser?.role === "super_admin") {
+          isSuperAdmin = true;
+          isBusinessAdmin = true;
+        }
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
     // 1. Authoritative Project & Organization Verification
     const [project] = await db
       .select()
@@ -123,8 +138,19 @@ export async function executeServerTool(
 
     const effectiveOrgId = orgId || project.organizationId;
 
+    if (!isSuperAdmin && effectiveOrgId) {
+       const [membership] = await db
+          .select({ role: organizationMembers.role })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.organizationId, effectiveOrgId), eq(organizationMembers.userId, userId)))
+          .limit(1);
+        if (membership && (membership.role === "owner" || membership.role === "admin" || membership.role === "manager")) {
+          isBusinessAdmin = true;
+        }
+    }
+
     // 2. Authoritative Project Entitlement Check
-    const entitlement = await checkProjectEntitlement(projectId);
+    const entitlement = await checkProjectEntitlement(projectId, isSuperAdmin);
     if (!entitlement.allowed) {
       return {
         success: false,
@@ -294,7 +320,7 @@ export async function executeServerTool(
     }
 
     // 6. Quota Check & Increment
-    const quotaCheck = await checkAndIncrementUsage(projectId, "action", 1);
+    const quotaCheck = await checkAndIncrementUsage(projectId, "action", 1, isSuperAdmin);
     if (!quotaCheck.allowed) {
       return {
         success: false,
@@ -318,27 +344,6 @@ export async function executeServerTool(
     // 7.5 Authoritative Server-Side Customer Identity & Parameter Scoping
     // Derive isBusinessAdmin strictly from trusted server-side database role checks.
     // Never infer admin privileges from userId existence, orgId, or untrusted LLM input.
-    let isBusinessAdmin = false;
-    if (userId && userId !== "public_visitor" && userId !== "whatsapp_contact") {
-      try {
-        const [dbUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
-        if (dbUser?.role === "super_admin") {
-          isBusinessAdmin = true;
-        } else if (effectiveOrgId) {
-          const [membership] = await db
-            .select({ role: organizationMembers.role })
-            .from(organizationMembers)
-            .where(and(eq(organizationMembers.organizationId, effectiveOrgId), eq(organizationMembers.userId, userId)))
-            .limit(1);
-          if (membership && (membership.role === "owner" || membership.role === "admin" || membership.role === "manager")) {
-            isBusinessAdmin = true;
-          }
-        }
-      } catch (e) {
-        // Fail closed on DB check error
-        isBusinessAdmin = false;
-      }
-    }
 
     if (!isBusinessAdmin) {
       const verifiedEmail = customerContext?.email;
@@ -404,6 +409,8 @@ export async function executeServerTool(
       executionResult = await providerImpl.executeTool(resolvedActionName, input, credentialsObj);
     } catch (execErr: any) {
       executionError = execErr.message || "Provider tool execution failed.";
+      const { refundUsage } = require("../../security/quota");
+      await refundUsage(projectId, "action", 1);
     }
 
     // 7.8 Tool Result Sanitization - strip credentials/secrets, enforce size limits

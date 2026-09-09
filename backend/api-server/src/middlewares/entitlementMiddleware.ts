@@ -23,6 +23,7 @@ export const entitlementMiddleware = async (
   }
 
   // 2. Evaluate entitlement status
+  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
   const entitlement = await checkProjectEntitlement(projectId, isSuperAdmin);
 
   if (!entitlement.allowed) {

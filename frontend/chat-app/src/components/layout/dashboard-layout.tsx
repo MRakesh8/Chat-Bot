@@ -3,10 +3,12 @@ import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const { elementRef, handleScroll } = useScrollRestoration<HTMLElement>();
 
   const handleToggle = () => {
     const isDesktop = window.innerWidth >= 768; // md breakpoint in tailwind is 768px
@@ -63,8 +65,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               size="icon" 
               aria-label="Toggle Sidebar"
               onClick={() => {
-                // Let SheetTrigger handle mobile open automatically, just log it if we want,
-                // but actually Sheet onOpenChange handles the logging.
+                // Let SheetTrigger handle mobile open automatically
               }}
               className="md:hidden text-muted-foreground hover:text-foreground bg-background/80 backdrop-blur-md border border-border"
             >
@@ -80,7 +81,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </Sheet>
       </div>
 
-      <main className="flex-1 relative z-10 overflow-y-auto h-full">
+      <main 
+        ref={elementRef}
+        onScroll={handleScroll}
+        className="flex-1 relative z-10 overflow-y-auto h-full"
+      >
         {children}
       </main>
     </div>

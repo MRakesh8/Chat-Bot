@@ -1,4 +1,4 @@
-import { submitMessageFeedback, submitProjectFeedback } from '../services/feedback';
+﻿import { submitMessageFeedback, submitProjectFeedback } from '../services/feedback';
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
 import { db, crypto } from "@workspace/db";
@@ -768,7 +768,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
 
     // 2. Correction flow using Google Search
     if (userIsPointingOutMistake) {
-      res.write(`data: ${JSON.stringify({ content: "🔍 *Checking Google Search to verify and correct my answer...*\n\n" })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: "ðŸ” *Checking Google Search to verify and correct my answer...*\n\n" })}\n\n`);
       if (typeof (res as any).flush === 'function') (res as any).flush();
 
       const verifyPrompt = `The user claims the assistant's previous answer was wrong or incomplete.
@@ -1167,7 +1167,6 @@ router.post("/:widgetToken/swarm-dryrun", async (req: Request, res: Response): P
 });
 
 // Action Engine Result Webhook
-import { workflowExecutions, executionSteps } from "@workspace/db/schema";
 
 router.post("/:widgetToken/action-result", async (req: Request, res: Response): Promise<any> => {
   const { executionId, actionId, status, tool, duration, url, domDelta, verification, error, confirmationToken } = req.body;
@@ -1340,7 +1339,7 @@ router.post("/projects/:projectId/messages/:messageId/feedback", async (req, res
     return res.json({ success: true });
   } catch (err: any) {
     req.log.error(err, "Error submitting message feedback");
-    return res.status(400).json({ error: err.message || "Error submitting feedback" });
+    return res.status(400).json({ error: "Error submitting feedback" });
   }
 });
 
@@ -1361,6 +1360,6 @@ router.post("/projects/:projectId/feedback", async (req, res): Promise<any> => {
     return res.json({ success: true });
   } catch (err: any) {
     req.log.error(err, "Error submitting project feedback");
-    return res.status(400).json({ error: err.message || "Error submitting feedback" });
+    return res.status(400).json({ error: "Error submitting feedback" });
   }
 });

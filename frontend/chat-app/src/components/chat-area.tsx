@@ -33,6 +33,10 @@ import {
   VolumeX,
   MessageCircleQuestion,
   Square,
+  ThumbsUp,
+  ThumbsDown,
+  ShieldAlert,
+  AlertTriangle,
 } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import { RotatingStatus } from "@/components/rotating-status";
@@ -54,6 +58,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useChatStream } from "@/hooks/use-chat-stream";
 import { apiUrl } from "@/lib/api-url";
+import { getSavedChatDraft, saveChatDraft } from "@/lib/workspace-continuity";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 
@@ -146,6 +151,12 @@ const MemoizedMessage = memo(function MemoizedMessage({
                   Add to Project
                 </Button>
               )}
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-green-400" title="Helpful" onClick={() => onCopy("Liked response")}>
+                <ThumbsUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-400" title="Not helpful" onClick={() => onCopy("Disliked response")}>
+                <ThumbsDown className="h-3.5 w-3.5" />
+              </Button>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onCopy(msg.content)}>
                 <Copy className="h-3.5 w-3.5" />
               </Button>
@@ -261,6 +272,18 @@ export function ChatArea() {
 
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+
+  const convKey = conversationId || "new";
+
+  useEffect(() => {
+    const saved = getSavedChatDraft(convKey);
+    setInput(saved || "");
+  }, [convKey]);
+
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    saveChatDraft(convKey, val);
+  };
   const [files, setFiles] = useState<{ file: File; id?: string; uploading: boolean }[]>([]);
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(["normal"]));
   const [targetProjectId, setTargetProjectId] = useState("");
@@ -489,6 +512,7 @@ export function ChatArea() {
     let targetId = conversationId;
 
     setInput("");
+    saveChatDraft(convKey, "");
     setFiles([]);
     atBottomRef.current = true;
 
@@ -646,7 +670,7 @@ export function ChatArea() {
         )}
         <Textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="How can I help you today?"
           rows={1}

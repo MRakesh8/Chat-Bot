@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { db, reports, projects, chatSessions, messages, knowledgeChunks } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
@@ -102,7 +102,7 @@ router.post("/generate", async (req, res) => {
     res.json(report);
   } catch (err: any) {
     req.log.error({ err }, "Generate report error");
-    res.status(500).json({ error: err.message || "Internal server error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

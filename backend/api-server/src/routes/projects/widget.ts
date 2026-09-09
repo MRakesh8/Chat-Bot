@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+﻿import { Router, Request, Response } from "express";
 import { db, crypto as dbCrypto } from "@workspace/db";
 import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings, chatSessions, messages, frequentQuestions, knowledgeGaps } from "@workspace/db/schema";
 import { eq, and, sql, ne, desc, gte, lte } from "drizzle-orm";
@@ -21,7 +21,7 @@ router.get("/settings", async (req: any, res: Response) => {
   const defaultSettings = {
     projectId,
     botName: "RAGHUB",
-    welcomeMessage: "Hello 👋",
+    welcomeMessage: "Hello ðŸ‘‹",
     themeColor: "#7C3AED",
     position: "bottom-right",
     displayMode: "floating",
@@ -102,7 +102,7 @@ router.put("/settings", async (req: any, res: Response) => {
       const defaultSettings = {
         projectId,
         botName: safeUpdates.botName || "AI Assistant",
-        welcomeMessage: safeUpdates.welcomeMessage || "Hello 👋",
+        welcomeMessage: safeUpdates.welcomeMessage || "Hello ðŸ‘‹",
         themeColor: safeUpdates.themeColor || "#8B5CF6",
         position: safeUpdates.position || "bottom-right",
         displayMode: safeUpdates.displayMode || "floating",
@@ -545,7 +545,7 @@ router.get("/analytics", async (req: any, res: Response) => {
         id: `lead-${lead.id}`,
         type: "lead",
         title: `Lead Captured: ${lead.name || lead.email || "Visitor"}`,
-        detail: [lead.email, lead.phone, lead.company].filter(Boolean).join(" • ") || "Contact information saved",
+        detail: [lead.email, lead.phone, lead.company].filter(Boolean).join(" â€¢ ") || "Contact information saved",
         timestamp: lead.createdAt.toISOString(),
       });
     }
@@ -824,7 +824,7 @@ Rules:
         code: "AI_DISABLED" 
       });
     }
-    // Never expose raw error.message to the client — it may contain stack traces, SQL, or internal paths
+    // Never expose raw error.message to the client â€” it may contain stack traces, SQL, or internal paths
     return res.status(500).json({ error: "Failed to generate CSS. Please try again later." });
   }
 });

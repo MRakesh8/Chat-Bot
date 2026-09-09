@@ -17,8 +17,13 @@ export interface QuotaCheckResult {
 export async function checkAndIncrementUsage(
   projectId: string,
   eventType: "message" | "crawl" | "parse" | "action",
-  quantity: number = 1
+  quantity: number = 1,
+  isSuperAdmin?: boolean
 ): Promise<QuotaCheckResult> {
+  if (isSuperAdmin) {
+    return { allowed: true, reason: "Super Admin bypass" };
+  }
+
   try {
     return await withBypassRLS(async (tx: any) => {
       // 1. Resolve project details & organizationId
@@ -167,8 +172,62 @@ export async function checkAndIncrementUsage(
         limit: limitVal
       };
     });
+  } catch (err: any) {
+    logger.error({ err, projectId, eventType }, "Quota check failed");
+    return { allowed: false, reason: "Quota verification failed due to internal error." };
+  }
+}
+
+/**
+ * Refunds quota after a failed server-side tool/action execution.
+ */
+export async function refundUsage(
+  projectId: string,
+  eventType: "message" | "crawl" | "parse" | "action",
+  quantity: number = 1
+): Promise<void> {
+  try {
+    await withBypassRLS(async (tx: any) => {
+      const [project] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+      if (!project || !project.organizationId) return;
+      
+      const now = new Date();
+      const [usageRecord] = await tx
+        .select()
+        .from(organizationUsage)
+        .where(
+          and(
+            eq(organizationUsage.organizationId, project.organizationId),
+            sql`${organizationUsage.billingCycleStart} <= ${now.toISOString()}`,
+            sql`${organizationUsage.billingCycleEnd} >= ${now.toISOString()}`
+          )
+        )
+        .limit(1);
+
+      if (!usageRecord) return;
+
+      const updates: any = { updatedAt: now };
+      if (eventType === "message" && usageRecord.messagesSent >= quantity) {
+        updates.messagesSent = usageRecord.messagesSent - quantity;
+      } else if (eventType === "crawl" && usageRecord.crawlCount >= quantity) {
+        updates.crawlCount = usageRecord.crawlCount - quantity;
+      } else if ((eventType === "parse" || eventType === "action") && usageRecord.actionCount >= quantity) {
+        updates.actionCount = usageRecord.actionCount - quantity;
+      }
+
+      await tx.update(organizationUsage).set(updates).where(eq(organizationUsage.id, usageRecord.id));
+      
+      // Optionally insert a refund event
+      await tx.insert(usageEvents).values({
+        organizationId: project.organizationId,
+        projectId,
+        eventType: `${eventType}_refund`,
+        quantity: -quantity,
+        metadata: { reason: "execution_failed" },
+        createdAt: now
+      });
+    });
   } catch (err) {
-    logger.error(err, `Error checking quota for project ${projectId}`);
-    return { allowed: true }; // Safe fallback
+    logger.error({ err, projectId, eventType }, "Usage refund failed");
   }
 }

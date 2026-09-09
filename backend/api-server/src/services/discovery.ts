@@ -45,7 +45,7 @@ export class WebsiteDiscoveryService {
     /^[fF][eE][89aAbB]/
   ];
 
-  private static async validateUrlSafe(inputUrl: string): Promise<URL> {
+  public static async validateUrlSafe(inputUrl: string): Promise<URL> {
     const parsed = new URL(inputUrl);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error("Invalid protocol. Only HTTP and HTTPS are allowed.");
@@ -72,7 +72,7 @@ export class WebsiteDiscoveryService {
     return parsed;
   }
 
-  private static async fetchWithRedirectProtection(urlStr: string, redirectsLeft = MAX_REDIRECTS): Promise<{ html: string, finalUrl: URL }> {
+  public static async fetchWithRedirectProtection(urlStr: string, redirectsLeft = MAX_REDIRECTS): Promise<{ html: string, finalUrl: URL }> {
     let currentUrl = await this.validateUrlSafe(urlStr);
 
     while (redirectsLeft >= 0) {

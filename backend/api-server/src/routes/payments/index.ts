@@ -7,7 +7,7 @@ import crypto from "crypto";
 import { logger } from "../../lib/logger";
 
 const router = Router();
-const DEPLOYMENT_PRICE_PAISE = 49900; // ₹499 in paise
+const DEPLOYMENT_PRICE_PAISE = 49900; // â‚¹499 in paise
 
 let razorpay: Razorpay | null = null;
 if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
@@ -102,7 +102,7 @@ router.post("/manual", async (req, res) => {
     res.json({ success: true, paymentId: paymentRecord.id });
   } catch (err: any) {
     req.log.error({ err }, "Manual payment submission error");
-    res.status(500).json({ error: err.message || "Internal server error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -215,7 +215,7 @@ router.post("/razorpay/create-subscription", async (req, res): Promise<any> => {
           interval: 1,
           item: {
             name: plan.name,
-            amount: plan.price * 100, // price is in rupees, convert to paise
+            amount: plan.price, // price is already in paise according to schema
             currency: plan.currency || "INR",
           }
         });
@@ -252,14 +252,14 @@ router.post("/razorpay/create-subscription", async (req, res): Promise<any> => {
       success: true,
       subscriptionId: subscription.id,
       keyId: process.env.RAZORPAY_KEY_ID,
-      amount: plan.price * 100,
+      amount: plan.price,
       currency: plan.currency || "INR",
       name: plan.name,
       description: `Subscription for ${project.name}`
     });
   } catch (err: any) {
     req.log.error(err, "Error creating Razorpay subscription");
-    res.status(500).json({ error: err.message || "Failed to create subscription" });
+    res.status(500).json({ error: "Failed to create subscription" });
   }
 });
 
@@ -370,6 +370,61 @@ router.post("/razorpay/webhook", async (req, res): Promise<any> => {
   } catch (err: any) {
     logger.error(err, "Error processing Razorpay webhook");
     res.status(500).json({ error: "Webhook handling failure" });
+  }
+});
+
+// POST /api/payments/razorpay/cancel-subscription
+router.post("/razorpay/cancel-subscription", async (req, res): Promise<any> => {
+  try {
+    const userId = (req as any).auth?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { projectId } = req.body;
+    if (!projectId) {
+      return res.status(400).json({ error: "projectId is required" });
+    }
+
+    const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+    const project = await withBypassRLS(async (tx: any) => {
+      return await tx.query.projects.findFirst({ where: eq(projects.id, projectId) });
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    const membership = (req as any).auth?.memberships?.find((m: any) => m.organizationId === project.organizationId);
+    if (!isSuperAdmin && (!membership || (membership.role !== "owner" && membership.role !== "admin" && membership.role !== "manager"))) {
+      return res.status(403).json({ error: "Forbidden: Insufficient privileges in this workspace" });
+    }
+
+    const [entitlement] = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(projectEntitlements).where(eq(projectEntitlements.projectId, projectId)).limit(1);
+    });
+
+    if (!entitlement || !entitlement.subscriptionId) {
+       return res.status(400).json({ error: "No active Razorpay subscription found to cancel." });
+    }
+
+    if (razorpay) {
+      await razorpay.subscriptions.cancel(entitlement.subscriptionId);
+    }
+    
+    // Update DB to reflect cancellation
+    await withBypassRLS(async (tx: any) => {
+       await tx.update(projectEntitlements).set({
+         subscriptionStatus: "inactive",
+         entitlementStatus: "CANCELLED"
+       }).where(eq(projectEntitlements.projectId, projectId));
+    });
+
+    logger.info({ projectId, userId }, "Successfully cancelled Razorpay subscription");
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error(err, "Error cancelling Razorpay subscription");
+    res.status(500).json({ error: "Failed to cancel subscription" });
   }
 });
 

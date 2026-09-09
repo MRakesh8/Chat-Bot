@@ -156,6 +156,15 @@ export class WhatsAppProcessor {
         return; // Auto reply disabled globally
       }
 
+      // Quota check
+      const { checkAndIncrementUsage } = await import("../../security/quota");
+      const quotaCheck = await checkAndIncrementUsage(claimedMsg.projectId, "message", 1);
+      if (!quotaCheck.allowed) {
+        await db.update(whatsappMessages).set({ status: "failed" }).where(eq(whatsappMessages.id, messageId));
+        logger.warn({ messageId }, "WhatsApp message skipped due to quota limits.");
+        return;
+      }
+
       // Fetch AI keys
       const keys = await db.query.projectApiKeys.findMany({ where: eq(projectApiKeys.projectId, claimedMsg.projectId) });
       const uKeys = await db.query.userApiKeys.findMany({ where: eq(userApiKeys.userId, project.userId) });

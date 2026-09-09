@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { db, withBypassRLS } from "@workspace/db";
 import { userApiKeys } from "@workspace/db";
 import { and, eq, isNull, or } from "drizzle-orm";
@@ -66,7 +66,7 @@ router.get("/ai-status", async (req, res) => {
     });
   } catch (err: any) {
     req.log.error({ err }, "Error fetching ai-status");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 

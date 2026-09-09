@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import { Switch, Route, useLocation, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,8 +21,9 @@ const NotFound = lazy(() => import("./pages/not-found"));
 const ChatPage = lazy(() => import("./pages/chat"));
 const SettingsPage = lazy(() => import("./pages/settings"));
 const ProfilePage = lazy(() => import("./pages/profile"));
-const AdminProjectsPage = lazy(() => import("./pages/admin-projects"));
-const AdminProjectEditPage = lazy(() => import("./pages/admin-project-edit"));
+const BillingPage = lazy(() => import("./pages/billing"));
+const ProjectsPage = lazy(() => import("./pages/projects"));
+const ProjectEditPage = lazy(() => import("./pages/project-edit"));
 const SharedChatPage = lazy(() => import("./pages/shared-chat"));
 const AdminClarityPage = lazy(() => import("./pages/admin-clarity"));
 const ConnectedServicesPage = lazy(() => import("./pages/connected-services"));
@@ -39,6 +40,45 @@ const queryClient = new QueryClient({
 });
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function ForbiddenPage() {
+  const [, setLocation] = useLocation();
+
+  return (
+    <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background text-foreground relative overflow-hidden px-6 py-12">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-500/15 rounded-full blur-[120px] pointer-events-none" />
+      
+      <div className="max-w-md w-full text-center space-y-6 relative z-10 bg-card/60 backdrop-blur-xl border border-foreground/10 p-8 md:p-10 rounded-3xl shadow-2xl">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto text-red-400">
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m0 -10.0A9 9 0 1012 21a9 9 0 000-18zm-9 9a9 9 0 0018 0" />
+          </svg>
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-xs font-bold uppercase tracking-widest text-red-400 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20">
+            403 — Access Denied
+          </span>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight pt-2">
+            Restricted Area
+          </h1>
+          <p className="text-muted-foreground text-sm leading-relaxed max-w-xs mx-auto">
+            You do not have permission to access platform administration pages.
+          </p>
+        </div>
+
+        <div className="pt-4 border-t border-foreground/5">
+          <button
+            onClick={() => setLocation("/projects")}
+            className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-medium text-sm transition-all"
+          >
+            Return to Projects
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   
@@ -52,7 +92,8 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { user, dbUser, isLoading } = useAuth();
   
   if (isLoading) return <GlobalLoadingScreen />;
-  if (!user || !dbUser || dbUser.role !== "super_admin") return <Home />;
+  if (!user) return <Home />;
+  if (!dbUser || dbUser.role !== "super_admin") return <ForbiddenPage />;
   
   return <>{children}</>;
 }
@@ -70,35 +111,47 @@ export default function App() {
                   <Route path="/sign-in"><AuthPage /></Route>
                   <Route path="/sign-up"><AuthPage /></Route>
 
-                  {/* Shared project chat */}
+                  {/* Shared public project chat */}
                   <Route path="/p/:token" component={SharedChatPage} />
 
-                  <Route path="/admin/projects">
-                    <ProtectedRoute><DashboardLayoutLazy><AdminProjectsPage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/projects/new">
-                    <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/projects/:id/edit">
-                    <ProtectedRoute><DashboardLayoutLazy><AdminProjectEditPage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
+                  {/* Persistent Workspace Shell for all protected workspace routes */}
+                  <Route path="/:rest*">
+                    <ProtectedRoute>
+                      <DashboardLayoutLazy>
+                        <Suspense fallback={<GlobalLoadingScreen />}>
+                          <Switch>
+                            <Route path="/projects" component={ProjectsPage} />
+                            <Route path="/projects/new" component={ProjectEditPage} />
+                            <Route path="/projects/:id/edit" component={ProjectEditPage} />
 
-                  <Route path="/chat/:id?">
-                    <ProtectedRoute><DashboardLayoutLazy><ChatPage /></DashboardLayoutLazy></ProtectedRoute>
+                            {/* Legacy /admin/projects redirects */}
+                            <Route path="/admin/projects">
+                              <Redirect to="/projects" replace />
+                            </Route>
+                            <Route path="/admin/projects/new">
+                              <Redirect to="/projects/new" replace />
+                            </Route>
+                            <Route path="/admin/projects/:id/edit">
+                              {(params) => <Redirect to={`/projects/${params.id}/edit`} replace />}
+                            </Route>
+
+                            <Route path="/chat/:id?" component={ChatPage} />
+                            <Route path="/settings" component={SettingsPage} />
+                            <Route path="/profile" component={ProfilePage} />
+                            <Route path="/billing" component={BillingPage} />
+                            <Route path="/services" component={ConnectedServicesPage} />
+
+                            {/* Platform Super Admin Administration */}
+                            <Route path="/admin/clarity">
+                              <SuperAdminRoute><AdminClarityPage /></SuperAdminRoute>
+                            </Route>
+
+                            <Route component={NotFound} />
+                          </Switch>
+                        </Suspense>
+                      </DashboardLayoutLazy>
+                    </ProtectedRoute>
                   </Route>
-                  <Route path="/settings">
-                    <ProtectedRoute><DashboardLayoutLazy><SettingsPage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
-                  <Route path="/profile">
-                    <ProtectedRoute><DashboardLayoutLazy><ProfilePage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
-                  <Route path="/services">
-                    <ProtectedRoute><DashboardLayoutLazy><ConnectedServicesPage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
-                  <Route path="/admin/clarity">
-                    <ProtectedRoute><DashboardLayoutLazy><AdminClarityPage /></DashboardLayoutLazy></ProtectedRoute>
-                  </Route>
-                  <Route component={NotFound} />
                 </Switch>
               </Suspense>
               <Suspense fallback={null}>

@@ -1,4 +1,4 @@
-import { db, projects, browserCapabilities, integrationTools, projectIntegrations, enterpriseAuditLogs, crypto } from "@workspace/db";
+import { db, projects, browserCapabilities, integrationTools, projectIntegrations, enterpriseAuditLogs, crypto, users } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { executeServerTool } from "../tool-execution";
 import { checkProjectEntitlement } from "../../security/entitlement";
@@ -60,7 +60,20 @@ export async function executeApprovedBrowserAction(
     };
   }
 
-  // ─── RULE 1: API-FIRST ROUTING CHECK ───────────────────────────────────────
+  let isSuperAdmin = false;
+    
+    if (userId && userId !== "public_visitor" && userId !== "whatsapp_contact") {
+      try {
+        const [dbUser] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+        if (dbUser?.role === "super_admin") {
+          isSuperAdmin = true;
+        }
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
+    // ─── RULE 1: STRICT TENANT ISOLATION ───────────────────────────────────────
   // If an approved server-side API tool exists for this action, delegate to API tool!
   try {
     const apiTools = await db
@@ -118,7 +131,7 @@ export async function executeApprovedBrowserAction(
   }
 
   // ─── RULE 3: ENTITLEMENT & QUOTA CHECK ─────────────────────────────────────
-  const entitlement = await checkProjectEntitlement(projectId);
+  const entitlement = await checkProjectEntitlement(projectId, isSuperAdmin);
   if (!entitlement.allowed) {
     return {
       success: false,
@@ -127,7 +140,7 @@ export async function executeApprovedBrowserAction(
     };
   }
 
-  const quota = await checkAndIncrementUsage(projectId, "action", 1);
+  const quota = await checkAndIncrementUsage(projectId, "action", 1, isSuperAdmin);
   if (!quota.allowed) {
     return {
       success: false,

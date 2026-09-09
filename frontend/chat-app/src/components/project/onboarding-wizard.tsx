@@ -80,6 +80,7 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
     onSuccess: (data) => {
       setCreatedProjectId(data.id);
       onProjectCreated?.(data.id, data.shareToken);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
       // Immediately start discovery
       startDiscoveryMutation.mutate(data.id);
@@ -179,7 +180,7 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
 
   const goToEditor = () => {
     if (createdProjectId) {
-      setLocation(`/admin/projects/${createdProjectId}/edit`);
+      setLocation(`/projects/${createdProjectId}/edit`);
     }
   };
 
@@ -409,7 +410,10 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
               </div>
             </div>
 
-            <div className="p-6 md:p-8 border-t border-border bg-background flex gap-3">
+            <div className="p-6 md:p-8 border-t border-border bg-background flex flex-col sm:flex-row gap-3">
+              <Button variant="outline" onClick={goToEditor} className="sm:w-auto h-12 rounded-xl border-border text-foreground font-medium">
+                Customize Instructions
+              </Button>
               <Button onClick={() => setStep(4)} className="flex-1 h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground gap-2 font-medium">
                 Continue to Installation <ArrowRight className="w-4 h-4" />
               </Button>

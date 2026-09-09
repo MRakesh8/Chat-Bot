@@ -123,7 +123,7 @@ async function processNotificationThresholds(projectId: string, type: "LIKE" | "
     if (existing) return;
 
     await db.insert(notifications).values({
-      organizationId: org.organizationId,
+      organizationId: org.organizationId as string,
       projectId,
       type: "QUALITY_ALERT",
       severity: type === "DISLIKE" ? "high" : "low",

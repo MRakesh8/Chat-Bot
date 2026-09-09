@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   MessageSquare,
@@ -983,45 +984,158 @@ export function Analytics({ projectId }: { projectId: string }) {
                 )}
               </div>
 
-              {/* Edit Lead Modal */}
+              {/* Rich Lead Qualification & Follow-up Modal */}
               {editingLead && (
                 <Dialog open={!!editingLead} onOpenChange={() => setEditingLead(null)}>
-                  <DialogContent className="sm:max-w-md">
+                  <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
-                      <DialogTitle>Edit Lead Details</DialogTitle>
-                      <DialogDescription>Update lead notes, company, or status.</DialogDescription>
+                      <div className="flex items-center justify-between gap-3 pr-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-base shrink-0">
+                            {(editingLead.name || "L")[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <DialogTitle className="text-base font-bold flex items-center gap-2">
+                              {editingLead.name || "Anonymous Lead"}
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-2 py-0.5 font-semibold ${
+                                  editingLead.score === "HIGH"
+                                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                    : editingLead.score === "MEDIUM"
+                                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {editingLead.score || "MEDIUM"} INTENT
+                              </Badge>
+                            </DialogTitle>
+                            <DialogDescription className="text-xs mt-0.5">
+                              Captured via AI Chatbot • {new Date(editingLead.createdAt || Date.now()).toLocaleString()}
+                            </DialogDescription>
+                          </div>
+                        </div>
+                      </div>
                     </DialogHeader>
-                    <div className="space-y-3 py-2 text-xs">
-                      <div className="space-y-1">
-                        <label className="font-medium">Name</label>
-                        <Input
-                          value={editingLead.name || ""}
-                          onChange={(e) => setEditingLead({ ...editingLead, name: e.target.value })}
-                        />
+
+                    <div className="space-y-4 py-3 text-xs">
+                      {/* Contact Info Card */}
+                      <div className="grid grid-cols-2 gap-3 bg-muted/40 p-3.5 rounded-xl border border-border">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">Email</p>
+                          {editingLead.email ? (
+                            <a href={`mailto:${editingLead.email}`} className="font-medium text-primary hover:underline truncate block">
+                              {editingLead.email}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">Not provided</span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">Phone</p>
+                          {editingLead.phone ? (
+                            <a href={`tel:${editingLead.phone}`} className="font-medium text-primary hover:underline truncate block">
+                              {editingLead.phone}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">Not provided</span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">Company</p>
+                          <Input
+                            className="h-7 text-xs bg-background"
+                            placeholder="Add company..."
+                            value={editingLead.company || ""}
+                            onChange={(e) => setEditingLead({ ...editingLead, company: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">Intent Category</p>
+                          <span className="font-semibold text-foreground capitalize bg-background px-2 py-1 rounded border border-border inline-block">
+                            {editingLead.userIntent || "General Inquiry"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="font-medium">Company</label>
-                        <Input
-                          value={editingLead.company || ""}
-                          onChange={(e) => setEditingLead({ ...editingLead, company: e.target.value })}
-                        />
+
+                      {/* Recommended Follow-up Action */}
+                      <div className="bg-primary/5 border border-primary/20 p-3 rounded-xl flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] text-primary uppercase font-bold tracking-wider">Recommended Next Action</p>
+                          <p className="font-semibold text-foreground mt-0.5">
+                            {editingLead.score === "HIGH" && (editingLead.userIntent === "pricing" || editingLead.userIntent === "purchase")
+                              ? "Send Pricing Quote & Call Immediately"
+                              : editingLead.score === "HIGH" && editingLead.userIntent === "demo"
+                              ? "Schedule Product Demo Walkthrough"
+                              : editingLead.email || editingLead.phone
+                              ? "Follow up via Email / Phone"
+                              : "Nurture lead via chatbot updates"}
+                          </p>
+                        </div>
+                        <Badge className="bg-primary text-primary-foreground font-semibold">Priority</Badge>
                       </div>
-                      <div className="space-y-1">
-                        <label className="font-medium">Notes</label>
-                        <Input
+
+                      {/* Status Selector */}
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-foreground">Lead Lifecycle Status</label>
+                        <Select
+                          value={editingLead.status || "NEW"}
+                          onValueChange={(val) => setEditingLead({ ...editingLead, status: val })}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NEW">NEW — Uncontacted Lead</SelectItem>
+                            <SelectItem value="CONTACTED">CONTACTED — Reached out via phone/email</SelectItem>
+                            <SelectItem value="QUALIFIED">QUALIFIED — Needs identified, high-fit</SelectItem>
+                            <SelectItem value="CONVERTED">CONVERTED — Deal closed / customer onboarded</SelectItem>
+                            <SelectItem value="LOST">LOST — Unresponsive / not a fit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Owner Notes */}
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-foreground">Follow-up Notes & Conversation Summary</label>
+                        <Textarea
+                          rows={3}
+                          placeholder="Record details of your follow-up calls, customer requirements, or next step commitments..."
                           value={editingLead.notes || ""}
-                          onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
+                          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditingLead({ ...editingLead, notes: e.target.value })}
+                          className="bg-background text-xs font-sans"
                         />
                       </div>
                     </div>
-                    <DialogFooter>
+
+                    <DialogFooter className="flex gap-2 sm:justify-between">
                       <Button
-                        onClick={() => updateLeadMutation.mutate({ leadId: editingLead.id, updates: editingLead })}
-                        disabled={updateLeadMutation.isPending}
-                        className="w-full"
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          if (confirm("Are you sure you want to delete this lead?")) {
+                            deleteLeadMutation.mutate(editingLead.id);
+                            setEditingLead(null);
+                          }
+                        }}
+                        className="border-red-500/30 text-red-500 hover:bg-red-500/10 text-xs"
                       >
-                        Save Changes
+                        Delete Lead
                       </Button>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="ghost" onClick={() => setEditingLead(null)} className="text-xs">
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => updateLeadMutation.mutate({ leadId: editingLead.id, updates: editingLead })}
+                          disabled={updateLeadMutation.isPending}
+                          className="text-xs gap-1.5"
+                        >
+                          {updateLeadMutation.isPending && <Loader2 className="animate-spin w-3.5 h-3.5" />}
+                          Save Lead Details
+                        </Button>
+                      </div>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>

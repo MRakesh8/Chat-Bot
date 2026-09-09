@@ -56,6 +56,30 @@ if (REDIS_URL) {
   logger.warn("[QUEUE_WARN] REDIS_URL is not set. Falling back to in-process execution.");
 }
 
+// In-process concurrency control for fallbacks
+const MAX_CONCURRENT_FALLBACKS = 2;
+let activeFallbacks = 0;
+const fallbackQueue: Array<() => Promise<void>> = [];
+
+async function executeWithConcurrencyLimit(task: () => Promise<void>) {
+  if (activeFallbacks >= MAX_CONCURRENT_FALLBACKS) {
+    fallbackQueue.push(task);
+    return;
+  }
+  
+  activeFallbacks++;
+  try {
+    await task();
+  } finally {
+    activeFallbacks--;
+    const nextTask = fallbackQueue.shift();
+    if (nextTask) {
+      // Defer to next tick to avoid stack overflow
+      setImmediate(() => executeWithConcurrencyLimit(nextTask));
+    }
+  }
+}
+
 export async function enqueueKnowledgeProcessing(sourceId: string): Promise<void> {
   if (knowledgeQueue) {
     try {
@@ -67,10 +91,14 @@ export async function enqueueKnowledgeProcessing(sourceId: string): Promise<void
     }
   }
 
-  // Fallback: Run in-process asynchronously
-  logger.info(`[QUEUE_FALLBACK] Processing source ${sourceId} in-process`);
-  processKnowledgeSource(sourceId).catch((err) => {
-    logger.error(err, `[QUEUE_FALLBACK_ERROR] Async processing failed for source ${sourceId}`);
+  // Fallback: Run in-process asynchronously with limits
+  logger.info(`[QUEUE_FALLBACK] Queued source ${sourceId} for in-process execution`);
+  executeWithConcurrencyLimit(async () => {
+    try {
+      await processKnowledgeSource(sourceId);
+    } catch (err) {
+      logger.error(err, `[QUEUE_FALLBACK_ERROR] Async processing failed for source ${sourceId}`);
+    }
   });
 }
 
@@ -85,12 +113,15 @@ export async function enqueueDiscoveryProcessing(projectId: string, url: string,
     }
   }
 
-  // Fallback: Run in-process asynchronously
-  logger.info(`[QUEUE_FALLBACK] Processing discovery for project ${projectId} in-process`);
-  import("../services/discovery").then(m => {
-    m.WebsiteDiscoveryService.runDiscovery(projectId, url, orgId).catch((err) => {
+  // Fallback: Run in-process asynchronously with limits
+  logger.info(`[QUEUE_FALLBACK] Queued discovery for project ${projectId} for in-process execution`);
+  executeWithConcurrencyLimit(async () => {
+    try {
+      const m = await import("../services/discovery");
+      await m.WebsiteDiscoveryService.runDiscovery(projectId, url, orgId);
+    } catch (err) {
       logger.error(err, `[QUEUE_FALLBACK_ERROR] Async discovery failed for project ${projectId}`);
-    });
+    }
   });
 }
 
@@ -145,4 +176,12 @@ export function startQueueWorker(): void {
   discoveryWorker.on("failed", (job, err) => {
     logger.error(err, `[WORKER_ERROR] Discovery job ${job?.id} failed`);
   });
+}
+
+export async function shutdownQueueWorker(): Promise<void> {
+  if (knowledgeWorker) await knowledgeWorker.close();
+  if (discoveryWorker) await discoveryWorker.close();
+  if (redisConnection) {
+    redisConnection.disconnect();
+  }
 }

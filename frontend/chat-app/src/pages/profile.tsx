@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -23,13 +24,11 @@ export default function ProfilePage() {
             <p className="text-muted-foreground mb-6">{user?.email}</p>
             
             <div className="grid grid-cols-2 gap-4 w-full mt-4 pt-6 border-t border-white/5">
-              <div className="p-4 rounded-xl bg-white/5 border border-white/5 shadow-sm">
-                <div className="text-2xl font-bold text-foreground mb-1">PRO</div>
-                <div className="text-sm text-foreground/70">Current Plan</div>
-              </div>
-              <div className="p-4 rounded-xl bg-white/5 border border-white/5 shadow-sm">
-                <div className="text-2xl font-bold text-foreground mb-1">Active</div>
-                <div className="text-sm text-foreground/70">Status</div>
+              <div className="col-span-2 p-4 rounded-xl bg-white/5 border border-white/5 shadow-sm">
+                <div className="text-sm text-foreground/70 mb-2">Want to manage your plan or see your billing history?</div>
+                <Link href="/billing" className="text-emerald-400 hover:text-emerald-300 font-semibold inline-flex items-center gap-1">
+                  Go to Billing & Subscription →
+                </Link>
               </div>
             </div>
           </div>

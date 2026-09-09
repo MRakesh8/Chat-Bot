@@ -118,21 +118,23 @@ export function buildContextAwarePrompt(params: PromptBuilderParams): string {
     sections.push(
       `CRITICAL INSTRUCTIONS:
 1. Use BOTH the website context AND knowledge base to answer questions accurately.
-2. If you notice issues on the page (missing required fields, errors, warnings), proactively guide the user.
-3. When explaining dashboards, reference specific cards, stats, and charts present in the website context.
-4. When helping with forms, reference specific field names and their current values.
-5. Be conversational and context-aware — reference the provided website context data when answering questions about the page UI. Do NOT state that you cannot see the page.
-6. DO NOT fabricate information that is not present in the knowledge base or website context.
-7. If website context conflicts with the knowledge base, prefer the knowledge base for rules and policies, and the website context for current UI state.
-8. DO NOT provide a summary of the entire context unless explicitly requested. ONLY answer the specific question asked.`
+2. CITE SOURCES: If you use information from the Knowledge Base, include the Source URL or Title in your answer (e.g., "[Source: URL or Title]").
+3. If you notice issues on the page (missing required fields, errors, warnings), proactively guide the user.
+4. When explaining dashboards, reference specific cards, stats, and charts present in the website context.
+5. When helping with forms, reference specific field names and their current values.
+6. Be conversational and context-aware — reference the provided website context data when answering questions about the page UI. Do NOT state that you cannot see the page.
+7. DO NOT fabricate information that is not present in the knowledge base or website context.
+8. If website context conflicts with the knowledge base, prefer the knowledge base for rules and policies, and the website context for current UI state.
+9. DO NOT provide a summary of the entire context unless explicitly requested. ONLY answer the specific question asked.`
     );
   } else {
     sections.push(
       `CRITICAL INSTRUCTIONS:
 1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering.
-2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer.
-3. NO UNASKED SUMMARIES: DO NOT summarize the entire context unless explicitly requested. ONLY answer the specific question asked.
-4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information.
+2. CITE SOURCES: If you use information from the Knowledge Base, include the Source URL or Title in your answer (e.g., "[Source: URL or Title]").
+3. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer.
+4. NO UNASKED SUMMARIES: DO NOT summarize the entire context unless explicitly requested. ONLY answer the specific question asked.
+5. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information.
 Answer user questions accurately and clearly based ONLY on the provided context.`
     );
   }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file index.ts (files route)
  * @description Defines Express routes for uploading, analyzing, and managing knowledge sources (files, URLs, repositories, notes) in the system.
  */
@@ -98,7 +98,7 @@ async function categoryBelongsToProject(tx: any, categoryId: string, projectId: 
 router.post("/upload-public", (req, res, next) => {
   upload.single("file")(req, res, (err: any) => {
     if (err) {
-      res.status(400).json({ error: err.message || "File upload failed" });
+      res.status(400).json({ error: "File upload failed" });
       return;
     }
     next();
@@ -211,7 +211,7 @@ router.post("/upload", (req, res, next) => {
         res.status(400).json({ error: "File is too large. Maximum size is 100MB." });
         return;
       }
-      res.status(400).json({ error: err.message || "File upload failed" });
+      res.status(400).json({ error: "File upload failed" });
       return;
     }
     next();
@@ -285,7 +285,7 @@ router.post("/upload", (req, res, next) => {
       }
 
       // Verify parse/action quota
-      const quotaCheck = await checkAndIncrementUsage(projectId, "parse", 1);
+      const quotaCheck = await checkAndIncrementUsage(projectId, "parse", 1, isSuperAdmin);
       if (!quotaCheck.allowed) {
         if (localPath) fs.unlinkSync(localPath);
         res.status(403).json({ error: quotaCheck.reason || "Monthly file parsing limits exceeded." });
@@ -358,7 +358,7 @@ router.post("/upload", (req, res, next) => {
     res.status(201).json(record);
   } catch (err: any) {
     req.log.error({ err }, "Error uploading file");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
@@ -413,7 +413,7 @@ router.post("/analyze", upload.single("file"), async (req, res) => {
   } catch (err: any) {
     req.log.error({ err }, "Error analyzing source");
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: err.message || "Failed to analyze source" });
+    res.status(500).json({ error: "Failed to analyze source" });
   }
 });
 
@@ -490,13 +490,13 @@ router.post("/url", async (req, res) => {
 
     // Verify crawl or parse quota
     if (["website", "youtube", "github", "instagram"].includes(sourceType)) {
-      const quotaCheck = await checkAndIncrementUsage(projectId, "crawl", urlsToProcess.length);
+      const quotaCheck = await checkAndIncrementUsage(projectId, "crawl", urlsToProcess.length, isSuperAdmin);
       if (!quotaCheck.allowed) {
         res.status(403).json({ error: quotaCheck.reason || "Monthly website crawl limits exceeded." });
         return;
       }
     } else {
-      const quotaCheck = await checkAndIncrementUsage(projectId, "parse", urlsToProcess.length);
+      const quotaCheck = await checkAndIncrementUsage(projectId, "parse", urlsToProcess.length, isSuperAdmin);
       if (!quotaCheck.allowed) {
         res.status(403).json({ error: quotaCheck.reason || "Monthly parsing limits exceeded." });
         return;
@@ -529,7 +529,7 @@ router.post("/url", async (req, res) => {
     res.status(201).json(records.length === 1 ? records[0] : records);
   } catch (err: any) {
     req.log.error({ err }, "Error saving source");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
@@ -563,7 +563,7 @@ router.get("/project/:projectId", async (req, res) => {
     res.json(sources);
   } catch (err: any) {
     req.log.error({ err }, "Error listing sources");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
@@ -617,7 +617,7 @@ router.delete("/:id", async (req, res) => {
     res.status(204).send();
   } catch (err: any) {
     req.log.error({ err }, "Error deleting source");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
@@ -661,7 +661,7 @@ router.post("/:id/reprocess", async (req, res) => {
     res.json(record);
   } catch (err: any) {
     req.log.error({ err }, "Error reprocessing source");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
@@ -764,7 +764,7 @@ router.patch("/:id", async (req, res) => {
     res.json(record);
   } catch (err: any) {
     req.log.error({ err }, "Error updating source");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
@@ -816,7 +816,7 @@ router.patch("/:id/category", async (req, res) => {
     res.json(record);
   } catch (err: any) {
     req.log.error({ err }, "Error moving source");
-    res.status(500).json({ success: false, error: err.message || "Internal server error" });
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 

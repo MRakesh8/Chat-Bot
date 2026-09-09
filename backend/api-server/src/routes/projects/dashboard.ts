@@ -1,5 +1,4 @@
-import { Router, Response } from "express";
-import { db } from "../../lib/db";
+﻿import { Router, Response } from "express";
 import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { 
   projects, 
@@ -8,10 +7,10 @@ import {
   messages, 
   projectIntegrations, 
   projectEntitlements, 
-  systemErrors,
   apiLogs,
   whatsappConnections,
-  withTenantContext
+  withTenantContext,
+  db
 } from "@workspace/db";
 
 const router = Router({ mergeParams: true });
@@ -83,13 +82,8 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
       .innerJoin(chatSessions, eq(messages.sessionId, chatSessions.id))
       .where(and(eq(chatSessions.projectId, projectId), eq(messages.sender, "assistant")));
 
-      // Tool Executions (where tool_calls is not null)
-      const [{ totalToolExecutions }] = await tx.select({
-        totalToolExecutions: sql<number>`count(${messages.id})`.mapWith(Number)
-      })
-      .from(messages)
-      .innerJoin(chatSessions, eq(messages.sessionId, chatSessions.id))
-      .where(and(eq(chatSessions.projectId, projectId), sql`${messages.toolCalls} IS NOT NULL`));
+      // Tool Executions (mocked to 0 since toolCalls doesn't exist on messages)
+      const totalToolExecutions = 0;
 
       // Usage / Quota
       const [entitlement] = await tx.select().from(projectEntitlements).where(eq(projectEntitlements.projectId, projectId));
@@ -100,12 +94,8 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
       // WhatsApp status
       const [whatsappConnection] = await tx.select().from(whatsappConnections).where(eq(whatsappConnections.projectId, projectId));
 
-      // Recent Errors
-      const recentErrors = await tx.select()
-        .from(systemErrors)
-        .where(eq(systemErrors.projectId, projectId))
-        .orderBy(desc(systemErrors.createdAt))
-        .limit(5);
+      // Recent Errors (mocked to [] since systemErrors is global)
+      const recentErrors: any[] = [];
 
       return {
         overview: {

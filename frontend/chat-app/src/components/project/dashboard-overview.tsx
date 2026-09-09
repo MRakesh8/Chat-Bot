@@ -16,14 +16,17 @@ import {
   Smartphone, 
   AlertTriangle,
   CreditCard,
-  RefreshCw
+  RefreshCw,
+  UserCheck,
+  TrendingUp,
+  ArrowRight,
+  ShieldCheck,
+  Rocket
 } from "lucide-react";
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -97,16 +100,9 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
 
   const { overview, integrations, website, whatsapp, usage, errors } = dashboardData;
 
-  // Mock data for charts if none exists, as we didn't add full time-series to the dashboard API in Phase 3B due to complexity.
-  // In a real scenario, this would come from the API.
-  const mockActivityData = [
-    { date: "Mon", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
-    { date: "Tue", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
-    { date: "Wed", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
-    { date: "Thu", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
-    { date: "Fri", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
-    { date: "Sat", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
-    { date: "Sun", conversations: Math.floor(Math.random() * 20), aiResponses: Math.floor(Math.random() * 50) },
+  // Truthful activity summary (no random data generation)
+  const activityData = [
+    { date: "Current Period", conversations: overview.totalConversations || 0, aiResponses: overview.aiResponses || 0 }
   ];
 
   return (
@@ -116,13 +112,18 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
         <Card className="bg-card border-border shadow-xs">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium uppercase tracking-wider">Total Customers</span>
-              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
-                <Users className="w-4 h-4" />
+              <span className="text-xs font-medium uppercase tracking-wider">Captured Leads</span>
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <UserCheck className="w-4 h-4" />
               </div>
             </div>
-            <div>
-              <div className="text-3xl font-bold text-foreground">{overview.totalCustomers}</div>
+            <div className="flex items-baseline justify-between">
+              <div className="text-3xl font-bold text-foreground">{overview.capturedLeads || 0}</div>
+              {overview.highIntentLeads > 0 && (
+                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                  {overview.highIntentLeads} High Intent
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -131,7 +132,7 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-muted-foreground">
               <span className="text-xs font-medium uppercase tracking-wider">Conversations</span>
-              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
                 <MessageSquare className="w-4 h-4" />
               </div>
             </div>
@@ -158,54 +159,75 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
         <Card className="bg-card border-border shadow-xs">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-xs font-medium uppercase tracking-wider">Tool Executions</span>
+              <span className="text-xs font-medium uppercase tracking-wider">Total Customers</span>
               <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
-                <Activity className="w-4 h-4" />
+                <Users className="w-4 h-4" />
               </div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-foreground">{overview.toolExecutions}</div>
+              <div className="text-3xl font-bold text-foreground">{overview.totalCustomers}</div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Charts */}
+        {/* Left Column: Charts & Activity */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="bg-card border-border shadow-xs overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-primary" />
-                  Activity Over Time
+                  AI Engagement Overview
                 </span>
-                <Badge variant="outline" className="text-[10px]">7 DAYS</Badge>
+                <Badge variant="outline" className="text-[10px]">LIVE METRICS</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <div className="h-[250px] w-full max-w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockActivityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorAi" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0.0} />
-                      </linearGradient>
-                      <linearGradient id="colorConv" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.9)", borderColor: "#334155", borderRadius: "8px", color: "#fff", fontSize: "12px" }} />
-                    <Area type="monotone" dataKey="aiResponses" name="AI Responses" stroke="#8B5CF6" strokeWidth={2} fillOpacity={1} fill="url(#colorAi)" />
-                    <Area type="monotone" dataKey="conversations" name="Conversations" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorConv)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              {overview.totalConversations > 0 ? (
+                <div className="h-[220px] w-full max-w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorAi" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0.0} />
+                        </linearGradient>
+                        <linearGradient id="colorConv" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.9)", borderColor: "#334155", borderRadius: "8px", color: "#fff", fontSize: "12px" }} />
+                      <Area type="monotone" dataKey="aiResponses" name="AI Responses" stroke="#8B5CF6" strokeWidth={2} fillOpacity={1} fill="url(#colorAi)" />
+                      <Area type="monotone" dataKey="conversations" name="Conversations" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorConv)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-10 text-center border border-dashed border-border rounded-xl bg-muted/20">
+                  <MessageSquare className="w-8 h-8 text-muted-foreground/40 mb-3" />
+                  <p className="text-sm font-medium text-foreground">No Chat Activity Recorded Yet</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                    Deploy your chatbot widget on your website to start interacting with visitors and tracking live engagement.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                    onClick={() => {
+                      const deployTab = document.querySelector('[data-value="deployment"]') as HTMLElement || document.querySelector('[value="deployment"]') as HTMLElement;
+                      if (deployTab) deployTab.click();
+                    }}
+                  >
+                    <Rocket className="w-3.5 h-3.5" /> Deploy Widget
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
           
@@ -214,7 +236,7 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
               <CardTitle className="text-sm font-medium flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <Plug className="w-4 h-4 text-pink-500" />
-                  Active Integrations
+                  Connected Integrations
                 </span>
                 <Badge variant="outline" className="text-[10px]">{integrations.length} CONNECTED</Badge>
               </CardTitle>
@@ -225,8 +247,8 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                   {integrations.map((integration: any, i: number) => (
                     <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/50">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-background flex items-center justify-center border border-border">
-                          <img src={`https://logo.clearbit.com/${integration.provider}.com`} alt={integration.provider} className="w-5 h-5 object-contain" onError={(e) => { e.currentTarget.src = 'https://api.dicebear.com/7.x/shapes/svg?seed=' + integration.provider }} />
+                        <div className="w-8 h-8 rounded bg-background flex items-center justify-center border border-border font-bold text-xs uppercase text-primary">
+                          {integration.provider?.[0] || 'I'}
                         </div>
                         <div>
                           <p className="text-sm font-medium capitalize">{integration.provider}</p>
@@ -237,15 +259,26 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">No integrations connected.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">No business systems connected yet.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs gap-1.5 border-border"
+                    onClick={() => {
+                      const intTab = document.querySelector('[data-value="integrations"]') as HTMLElement || document.querySelector('[value="integrations"]') as HTMLElement;
+                      if (intTab) intTab.click();
+                    }}
+                  >
+                    <Plug className="w-3.5 h-3.5" /> Connect Systems
+                  </Button>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column: Status & Errors */}
+        {/* Right Column: Status & System Health */}
         <div className="space-y-6">
           {/* Website Status */}
           <Card className="bg-card border-border shadow-xs">
@@ -260,7 +293,7 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <Badge variant={website.status === 'COMPLETED' ? 'default' : 'outline'} className={website.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 shrink-0' : 'shrink-0'}>
-                {website.status}
+                {website.status || 'READY'}
               </Badge>
             </CardContent>
           </Card>
@@ -278,7 +311,7 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <Badge variant="outline" className={whatsapp.status === 'CONNECTED' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shrink-0' : 'text-muted-foreground shrink-0'}>
-                {whatsapp.status.toUpperCase()}
+                {(whatsapp.status || 'NOT_CONFIGURED').toUpperCase()}
               </Badge>
             </CardContent>
           </Card>
@@ -290,16 +323,16 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <CreditCard className="w-4 h-4 text-primary" /> Usage / Quota
                 </div>
-                <Badge variant="outline" className="text-[10px] uppercase">{usage.plan} PLAN</Badge>
+                <Badge variant="outline" className="text-[10px] uppercase">{usage.plan || 'PRO'} PLAN</Badge>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Current Usage</span>
-                  <span className="font-medium">{usage.currentUsage} / {usage.quota > 0 ? usage.quota : '∞'}</span>
+                  <span className="font-medium">{usage.currentUsage || 0} / {usage.quota > 0 ? usage.quota : '∞'}</span>
                 </div>
                 <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                   <div 
-                    className="bg-primary h-2" 
+                    className="bg-primary h-2 transition-all duration-300" 
                     style={{ width: `${usage.quota > 0 ? Math.min(100, (usage.currentUsage / usage.quota) * 100) : 0}%` }}
                   />
                 </div>
@@ -321,7 +354,7 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-2">
-              {errors.length > 0 ? (
+              {errors && errors.length > 0 ? (
                 <div className="space-y-3">
                   {errors.map((error: any, i: number) => (
                     <div key={i} className="text-xs p-2.5 rounded-lg border border-red-500/20 bg-red-500/5 break-words">
@@ -332,7 +365,9 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                 </div>
               ) : (
                 <div className="text-center py-6 text-emerald-500">
-                  <p className="text-sm font-medium">System Healthy</p>
+                  <p className="text-sm font-medium flex items-center justify-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" /> System Healthy
+                  </p>
                   <p className="text-xs opacity-80 mt-1">No recent errors logged.</p>
                 </div>
               )}

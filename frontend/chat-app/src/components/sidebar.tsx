@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3, Shield } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3, Shield, CreditCard } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -332,8 +332,8 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   const handleBack = useCallback(() => {
     if (location.startsWith('/chat/')) {
       setLocation('/');
-    } else if (location.startsWith('/admin/projects/')) {
-      setLocation('/admin/projects');
+    } else if (location.startsWith('/projects/') || location.startsWith('/admin/projects/')) {
+      setLocation('/projects');
     } else {
       setLocation('/');
     }
@@ -524,7 +524,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             )}
 
             <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-              <Link href="/admin/projects" className="flex items-center gap-3 w-full py-2">
+              <Link href="/projects" className="flex items-center gap-3 w-full py-2">
                 <FolderKanban className="w-4 h-4 text-blue-400" />
                 Projects
               </Link>
@@ -533,6 +533,12 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               <Link href="/services" className="flex items-center gap-3 w-full py-2">
                 <Heart className="w-4 h-4 text-pink-400" />
                 Connected Services
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
+              <Link href="/billing" className="flex items-center gap-3 w-full py-2">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                Billing & Subscription
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">

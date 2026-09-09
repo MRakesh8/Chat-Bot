@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+﻿import { Router, Request, Response } from "express";
 import { BusinessAgent } from "../../agents/businessAgent";
 import { checkProjectEntitlement } from "../../security/entitlement";
 import { logSecurityEvent } from "../../security/middleware";
@@ -107,8 +107,8 @@ router.post("/process", async (req: Request, res: Response): Promise<any> => {
 
     return res.json(result);
   } catch (err: any) {
-    logger.error({ err }, "Error processing agent request");
-    return res.status(500).json({ error: err.message || "Internal server error" });
+    logger.error({ err, reqId: req.id }, "Error processing agent request");
+    return res.status(500).json({ error: "Internal server error", errorId: req.id });
   }
 });
 

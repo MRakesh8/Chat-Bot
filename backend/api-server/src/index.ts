@@ -108,6 +108,15 @@ async function start() {
         "features" jsonb DEFAULT '{}'::jsonb NOT NULL,
         "created_at" timestamp DEFAULT now() NOT NULL
       );
+      
+      INSERT INTO "plans" (id, name, price, currency, interval, features)
+      VALUES 
+        ('00000000-0000-0000-0000-000000000001', 'Free', 0, 'INR', 'lifetime', '{"maxProjects": 1, "messagesLimit": 100, "crawlsLimit": 10, "actionsLimit": 50}'),
+        ('00000000-0000-0000-0000-000000000002', 'Pro Business', 49900, 'INR', 'monthly', '{"messagesLimit": 10000, "crawlsLimit": 500, "actionsLimit": 5000}')
+      ON CONFLICT (id) DO UPDATE SET 
+        price = EXCLUDED.price,
+        interval = EXCLUDED.interval,
+        features = EXCLUDED.features;
     `);
 
     // Create Project Licenses table
@@ -203,6 +212,35 @@ async function start() {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   });
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    logger.info(`[SHUTDOWN] Received ${signal}, starting graceful shutdown...`);
+    server.close(async () => {
+      logger.info("[SHUTDOWN] HTTP server closed.");
+      try {
+        const { pool } = await import("@workspace/db");
+        await pool.end();
+        logger.info("[SHUTDOWN] Database pool closed.");
+        
+        const { shutdownQueueWorker } = await import("./lib/queue");
+        await shutdownQueueWorker();
+        logger.info("[SHUTDOWN] Queue worker closed.");
+      } catch (err) {
+        logger.error({ err }, "[SHUTDOWN] Error during shutdown");
+      }
+      process.exit(0);
+    });
+
+    // Force shutdown after 10s
+    setTimeout(() => {
+      logger.error("[SHUTDOWN] Forced exit after timeout.");
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 start();

@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import { apiBaseUrl } from "@/lib/api-url";
 import { useQueryClient } from "@tanstack/react-query";
+import { clearAllContinuityState } from "@/lib/workspace-continuity";
 
 type DbUser = {
   id: string;
@@ -138,6 +139,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(null);
             setDbUser(null);
             setIsLoading(false);
+            clearAllContinuityState();
             queryClient.clear();
           }
         }
@@ -151,6 +153,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("aria_demo_session");
     }
+    clearAllContinuityState();
     queryClient.clear();
     try {
       await supabase.auth.signOut();

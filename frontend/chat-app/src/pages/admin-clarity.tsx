@@ -551,7 +551,7 @@ export default function AdminConsolePage() {
                         </td>
                         <td className="p-4 text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</td>
                         <td className="p-4">
-                          <Button variant="outline" size="sm" className="gap-2 h-8" onClick={() => setLocation(`/admin/projects/${p.id}/edit`)}>
+                          <Button variant="outline" size="sm" className="gap-2 h-8" onClick={() => setLocation(`/projects/${p.id}/edit`)}>
                             <FolderOpen className="w-3.5 h-3.5" /> Open
                           </Button>
                         </td>

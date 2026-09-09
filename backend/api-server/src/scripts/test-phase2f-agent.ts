@@ -54,6 +54,16 @@ async function runPhase2FTestSuite() {
         })
         .onConflictDoNothing();
 
+      // Upsert User B
+      await tx
+        .insert(users)
+        .values({
+          id: "00000000-0000-4000-8000-999999999999",
+          email: "phase2f-agent-test-b@example.com",
+          role: "user",
+        })
+        .onConflictDoNothing();
+
       // Upsert Project A
       await tx
         .insert(projects)
