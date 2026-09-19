@@ -57,6 +57,9 @@ export async function withTenantContext<T>(
   orgId: string,
   cb: (tx: any) => Promise<T>
 ): Promise<T> {
+  if (!orgId) {
+    throw new Error("Missing organizationId in withTenantContext. Failing closed to prevent data leakage.");
+  }
   return await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
     return await cb(tx);

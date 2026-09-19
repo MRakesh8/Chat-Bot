@@ -1,29 +1,18 @@
 import { Queue, Worker, Job } from "bullmq";
-import Redis from "ioredis";
 import { processKnowledgeSource } from "../services/knowledge";
 import { logger } from "./logger";
+import { getRedisClient } from "./redis";
 
 const REDIS_URL = process.env.REDIS_URL;
 
-let redisConnection: Redis | null = null;
+let redisConnection = getRedisClient();
 let knowledgeQueue: Queue | null = null;
 let knowledgeWorker: Worker | null = null;
 let discoveryQueue: Queue | null = null;
 let discoveryWorker: Worker | null = null;
 
-if (REDIS_URL) {
+if (redisConnection) {
   try {
-    redisConnection = new Redis(REDIS_URL, {
-      maxRetriesPerRequest: null, // Required by BullMQ
-      retryStrategy(times) {
-        const delay = Math.min(times * 100, 3000);
-        return delay;
-      }
-    });
-
-    redisConnection.on("error", (err) => {
-      logger.error(err, "[REDIS_ERROR] Redis connection error");
-    });
 
     knowledgeQueue = new Queue("knowledge-processing", {
       connection: redisConnection,

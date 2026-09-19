@@ -1047,69 +1047,103 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 import widgetRouter from "./widget";
 router.use("/:projectId/widget", widgetRouter);
 
+async function resolveAuthorizedProjectOrg(
+  req: any,
+  projectId: string,
+  providedOrgId?: string
+): Promise<{ project: any; authoritativeOrgId: string } | null> {
+  const memberships = (req as any).auth?.memberships || [];
+  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
+
+  // Determine candidate organizations from user memberships
+  let candidateOrgIds = memberships.map((m: any) => m.organizationId);
+  
+  // Prioritize frontend-provided orgId if the user is actually a member of it
+  if (providedOrgId && typeof providedOrgId === "string" && candidateOrgIds.includes(providedOrgId)) {
+    candidateOrgIds = [providedOrgId, ...candidateOrgIds.filter((id: string) => id !== providedOrgId)];
+  }
+
+  // If superadmin, and providedOrgId is given, we must allow it even if not in memberships
+  if (isSuperAdmin && providedOrgId && typeof providedOrgId === "string" && !candidateOrgIds.includes(providedOrgId)) {
+    candidateOrgIds.push(providedOrgId);
+  }
+
+  for (const orgId of candidateOrgIds) {
+    try {
+      const [project] = await withTenantContext(orgId, async (tx: any) => {
+        return await tx.select().from(projects).where(eq(projects.id, projectId));
+      });
+
+      if (project) {
+        return { project, authoritativeOrgId: orgId };
+      }
+    } catch (e) {
+      // Ignore tenant context errors and try the next valid membership
+    }
+  }
+
+  return null;
+}
+
 import { enqueueDiscoveryProcessing } from "../../lib/queue";
 
 router.post("/:projectId/discovery/start", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
   const { url } = req.body;
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   if (!url || typeof url !== "string") {
     return res.status(400).json({ error: "URL is required" });
   }
 
   try {
-    await withTenantContext(orgId as string, async (tx: any) => {
-      const [project] = await tx.select().from(projects).where(eq(projects.id, projectId));
-      if (!project) {
-        throw new Error("Project not found");
-      }
-      if (project.discoveryStatus === "PENDING") {
-        throw new Error("Discovery is already running for this project");
-      }
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      return res.status(404).json({ error: "Project not found or access denied" });
+    }
+    const { project, authoritativeOrgId } = resolved;
 
+    if (project.discoveryStatus === "PENDING") {
+      return res.status(400).json({ error: "Discovery is already running for this project" });
+    }
+
+    await withTenantContext(authoritativeOrgId, async (tx: any) => {
       await tx.update(projects).set({ discoveryStatus: "PENDING", websiteUrl: url }).where(eq(projects.id, projectId));
     });
 
     // Fire and forget discovery job
-    enqueueDiscoveryProcessing(projectId, url, orgId as string).catch(e => {
+    enqueueDiscoveryProcessing(projectId, url, authoritativeOrgId).catch(e => {
        req.log.error(e, "Failed to enqueue discovery process");
     });
 
     return res.status(202).json({ message: "Discovery started", status: "PENDING" });
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error starting discovery");
-    return res.status(error.message === "Project not found" ? 404 : 500).json({ error: error.message || "Failed to start discovery" });
+    return res.status(500).json({ error: "Unable to start website analysis. Please try again." });
   }
 });
 
 router.get("/:projectId/discovery/status", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
-      const [project] = await tx
-        .select({
-          discoveryStatus: projects.discoveryStatus,
-          businessType: projects.businessType,
-          businessTypeConfidence: projects.businessTypeConfidence,
-          platform: projects.platform,
-          platformConfidence: projects.platformConfidence,
-          websiteUrl: projects.websiteUrl
-        })
-        .from(projects)
-        .where(eq(projects.id, projectId));
-      return project;
-    });
-
-    if (!result) {
-      return res.status(404).json({ error: "Project not found" });
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      return res.status(404).json({ error: "Project not found or access denied" });
     }
+    const { project } = resolved;
 
-    return res.json(result);
+    return res.json({
+      discoveryStatus: project.discoveryStatus,
+      businessType: project.businessType,
+      businessTypeConfidence: project.businessTypeConfidence,
+      platform: project.platform,
+      platformConfidence: project.platformConfidence,
+      websiteUrl: project.websiteUrl
+    });
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error getting discovery status");
     return res.status(500).json({ error: "Failed to get discovery status" });
@@ -1118,31 +1152,25 @@ router.get("/:projectId/discovery/status", async (req: any, res: any): Promise<a
 
 router.get("/:projectId/intelligence", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
-      const [project] = await tx
-        .select({
-          discoveryStatus: projects.discoveryStatus,
-          businessType: projects.businessType,
-          businessTypeConfidence: projects.businessTypeConfidence,
-          platform: projects.platform,
-          platformConfidence: projects.platformConfidence,
-          intelligence: projects.intelligence,
-          websiteUrl: projects.websiteUrl
-        })
-        .from(projects)
-        .where(eq(projects.id, projectId));
-      return project;
-    });
-
-    if (!result) {
-      return res.status(404).json({ error: "Project not found" });
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      return res.status(404).json({ error: "Project not found or access denied" });
     }
+    const { project } = resolved;
 
-    return res.json(result);
+    return res.json({
+      discoveryStatus: project.discoveryStatus,
+      businessType: project.businessType,
+      businessTypeConfidence: project.businessTypeConfidence,
+      platform: project.platform,
+      platformConfidence: project.platformConfidence,
+      intelligence: project.intelligence,
+      websiteUrl: project.websiteUrl
+    });
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error getting intelligence profile");
     return res.status(500).json({ error: "Failed to get intelligence profile" });
@@ -1151,25 +1179,17 @@ router.get("/:projectId/intelligence", async (req: any, res: any): Promise<any> 
 
 router.get("/:projectId/capabilities", async (req: any, res: any): Promise<any> => {
   const { projectId } = req.params;
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  if (Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   try {
-    const result = await withTenantContext(orgId as string, async (tx: any) => {
-      const [project] = await tx
-        .select({
-          intelligence: projects.intelligence,
-        })
-        .from(projects)
-        .where(eq(projects.id, projectId));
-      return project;
-    });
-
-    if (!result) {
-      return res.status(404).json({ error: "Project not found" });
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      return res.status(404).json({ error: "Project not found or access denied" });
     }
+    const { project } = resolved;
 
-    const capabilities = (result.intelligence as any)?.capabilities || {};
+    const capabilities = (project.intelligence as any)?.capabilities || {};
     return res.json(capabilities);
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error getting capabilities");
