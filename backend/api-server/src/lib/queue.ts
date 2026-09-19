@@ -10,6 +10,8 @@ let knowledgeQueue: Queue | null = null;
 let knowledgeWorker: Worker | null = null;
 let discoveryQueue: Queue | null = null;
 let discoveryWorker: Worker | null = null;
+let analyticsQueue: Queue | null = null;
+let analyticsWorker: Worker | null = null;
 
 if (redisConnection) {
   try {
@@ -29,6 +31,7 @@ if (redisConnection) {
 
     logger.info("[QUEUE] BullMQ Queue initialized successfully.");
     
+    analyticsQueue = new Queue("analytics-processing", { connection: redisConnection, defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 2000 } } });
     discoveryQueue = new Queue("discovery-processing", {
       connection: redisConnection,
       defaultJobOptions: {
@@ -116,6 +119,7 @@ export async function enqueueDiscoveryProcessing(projectId: string, url: string,
 
 // Worker Initialization Function
 export function startQueueWorker(): void {
+  if (redisConnection) startAnalyticsWorker();
   if (!redisConnection) {
     logger.warn("[QUEUE_WARN] Redis connection not active. Worker will not start.");
     return;
@@ -173,4 +177,34 @@ export async function shutdownQueueWorker(): Promise<void> {
   if (redisConnection) {
     redisConnection.disconnect();
   }
+}
+
+
+export async function enqueueApiLog(logData: any) {
+  if (analyticsQueue) {
+    await analyticsQueue.add("api-log", logData);
+  } else {
+    // Fallback if no redis
+    const { db } = require("@workspace/db");
+    const { apiLogs } = require("@workspace/db/schema");
+    db.insert(apiLogs).values(logData).catch((e: any) => logger.error(e, "Fallback insert error"));
+  }
+}
+
+export function startAnalyticsWorker() {
+  if (!redisConnection) return;
+  analyticsWorker = new Worker("analytics-processing", async (job: Job) => {
+    const { db } = require("@workspace/db");
+    const { apiLogs } = require("@workspace/db/schema");
+    if (job.name === "api-log") {
+      await db.insert(apiLogs).values(job.data);
+    }
+  }, {
+    connection: redisConnection,
+    concurrency: 5
+  });
+  
+  analyticsWorker.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "[ANALYTICS_WORKER_ERROR] Failed to process analytics");
+  });
 }

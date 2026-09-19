@@ -706,7 +706,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
     const youtubeContext = await fetchYouTubeTranscriptsForMessage(content || "");
 
     currentStep = "KNOWLEDGE_RETRIEVAL";
-    // Vector Search (RAG) with Caching
+    // Vector Search (RAG) with Caching via Redis
     let ragContext = "";
     let retrievedIds: string[] = [];
     try {
@@ -716,19 +716,25 @@ router.post("/conversations/:id/messages", async (req, res) => {
         const containsSecret = secretRegex.test(content);
         
         let cacheKey = null;
+        const redis = require("../../lib/redis").getRedisClient();
         if (!containsSecret) {
           const queryHash = crypto.createHash("sha256").update(content).digest("hex");
-          // Use first project ID for cache key (usually only 1 project is selected)
-          cacheKey = `${validProjectIds[0]}_${queryHash}`;
+          const projectsKey = [...validProjectIds].sort().join(",");
+          const userScope = userId || "anonymous";
+          cacheKey = `raghub:rag-cache:proj:${projectsKey}:usr:${userScope}:${queryHash}`;
           
-          const [cached] = await db.select()
-            .from(knowledgeRetrievalCache)
-            .where(eq(knowledgeRetrievalCache.key, cacheKey));
-            
-          if (cached) {
-            req.log.info("[CACHE_HIT] Knowledge retrieved from cache");
-            ragContext = cached.resultText;
-            retrievedIds = cached.retrievedIds as string[];
+          if (redis && redis.status === "ready") {
+            try {
+              const cachedStr = await redis.get(cacheKey);
+              if (cachedStr) {
+                const cached = JSON.parse(cachedStr);
+                req.log.info("[CACHE_HIT] Knowledge retrieved from Redis");
+                ragContext = cached.resultText;
+                retrievedIds = cached.retrievedIds as string[];
+              }
+            } catch (e) {
+              req.log.warn(e, "[CACHE_ERROR] Failed to read from Redis RAG cache");
+            }
           }
         }
         
@@ -748,12 +754,16 @@ router.post("/conversations/:id/messages", async (req, res) => {
           retrievedIds = res?.retrievedIds || [];
           
           if (cacheKey && (ragContext || retrievedIds.length > 0)) {
-            await db.insert(knowledgeRetrievalCache).values({
-              key: cacheKey,
-              projectId: validProjectIds[0] as any,
-              resultText: ragContext,
-              retrievedIds: retrievedIds
-            }).onConflictDoNothing(); // Ignore if another request cached it simultaneously
+            if (redis && redis.status === "ready") {
+              try {
+                await redis.setex(cacheKey, 3600, JSON.stringify({
+                  resultText: ragContext,
+                  retrievedIds: retrievedIds
+                }));
+              } catch (e) {
+                req.log.warn(e, "[CACHE_ERROR] Failed to write to Redis RAG cache");
+              }
+            }
           }
         }
       }

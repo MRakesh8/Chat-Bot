@@ -75,8 +75,11 @@ app.use(
   }),
 );
 
+import { RedisFallbackStore } from "./lib/rate-limiter";
+
 // Global API Rate Limiting (Fallback)
 const globalLimiter = rateLimit({
+  store: new RedisFallbackStore('global'),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   standardHeaders: true,
@@ -96,6 +99,7 @@ app.use("/api", globalLimiter);
 
 // Strict LLM API Rate Limiter
 const geminiLimiter = rateLimit({
+  store: new RedisFallbackStore('gemini'),
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 requests per minute
   standardHeaders: true,
@@ -107,6 +111,7 @@ app.use("/api/gemini/conversations/:id/messages", geminiLimiter);
 
 // Specific rate limiters for key validation and payment submissions
 const keyVerifyLimiter = rateLimit({
+  store: new RedisFallbackStore('key_verify'),
   windowMs: 60 * 1000, // 1 minute
   max: 10, // 10 requests per minute
   standardHeaders: true,
@@ -117,6 +122,7 @@ app.use("/api/projects/:projectId/widget/api-keys/:keyId/verify", keyVerifyLimit
 app.use("/api/projects/:projectId/widget/api-keys/:keyId/test", keyVerifyLimiter);
 
 const paymentLimiter = rateLimit({
+  store: new RedisFallbackStore('payments'),
   windowMs: 60 * 1000, // 1 minute
   max: 5, // 5 requests per minute
   standardHeaders: true,
@@ -126,6 +132,7 @@ const paymentLimiter = rateLimit({
 app.use("/api/payments/manual", paymentLimiter);
 
 const widgetLimiter = rateLimit({
+  store: new RedisFallbackStore('widget'),
   windowMs: 60 * 1000, // 1 minute
   max: 30, // 30 requests per minute
   standardHeaders: true,
@@ -136,6 +143,7 @@ app.use("/api/widget", widgetLimiter);
 
 // Strict API Rate Limiter for Integrations and Tools (Phase 2E)
 const integrationLimiter = rateLimit({
+  store: new RedisFallbackStore('integrations'),
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 requests per minute
   standardHeaders: true,
@@ -147,6 +155,7 @@ app.use("/api/projects/:projectId/tools", integrationLimiter);
 
 // Rate Limiter for AI Agent (Phase 2F) - expensive AI operations
 const agentLimiter = rateLimit({
+  store: new RedisFallbackStore('agent'),
   windowMs: 60 * 1000, // 1 minute
   max: 15, // 15 requests per minute
   standardHeaders: true,

@@ -41,10 +41,11 @@ export class ContextFuser {
     websiteContext: WebsiteContext | null;
     projectId: string;
     userId: string | null;
+    customerId?: string | null;
     settings: ContextSettings;
     apiKeys?: any[];
   }): Promise<FusedContext> {
-    const { userMessage, websiteContext, projectId, userId, settings, apiKeys } = params;
+    const { userMessage, websiteContext, projectId, userId, customerId, settings, apiKeys } = params;
 
     // ── 0. Intent Classification ──
     let userIntent: any = "General Question";
@@ -82,6 +83,7 @@ export class ContextFuser {
         const searchResult = await searchProjectKnowledge({
           projectIds: [projectId],
           userId,
+          customerId,
           query: augmentedQuery,
           limit: 3,
         });

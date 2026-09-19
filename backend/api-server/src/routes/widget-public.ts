@@ -1,4 +1,4 @@
-﻿import { submitMessageFeedback, submitProjectFeedback } from '../services/feedback';
+import { submitMessageFeedback, submitProjectFeedback } from '../services/feedback';
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
 import { db, crypto } from "@workspace/db";
@@ -33,468 +33,57 @@ import { trackUserQuestion } from "../services/question-normalization";
 import { trackKnowledgeGap, isFallbackResponse } from "../services/unanswered-questions";
 
 
-function isRetryableLlmError(err: any): boolean {
-  if (!err) return false;
-  const status = err?.status || err?.response?.status || err?.code;
-  if (status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
-    return true;
-  }
-  const statusStr = String(err?.status || err?.response?.status || err?.code || "").toUpperCase();
-  if (statusStr === "INTERNAL") {
-    return true;
-  }
-  const errMessage = String(err?.message || err?.stack || err).toLowerCase();
-  
-  const retryableKeywords = [
-    "503", "500", "502", "504",
-    "timeout", "deadline exceeded",
-    "service unavailable", "internal server error",
-    "spikes in demand", "experiencing high demand", "try again later"
-  ];
-  return retryableKeywords.some(keyword => errMessage.includes(keyword));
-}
+import { UniversalRouterService } from '../services/ai-router';
 
-async function executeWithRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  initialDelayMs: number = 500
-): Promise<T> {
-  let attempt = 0;
-  while (true) {
-    try {
-      return await fn();
-    } catch (err: any) {
-      attempt++;
-      const isRetryable = isRetryableLlmError(err);
-      if (isRetryable && attempt <= maxRetries) {
-        const delayMs = initialDelayMs * Math.pow(2, attempt - 1);
-        logger.warn(`[LLM Retry] Attempt ${attempt} failed with retryable error: ${err.message || err}. Retrying in ${delayMs}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-
-async function executeWithFallback(activeKey: string, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
-  const httpOptions: any = { apiVersion: '' };
-  if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
-    httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  }
-  
-  const directClient = new GoogleGenAI({
-    apiKey: activeKey,
-    httpOptions
-  });
-  
-  const FALLBACK_MODELS = [
-    "gemini-2.0-flash-lite", 
-    "gemini-1.5-pro", 
-    "gemini-1.5-flash-002", 
-    "gemini-1.5-flash-8b"
-  ];
-  let requestedModel = options.model || "gemini-2.0-flash";
-  const modelsToTry = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
-  
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const attemptModel = modelsToTry[i];
-    const isLast = i === modelsToTry.length - 1;
-    try {
-      const attemptOptions = { ...options, model: attemptModel };
-      logger.info({ model: attemptModel, contentsSize: attemptOptions.contents?.length || 0 }, "GEMINI INVOCATION DIAGNOSTICS");
-      
-      if (method === 'generateContent') {
-        return await executeWithRetry(() => directClient.models.generateContent(attemptOptions));
-      } else {
-        return await executeWithRetry(() => directClient.models.generateContentStream(attemptOptions));
-      }
-    } catch (err: any) {
-      const status = err?.status || err?.response?.status || err?.code;
-      const statusStr = String(status || "").toUpperCase();
-      const errMessage = String(err?.message || err?.stack || err).toLowerCase();
-      
-      const isQuotaExhausted = status === 429 || statusStr === "RESOURCE_EXHAUSTED" || errMessage.includes("quota") || errMessage.includes("429");
-      const isModelNotFound = status === 404 || errMessage.includes("not found");
-      
-      if (isQuotaExhausted) {
-        throw err; // Throw upwards to rotate the API key
-      }
-      
-      const isRetryable = isRetryableLlmError(err) || isModelNotFound;
-      
-      if (isRetryable && !isLast) {
-        logger.warn(`Widget API error on model ${attemptModel}, falling back to next model...`);
-        continue;
-      }
-      throw err;
-    }
-  }
-  
-  throw new Error("No healthy models available to execute");
-}
-
-interface WidgetKey {
-  id?: string;
-  type: 'project' | 'user' | 'system' | 'env';
-  provider: string;
-  model?: string;
-  decryptedKey: string;
-  rawDbKey?: any;
-}
-
-const keyUsageStats: Record<string, { inFlight: number, lastUsed: number }> = {};
+interface WidgetKey { id?: string; type?: string; }
+const keyUsageStats: Record<string, any> = {};
 
 async function fetchAndManageWidgetKeys(projectId: string, userId: string | null): Promise<WidgetKey[]> {
-  const now = new Date();
-  const widgetKeys: WidgetKey[] = [];
-  let projectKeysList: any[] = [];
-  let userKeysList: any[] = [];
-  let systemKeysList: any[] = [];
-
-  try {
-    // 1. Project Keys
-    projectKeysList = await db.query.projectApiKeys.findMany({
-      where: eq(projectApiKeys.projectId, projectId)
-    });
-
-    for (const key of projectKeysList) {
-      if (!key.isEnabled) continue;
-      
-      let status = key.status;
-      if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
-        status = "HEALTHY";
-        await db.update(projectApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(projectApiKeys.id, key.id));
-      }
-
-      if (status === "HEALTHY") {
-        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-        if (decrypted) {
-          widgetKeys.push({
-            id: key.id,
-            type: 'project',
-            provider: key.provider,
-            model: key.model || undefined,
-            decryptedKey: decrypted,
-            rawDbKey: key
-          });
-        }
-      }
-    }
-  } catch (err) {
-    logger.error({ err }, "Widget public router: failed to load project keys");
-  }
-
-  try {
-    // 2. User Keys (Project Owner)
-    if (userId) {
-      userKeysList = await db.query.userApiKeys.findMany({
-        where: eq(userApiKeys.userId, userId)
-      });
-
-      for (const key of userKeysList) {
-        if (!key.isEnabled) continue;
-
-        let status = key.status;
-        if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
-          status = "HEALTHY";
-          await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
-        }
-
-        if (status === "HEALTHY") {
-          const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-          if (decrypted) {
-            widgetKeys.push({
-              id: key.id,
-              type: 'user',
-              provider: key.provider,
-              decryptedKey: decrypted,
-              rawDbKey: key
-            });
-          }
-        }
-      }
-    }
-  } catch (err) {
-    logger.error({ err }, "Widget public router: failed to load user keys");
-  }
-
-  try {
-    // 3. System Keys
-    systemKeysList = await db.query.userApiKeys.findMany({
-      where: isNull(userApiKeys.userId)
-    });
-
-    for (const key of systemKeysList) {
-      if (!key.isEnabled) continue;
-
-      let status = key.status;
-      if ((status === "COOLDOWN" || status === "QUOTA_EXCEEDED" || status === "UNHEALTHY") && key.cooldownUntil && now > key.cooldownUntil) {
-        status = "HEALTHY";
-        await db.update(userApiKeys).set({ status: "HEALTHY", cooldownUntil: null, failureReason: null }).where(eq(userApiKeys.id, key.id));
-      }
-
-      if (status === "HEALTHY") {
-        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
-        if (decrypted) {
-          widgetKeys.push({
-            id: key.id,
-            type: 'system',
-            provider: key.provider,
-            decryptedKey: decrypted,
-            rawDbKey: key
-          });
-        }
-      }
-    }
-  } catch (err) {
-    logger.error({ err }, "Widget public router: failed to load system keys");
-  }
-
-  // Note: The previous fallback logic that retried keys marked as QUOTA_EXCEEDED has been removed.
-  // When no HEALTHY keys are available, it is better to fail-fast than to spam rate-limited keys.
-
-  // 4. Env fallback keys
-  const envKeys = Array.from(new Set([
-    process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_1,
-    process.env.GEMINI_API_KEY_2,
-    process.env.GEMINI_API_KEY_3,
-    process.env.GEMINI_API_KEY
-  ].filter(Boolean) as string[]));
-
-  envKeys.forEach((envKey) => {
-    widgetKeys.push({
-      type: 'env',
-      provider: 'gemini',
-      decryptedKey: envKey
-    });
-  });
-
-  // Calculate statistics
-  let totalKeys = projectKeysList.length + userKeysList.length + systemKeysList.length + envKeys.length;
-  let disabledKeys = 0;
-  
-  for (const k of projectKeysList) if (!k.isEnabled) disabledKeys++;
-  for (const k of userKeysList) if (!k.isEnabled) disabledKeys++;
-  for (const k of systemKeysList) if (!k.isEnabled) disabledKeys++;
-  // envKeys are always considered enabled
-  
-  let enabledKeys = totalKeys - disabledKeys;
-
-  logger.info(`\n--- API KEY MANAGER ---`);
-  logger.info(`Total API keys loaded: ${totalKeys}`);
-  logger.info(`Enabled API keys: ${enabledKeys}`);
-  logger.info(`Disabled API keys: ${disabledKeys}`);
-  logger.info(`-----------------------\n`);
-
-  // Sort: Project Keys (primary first) -> User Keys -> System Keys -> Env Keys
-  // Within the same priority group, sort by:
-  // 1. inFlight count (ascending - pick the least busy key)
-  // 2. lastUsed time (ascending - LRU)
-  return widgetKeys.sort((a, b) => {
-    const priority = { project: 1, user: 2, system: 3, env: 4 };
-    if (priority[a.type] !== priority[b.type]) {
-      return priority[a.type] - priority[b.type];
-    }
-    if (a.type === 'project' && b.type === 'project') {
-      const ap = a.rawDbKey?.isPrimary ? 1 : 0;
-      const bp = b.rawDbKey?.isPrimary ? 1 : 0;
-      if (bp !== ap) return bp - ap;
-    }
-    
-    // Concurrency / Load Balancing
-    const statA = keyUsageStats[a.id || a.decryptedKey] || { inFlight: 0, lastUsed: 0 };
-    const statB = keyUsageStats[b.id || b.decryptedKey] || { inFlight: 0, lastUsed: 0 };
-    
-    if (statA.inFlight !== statB.inFlight) {
-      return statA.inFlight - statB.inFlight;
-    }
-    
-    return statA.lastUsed - statB.lastUsed;
-  });
-}
-
-import { updateKeyStats } from "../services/api-health";
-
-async function executeKeyRequest(key: WidgetKey, method: 'generateContent' | 'generateContentStream', options: any): Promise<any> {
-  const selectedModel = options.model || key.model || "gemini-2.0-flash";
-
-  // Validate that the selected model belongs to the selected provider
-  let isModelValid = true;
-  const lowerModel = selectedModel.toLowerCase();
-  const lowerProvider = key.provider.toLowerCase();
-
-  // 1. Strict provider-model mismatch rules
-  if (lowerProvider === "gemini" && !lowerModel.includes("gemini") && !lowerModel.includes("learnlm")) {
-    isModelValid = false;
-  } else if (lowerProvider !== "gemini" && lowerProvider !== "claude" && (lowerModel.includes("gemini") || lowerModel.includes("learnlm"))) {
-    isModelValid = false;
-  }
-
-  // 2. Database available models restriction
-  if (isModelValid && key.rawDbKey?.availableModels && Array.isArray(key.rawDbKey.availableModels) && key.rawDbKey.availableModels.length > 0) {
-    isModelValid = key.rawDbKey.availableModels.includes(selectedModel);
-  }
-
-  if (!isModelValid) {
-    throw new Error(`Invalid model for selected provider.`);
-  }
-
-  let sdkName = "GoogleGenAI SDK";
-  let endpointName = "Google Gemini API";
-  if (lowerProvider === "claude") {
-    sdkName = "Anthropic SDK";
-    endpointName = "api.anthropic.com";
-  } else if (lowerProvider !== "gemini") {
-    sdkName = "OpenAI SDK";
-    if (lowerProvider === "groq") endpointName = "api.groq.com/openai/v1";
-    else if (lowerProvider === "openrouter") endpointName = "openrouter.ai/api/v1";
-    else if (lowerProvider === "deepseek") endpointName = "api.deepseek.com/v1";
-    else endpointName = "api.openai.com/v1";
-  }
-
-  logger.info(`\n--- Execution Diagnostics ---`);
-  logger.info(`Selected Provider: ${key.provider}`);
-  logger.info(`Selected Model: ${selectedModel}`);
-  logger.info(`Selected SDK: ${sdkName}`);
-  logger.info(`Selected Endpoint: ${endpointName}`);
-  logger.info(`Selected API Key: ${key.id || 'env'}`);
-  logger.info(`---------------------------\n`);
-  
-  if (key.provider !== 'gemini') {
-    const adapter = new UniversalProviderAdapter({
-      provider: key.provider,
-      apiKey: key.decryptedKey,
-      model: selectedModel
-    });
-    
-    let messages: any[] = [];
-    if (options.contents && Array.isArray(options.contents)) {
-      messages = options.contents.map((c: any) => ({
-        role: c.role === 'model' ? 'assistant' as const : 'user' as const,
-        content: c.parts?.[0]?.text || ""
-      }));
-    } else if (typeof options.contents === 'string') {
-      messages = [{ role: 'user' as const, content: options.contents }];
-    }
-
-    if (method === 'generateContent') {
-      const response = await adapter.generateChat({
-        messages,
-        temperature: 0.7
-      });
-      return { text: response.content };
-    } else {
-      return adapter.generateChatStream({
-        messages,
-        temperature: 0.7
-      });
-    }
-  } else {
-    return await executeWithFallback(key.decryptedKey, method, { ...options, model: selectedModel });
-  }
+  return [{}];
 }
 
 async function executeLlmWithFailover(
   keys: WidgetKey[], 
   method: 'generateContent' | 'generateContentStream', 
-  options: any
-): Promise<{ result: any; keyUsed: WidgetKey }> {
-  logger.info(`\nLoaded API Keys: ${keys.length}\n`);
+  options: any, 
+  projectId?: string, 
+  userId?: string | null
+): Promise<{ result: any, keyUsed: WidgetKey }> {
   
-  const failures: string[] = [];
-  
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    const statKey = key.id || key.decryptedKey;
-    
-    if (!keyUsageStats[statKey]) {
-      keyUsageStats[statKey] = { inFlight: 0, lastUsed: 0 };
-    }
-    
-    logger.info(`Trying API Key #${i + 1}`);
-    keyUsageStats[statKey].inFlight += 1;
-    keyUsageStats[statKey].lastUsed = Date.now();
-    
-    const startTime = Date.now();
-    const selectedModel = key.model || options.model || "gemini-2.0-flash";
-    const attemptOptions = { ...options, model: selectedModel };
+  const req = {
+    capabilities: method === 'generateContentStream' ? { textGeneration: true, streaming: true } : { textGeneration: true },
+    projectId,
+    userId: userId || undefined,
+    preferredModel: options.model,
+    operation: 'chat' as const
+  };
 
-    try {
-      // Check rate limit tracker before making network request
-      const rpm = await minuteCache.get(`rpm:${statKey}`);
-      if (rpm >= 30) { // Default safe rate limit estimate if provider headers aren't parsed
-        throw { status: 429, message: "Rate limit estimated exceeded by MinuteCache" };
-      }
+  const chatMessages = (options.contents || []).map((m: any) => ({
+    role: m.role === 'model' ? 'assistant' : 'user',
+    content: m.parts?.[0]?.text || m.content || ''
+  }));
 
-      await minuteCache.incrementAndGet(`rpm:${statKey}`, 60, 1);
-      
-      const result = await executeKeyRequest(key, method, attemptOptions);
-      
-      const latencyMs = Date.now() - startTime;
-      let promptTokens = 0;
-      let completionTokens = 0;
-      let totalTokens = 0;
-
-      // Extract usage if available
-      if (result && typeof result === 'object' && result.usage) {
-        promptTokens = result.usage.promptTokens || 0;
-        completionTokens = result.usage.completionTokens || 0;
-        totalTokens = result.usage.totalTokens || 0;
-      }
-
-      await updateKeyStats({
-        key,
-        success: true,
-        latencyMs,
-        status: "HEALTHY",
-        promptTokens,
-        completionTokens,
-        totalTokens,
-        model: selectedModel
-      }).catch(e => logger.error("Key success update error:", e));
-      
-      logger.info(`Success (${latencyMs}ms)\n`);
-      return { result, keyUsed: key };
-    } catch (err: any) {
-      const latencyMs = Date.now() - startTime;
-      
-      const isTransient = err?.status === 503 || err?.status === 502 || err?.status === 504 || err?.status === 500 ||
-                          String(err?.message || "").toLowerCase().includes("timeout") || String(err?.message || "").toLowerCase().includes("unavailable");
-                          
-      if (isTransient) {
-        logger.warn(`[Widget API Failover] Skipping database unhealthy lock for key ${key.id || 'env'} because the failure was transient.`);
-      } else {
-        await updateKeyStats({
-          key,
-          success: false,
-          latencyMs,
-          status: "UNHEALTHY", // Will be reclassified by classifyError
-          error: err,
-          model: selectedModel
-        }).catch(e => logger.error("Key failure update error:", e));
-      }
-
-      const failureReason = err?.message || err?.toString() || "Unknown error";
-      logger.info(`${failureReason}\n`);
-      failures.push(`Key #${i + 1} (${key.id || 'env'}): ${failureReason}`);
-      
-      if (i < keys.length - 1) {
-        logger.info(`Reason for switching: ${failureReason}`);
-        logger.info(`Switching to API Key #${i + 2}\n`);
-      }
-    } finally {
-      // Always decrement inFlight when request finishes (success or failure)
-      keyUsageStats[statKey].inFlight = Math.max(0, keyUsageStats[statKey].inFlight - 1);
-    }
+  const systemInst = options.config?.systemInstruction?.parts?.[0]?.text;
+  if (systemInst) {
+    chatMessages.unshift({ role: 'system', content: systemInst });
   }
-  
-  logger.info("All API keys failed:");
-  failures.forEach(f => logger.info(`- ${f}`));
-  
-  throw new Error(`No healthy API keys available to execute the request. Failures: ${failures.join(" | ")}`);
+
+  if (method === 'generateContent') {
+    const res = await UniversalRouterService.executeChat(req, chatMessages, options.config?.temperature);
+    return { result: { text: () => res.content, text_value: res.content }, keyUsed: {} };
+  } else {
+    const stream = await UniversalRouterService.executeStream(req, chatMessages, options.config?.temperature);
+    return { 
+      result: (async function*() {
+        for await (const chunk of stream) {
+          yield { text: () => chunk.text, text_value: chunk.text };
+        }
+      })(), 
+      keyUsed: {} 
+    };
+  }
 }
+
 
 const router = Router();
 
@@ -872,6 +461,27 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       throw err;
     }
 
+    let customerId: string | undefined = undefined;
+    let customerVerified = false;
+    try {
+      if (sessionId) {
+        const sessionRec = await db.query.chatSessions.findFirst({
+          where: eq(chatSessions.id, sessionId)
+        });
+        if (sessionRec?.customerId) {
+          customerId = sessionRec.customerId;
+          const custRec = await db.query.customers.findFirst({
+            where: eq(customers.id, customerId)
+          });
+          if (custRec) {
+            customerVerified = custRec.isVerified;
+          }
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err }, "Could not resolve customer identity for widget session");
+    }
+
     // Fuse context & KB
     let fusedContext;
     try {
@@ -880,6 +490,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         websiteContext: finalWebsiteContext,
         projectId,
         userId,
+        customerId,
         settings: contextSettings as any,
         apiKeys: keys
       });
@@ -973,27 +584,6 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     }
     
     req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
-
-    let customerId: string | undefined = undefined;
-    let customerVerified = false;
-    try {
-      if (sessionId) {
-        const sessionRec = await db.query.chatSessions.findFirst({
-          where: eq(chatSessions.id, sessionId)
-        });
-        if (sessionRec?.customerId) {
-          customerId = sessionRec.customerId;
-          const custRec = await db.query.customers.findFirst({
-            where: eq(customers.id, customerId)
-          });
-          if (custRec) {
-            customerVerified = custRec.isVerified;
-          }
-        }
-      }
-    } catch (err) {
-      req.log.warn({ err }, "Could not resolve customer identity for widget session");
-    }
 
     try {
       // 1. Delegate request to CoordinatorAgent -> BusinessAgent pipeline

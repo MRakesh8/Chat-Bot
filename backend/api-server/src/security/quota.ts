@@ -103,19 +103,30 @@ export async function checkAndIncrementUsage(
         .limit(1);
 
       if (!usageRecord) {
-        const [inserted] = await tx
-          .insert(organizationUsage)
-          .values({
-            organizationId,
-            billingCycleStart,
-            billingCycleEnd,
-            messagesSent: 0,
-            crawlCount: 0,
-            actionCount: 0,
-            updatedAt: now
-          })
-          .returning();
-        usageRecord = inserted;
+        try {
+          const [inserted] = await tx
+            .insert(organizationUsage)
+            .values({
+              organizationId,
+              billingCycleStart,
+              billingCycleEnd,
+              messagesSent: 0,
+              crawlCount: 0,
+              actionCount: 0,
+              updatedAt: now
+            })
+            .onConflictDoNothing({ target: [organizationUsage.organizationId, organizationUsage.billingCycleStart] })
+            .returning();
+            
+          usageRecord = inserted;
+        } catch (e) {
+           // ignore
+        }
+        
+        if (!usageRecord) {
+           const [fetched] = await tx.select().from(organizationUsage).where(and(eq(organizationUsage.organizationId, organizationId), eq(organizationUsage.billingCycleStart, billingCycleStart))).limit(1);
+           usageRecord = fetched;
+        }
       }
 
       // 4. Verify against limits
@@ -142,20 +153,38 @@ export async function checkAndIncrementUsage(
         };
       }
 
-      // 5. Update usage counters
-      const updates: any = { updatedAt: now };
+      // 5. Update usage counters atomically
+      const sqlIncrement = (col: string) => sql`${sql.raw(col)} + ${quantity}`;
+      
+      let updateResult;
+      
       if (eventType === "message") {
-        updates.messagesSent = usageRecord.messagesSent + quantity;
+        updateResult = await tx
+          .update(organizationUsage)
+          .set({ messagesSent: sqlIncrement("messages_sent"), updatedAt: now })
+          .where(and(eq(organizationUsage.id, usageRecord.id), sql`messages_sent + ${quantity} <= ${limitVal}`))
+          .returning();
       } else if (eventType === "crawl") {
-        updates.crawlCount = usageRecord.crawlCount + quantity;
+        updateResult = await tx
+          .update(organizationUsage)
+          .set({ crawlCount: sqlIncrement("crawl_count"), updatedAt: now })
+          .where(and(eq(organizationUsage.id, usageRecord.id), sql`crawl_count + ${quantity} <= ${limitVal}`))
+          .returning();
       } else if (eventType === "parse" || eventType === "action") {
-        updates.actionCount = usageRecord.actionCount + quantity;
+        updateResult = await tx
+          .update(organizationUsage)
+          .set({ actionCount: sqlIncrement("action_count"), updatedAt: now })
+          .where(and(eq(organizationUsage.id, usageRecord.id), sql`action_count + ${quantity} <= ${limitVal}`))
+          .returning();
       }
-
-      await tx
-        .update(organizationUsage)
-        .set(updates)
-        .where(eq(organizationUsage.id, usageRecord.id));
+      
+      if (!updateResult || updateResult.length === 0) {
+        return {
+          allowed: false,
+          reason: `Concurrent Quota exceeded for ${eventType}. Limit: ${limitVal}`,
+          limit: limitVal
+        };
+      }
 
       // 6. Log a usage event
       await tx.insert(usageEvents).values({
