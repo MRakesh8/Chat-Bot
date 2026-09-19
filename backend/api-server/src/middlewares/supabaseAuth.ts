@@ -90,49 +90,24 @@ export const supabaseAuthMiddleware = async (
   let dbUser;
   try {
     const email = data.user.email || "no-email@example.com";
-    const coOwnerEmails = ["rakesh837m@gmail.com", "rakesh0837m@gmail.com"];
 
     // 1. Look up existing user by email (since email is unique)
     const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
     if (existingUser.length === 0) {
       // User doesn't exist locally, insert them
-      const role = coOwnerEmails.includes(email) ? "super_admin" : "user";
       const inserted = await db.insert(users).values({
         id: data.user.id, // Use Supabase ID
         email,
-        role,
+        role: "user",
       }).returning();
       dbUser = inserted[0];
     } else {
       dbUser = existingUser[0];
-      // Sync role if they are one of the co-owners and not already super_admin
-      if (coOwnerEmails.includes(email) && dbUser.role !== "super_admin") {
-        const [updated] = await db.update(users)
-          .set({ role: "super_admin" })
-          .where(eq(users.id, dbUser.id))
-          .returning();
-        dbUser = updated;
-      }
     }
 
     // 2. Set mappedUserId to this user's DB ID
     let mappedUserId = dbUser.id;
-
-    // 3. If the logged in user is rakesh0837m@gmail.com, they map to rakesh837m@gmail.com's DB ID
-    if (email === "rakesh0837m@gmail.com") {
-      let targetUser = await db.select().from(users).where(eq(users.email, "rakesh837m@gmail.com")).limit(1);
-      if (targetUser.length === 0) {
-        // Create placeholder user for rakesh837m@gmail.com
-        const [inserted] = await db.insert(users).values({
-          email: "rakesh837m@gmail.com",
-          role: "super_admin",
-        }).returning();
-        mappedUserId = inserted.id;
-      } else {
-        mappedUserId = targetUser[0].id;
-      }
-    }
 
     // 4. Fetch/sync memberships for user
     let memberships = await db.select()

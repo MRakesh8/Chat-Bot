@@ -13,15 +13,14 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
 const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
 // Models for fallback
-const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-exp"];
+const FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const isRetryableError = (err: any): boolean => {
   if (!err) return false;
   const status = err?.status || err?.response?.status || err?.code;
-  // Note: 429 and RESOURCE_EXHAUSTED are NOT here. They should bubble up immediately
-  // to the router so it can failover to the next available API key.
+  if (status === 404 || status === 403 || status === 429) return false; // Never retry these
   if (status === 503 || status === 502 || status === 504 || status === 500 || status === 408) {
     return true;
   }
@@ -30,6 +29,7 @@ const isRetryableError = (err: any): boolean => {
     return true;
   }
   const errMessage = String(err?.message || err?.stack || err).toLowerCase();
+  if (errMessage.includes("404") || errMessage.includes("not found")) return false; // Never retry 404
   const retryableKeywords = [
     "503", "500", "502", "504",
     "unavailable", "timeout", "deadline exceeded",
@@ -86,6 +86,71 @@ interface RoutingKey {
   rawDbKey: any;
 }
 
+
+let isSyncingSystemKeys = false;
+let lastSyncTime = 0;
+async function syncSystemKeys() {
+  const now = Date.now();
+  if (now - lastSyncTime < 60000) return; // Debounce to 1 min
+  if (isSyncingSystemKeys) return;
+  
+  isSyncingSystemKeys = true;
+  try {
+    const envKeys = [
+      { key: process.env.AI_INTEGRATIONS_GEMINI_API_KEY, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY_1, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY_2, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY_3, provider: "gemini" },
+      { key: process.env.GEMINI_API_KEY, provider: "gemini" },
+      { key: process.env.OPENROUTER_API_KEY, provider: "openrouter" },
+      { key: process.env.OPENROUTER_KEY, provider: "openrouter" },
+      { key: process.env.GROQ_API_KEY, provider: "groq" }
+    ].filter(k => !!k.key);
+
+    let allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
+    if (envKeys.length > 0) {
+      const envKeyStrings = envKeys.map(k => k.key);
+      for (const sysKey of allDbSystemKeys) {
+        let decrypted = "";
+        try { decrypted = crypto.decrypt(sysKey.encryptedKey) || sysKey.encryptedKey; } catch { decrypted = sysKey.encryptedKey; }
+        if (!envKeyStrings.includes(decrypted)) {
+           try { await db.delete(userApiKeys).where(eq(userApiKeys.id, sysKey.id)); } catch (e) {}
+        }
+      }
+      
+      allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
+      const decryptedAllSystemKeys = allDbSystemKeys.map(k => {
+        try { return crypto.decrypt(k.encryptedKey) || k.encryptedKey; } catch { return k.encryptedKey; }
+      });
+
+      const keysToInsert = envKeys.filter(envK => !decryptedAllSystemKeys.includes(envK.key));
+      for (let i = 0; i < keysToInsert.length; i++) {
+        const item = keysToInsert[i];
+        try {
+          const encryptedKey = crypto.encrypt(item.key);
+          const maskedKey = item.provider === "gemini" ? `AIza****${item.key.slice(-4)}` : `${item.provider.toUpperCase()}****${item.key.slice(-4)}`;
+          await db.insert(userApiKeys).values({
+            name: `System Key ${allDbSystemKeys.length + 1} (${item.provider.toUpperCase()} Auto-Provisioned)`,
+            provider: item.provider,
+            encryptedKey: encryptedKey,
+            maskedKey: maskedKey,
+            isPrimary: allDbSystemKeys.length === 0 && i === 0,
+            isEnabled: true,
+            isSystem: true,
+            status: "HEALTHY",
+            availableModels: item.provider === "openrouter" ? ["google/gemini-2.0-flash-exp:free"] : ["gemini-2.0-flash", "gemini-1.5-flash"]
+          }).onConflictDoNothing(); // Not possible on encrypted key without constraint, but we rely on memory lock to avoid race
+          allDbSystemKeys.push({} as any);
+        } catch (e) {
+          console.error("[System Keys] Insert error", e);
+        }
+      }
+    }
+    lastSyncTime = Date.now();
+  } finally {
+    isSyncingSystemKeys = false;
+  }
+}
 class GeminiFailoverModels {
   async generateContent(userId: string | null, options: any): Promise<GenerateContentResponse> {
     return this._executeWithRouting(userId, 'generateContent', options) as Promise<GenerateContentResponse>;
@@ -128,81 +193,10 @@ class GeminiFailoverModels {
     }
     let systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
     
-    // Auto-provision & sync system keys from environment variables
-    const envKeys = [
-      { key: process.env.AI_INTEGRATIONS_GEMINI_API_KEY, provider: "gemini" },
-      { key: process.env.GEMINI_API_KEY_1, provider: "gemini" },
-      { key: process.env.GEMINI_API_KEY_2, provider: "gemini" },
-      { key: process.env.GEMINI_API_KEY_3, provider: "gemini" },
-      { key: process.env.GEMINI_API_KEY, provider: "gemini" },
-      { key: process.env.OPENROUTER_API_KEY, provider: "openrouter" },
-      { key: process.env.OPENROUTER_KEY, provider: "openrouter" },
-      { key: process.env.GROQ_API_KEY, provider: "groq" }
-    ].filter(k => !!k.key) as { key: string, provider: string }[];
-
-    let allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
-
-    // Purge old system keys from DB that are no longer in environment variables
-    if (envKeys.length > 0) {
-      const envKeyStrings = envKeys.map(k => k.key);
-      for (const sysKey of allDbSystemKeys) {
-        let decrypted = "";
-        try { decrypted = crypto.decrypt(sysKey.encryptedKey) || sysKey.encryptedKey; } catch { decrypted = sysKey.encryptedKey; }
-        if (!envKeyStrings.includes(decrypted)) {
-          try {
-            console.log(`[Gemini Routing] Purging outdated system key ${sysKey.id.substring(0,4)} (removed from env).`);
-            await db.delete(userApiKeys).where(eq(userApiKeys.id, sysKey.id));
-          } catch (delErr) {
-            console.error("[Gemini Routing] Failed to purge outdated system key:", delErr);
-          }
-        }
-      }
-      
-      // Refresh list of DB system keys
-      allDbSystemKeys = await db.select().from(userApiKeys).where(isNull(userApiKeys.userId));
-      const decryptedAllSystemKeys = allDbSystemKeys.map(k => {
-        try { return crypto.decrypt(k.encryptedKey) || k.encryptedKey; } catch { return k.encryptedKey; }
-      });
-
-      const keysToInsert = envKeys.filter(envK => !decryptedAllSystemKeys.includes(envK.key));
-
-      if (keysToInsert.length > 0) {
-        for (let i = 0; i < keysToInsert.length; i++) {
-          const item = keysToInsert[i];
-          try {
-            const encryptedKey = crypto.encrypt(item.key);
-            const maskedKey = item.provider === "gemini" 
-              ? `AIza****${item.key.slice(-4)}`
-              : `${item.provider.toUpperCase()}****${item.key.slice(-4)}`;
-            
-            const [newKey] = await db.insert(userApiKeys).values({
-              name: `System Key ${allDbSystemKeys.length + 1} (${item.provider.toUpperCase()} Auto-Provisioned)`,
-              provider: item.provider,
-              encryptedKey: encryptedKey,
-              maskedKey: maskedKey,
-              isPrimary: allDbSystemKeys.length === 0 && i === 0,
-              isEnabled: true,
-              isSystem: true,
-              status: "HEALTHY",
-              dailyLimit: null,
-              availableModels: item.provider === "openrouter"
-                ? ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct:free"]
-                : item.provider === "groq"
-                  ? ["llama-3.3-70b-specdec"]
-                  : ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
-            }).returning();
-            
-            allDbSystemKeys.push(newKey);
-            console.log(`[Gemini Routing] Auto-provisioned new system key (${item.provider}) from environment.`);
-          } catch (insertErr) {
-            console.error("[Gemini Routing] Failed to auto-provision system key:", insertErr);
-          }
-        }
-      }
-
-      systemKeys = allDbSystemKeys.filter(k => k.isEnabled);
-    }
-
+        // Auto-provisioning is now handled out of band by syncSystemKeys()
+    await syncSystemKeys();
+    systemKeys = await db.select().from(userApiKeys).where(and(isNull(userApiKeys.userId), eq(userApiKeys.isEnabled, true)));
+    
     // 3. Reset logic
     const now = new Date();
 

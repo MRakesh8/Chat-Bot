@@ -594,7 +594,7 @@ export async function searchProjectKnowledge(params: {
   let similarChunks: Array<any> = [];
   try {
     const embedRes = await ai.models.embedContent(params.userId, {
-      model: "gemini-embedding-2",
+      model: "text-embedding-004",
       contents: params.query,
       config: { outputDimensionality: 768 },
     });
@@ -1113,7 +1113,7 @@ export async function processKnowledgeSource(sourceId: string, options: { force?
           for (let attempt = 0; attempt < 3 && !embedded; attempt++) {
             try {
               const response = await ai.models.embedContent(userId, {
-                model: "gemini-embedding-2",
+                model: "text-embedding-004",
                 contents: text,
                 config: { outputDimensionality: 768 },
                 projectId: source.projectId,

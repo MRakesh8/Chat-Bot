@@ -115,7 +115,7 @@ export default function App() {
                   <Route path="/p/:token" component={SharedChatPage} />
 
                   {/* Persistent Workspace Shell for all protected workspace routes */}
-                  <Route path="/:rest*">
+                  <Route>
                     <ProtectedRoute>
                       <DashboardLayoutLazy>
                         <Suspense fallback={<GlobalLoadingScreen />}>

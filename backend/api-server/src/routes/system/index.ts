@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { db, withBypassRLS } from "@workspace/db";
 import { userApiKeys } from "@workspace/db";
 import { and, eq, isNull, or } from "drizzle-orm";
@@ -79,10 +79,8 @@ router.get("/admin/keys-report", async (req, res): Promise<any> => {
     const role = auth?.dbUser?.role;
     const isDemoMode = process.env.LOCAL_DEMO_MODE === "true";
     
-    // Allow admin email, super_admin/admin role, or local demo mode
+    // Allow super_admin/admin role, or local demo mode
     const isAdmin = 
-      userEmail === "rakesh837m@gmail.com" || 
-      userEmail === "rakesh0837m@gmail.com" || 
       role === "super_admin" || 
       role === "admin" || 
       (isDemoMode && (!auth?.userId || userEmail === "local-demo@example.com"));
@@ -202,8 +200,6 @@ router.post("/admin/reset-keys", async (req, res): Promise<any> => {
     const isDemoMode = process.env.LOCAL_DEMO_MODE === "true";
     
     const isAdmin = 
-      userEmail === "rakesh837m@gmail.com" || 
-      userEmail === "rakesh0837m@gmail.com" || 
       role === "super_admin" || 
       role === "admin" || 
       (isDemoMode && (!auth?.userId || userEmail === "local-demo@example.com"));
