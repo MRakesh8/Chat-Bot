@@ -103,9 +103,9 @@ export default function AuthPage() {
                 whileHover={{ scale: 1.05 }}
                 className="relative flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_20px_rgba(99,102,241,0.4)] group-hover:shadow-[0_0_30px_rgba(99,102,241,0.6)] transition-all"
               >
-                <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="RAGHUB" className="w-7 h-7 brightness-0 invert" />
+                <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-7 h-7 brightness-0 invert" />
               </motion.div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">RAGHUB</h1>
+              <h1 className="text-2xl font-bold text-white tracking-tight">NOVA Business AI</h1>
             </div>
 
             <div className="mt-12 max-w-md">
@@ -208,9 +208,9 @@ export default function AuthPage() {
                 {/* Mobile branding */}
                 <div className="lg:hidden flex flex-col items-center mb-8">
                   <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_20px_rgba(99,102,241,0.4)] mb-4">
-                    <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="RAGHUB" className="w-7 h-7 brightness-0 invert" />
+                    <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-7 h-7 brightness-0 invert" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white tracking-tight">RAGHUB</h2>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">NOVA Business AI</h2>
                   <p className="text-sm text-slate-400 mt-1">Your Intelligent Workspace</p>
                 </div>
 
@@ -272,7 +272,7 @@ export default function AuthPage() {
                 </div>
                 
                 <p className="mt-6 text-center text-xs text-slate-500 leading-relaxed">
-                  By continuing, you agree to RAGHUB's <br className="hidden sm:block"/>
+                  By continuing, you agree to NOVA Business AI's <br className="hidden sm:block"/>
                   <a href="#" className="text-slate-400 hover:text-white transition-colors underline decoration-slate-600 underline-offset-2">Terms of Service</a> and <a href="#" className="text-slate-400 hover:text-white transition-colors underline decoration-slate-600 underline-offset-2">Privacy Policy</a>.
                 </p>
               </motion.div>

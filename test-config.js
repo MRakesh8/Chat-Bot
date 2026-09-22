@@ -1,0 +1,1 @@
+const https = require("https"); const req = https.request("https://chat-bot-api-ns81.onrender.com/api/widget/2ca32dba01a94b00f29c3aabe5c9e7e54213e461b4fc08482e796ccd9fc8c24b/config", { method: "GET", headers: { "Origin": "https://suriya-portfolio-seven.vercel.app" } }, (res) => { console.log(res.statusCode); res.on("data", (d) => process.stdout.write(d)); }); req.end();

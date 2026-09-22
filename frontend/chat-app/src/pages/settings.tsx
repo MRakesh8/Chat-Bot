@@ -16,7 +16,7 @@ export default function SettingsPage() {
             <div className="p-5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-medium text-lg">Theme</h3>
-                <p className="text-sm text-muted-foreground mt-1">Customize the look and feel of RAGHUB.</p>
+                <p className="text-sm text-muted-foreground mt-1">Customize the look and feel of NOVA AI.</p>
               </div>
               <select 
                 value={theme}
@@ -47,7 +47,7 @@ export default function SettingsPage() {
             <div className="p-5 rounded-2xl bg-foreground/[0.01] border border-foreground/[0.02] backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm opacity-50 pointer-events-none">
               <div>
                 <h3 className="font-medium text-lg">Voice Mode</h3>
-                <p className="text-sm text-muted-foreground mt-1">Choose RAGHUB's spoken voice (Coming soon).</p>
+                <p className="text-sm text-muted-foreground mt-1">Choose NOVA AI's spoken voice (Coming soon).</p>
               </div>
               <button disabled className="w-full sm:w-auto px-6 py-2 bg-foreground/5 rounded-xl text-sm text-foreground font-medium border border-foreground/10">Select</button>
             </div>

@@ -535,7 +535,7 @@ export default function SharedChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground hidden sm:block">Powered by RAGHUB</span>
+          <span className="text-xs text-muted-foreground hidden sm:block">Powered by NOVA AI</span>
           <Button
             size="sm"
             variant="ghost"
@@ -742,7 +742,7 @@ export default function SharedChatPage() {
           </div>
 
           <p className="text-center text-xs text-muted-foreground mt-2">
-            Powered by <span className="text-foreground">RAGHUB</span>
+            Powered by <span className="text-foreground">NOVA AI</span>
           </p>
         </div>
       </div>
