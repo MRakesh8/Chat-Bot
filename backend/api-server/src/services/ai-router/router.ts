@@ -157,7 +157,7 @@ export class UniversalRouterService {
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
-    let wasRepaired = false;
+    let wasRepaired = resolved.modelId !== originalModelId;
     while (attempt < 2) {
       attempt++;
       const startTime = Date.now();
@@ -215,10 +215,10 @@ export class UniversalRouterService {
 
   static async *executeStream(req: RoutingRequirement, messages: any[], temperature?: number) {
     const excludeModels = new Set<string>();
-    let wasRepaired = false;
     const initialResolved = await this.resolveCredential(req);
     const originalModelId = initialResolved.modelId;
     let resolved = await this.selectModel(initialResolved, req, excludeModels);
+    let wasRepaired = resolved.modelId !== originalModelId;
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;

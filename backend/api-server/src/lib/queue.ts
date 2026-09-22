@@ -185,8 +185,8 @@ export async function enqueueApiLog(logData: any) {
     await analyticsQueue.add("api-log", logData);
   } else {
     // Fallback if no redis
-    const { db } = require("@workspace/db");
-    const { apiLogs } = require("@workspace/db/schema");
+    const { db } = await import("@workspace/db");
+    const { apiLogs } = await import("@workspace/db/schema");
     db.insert(apiLogs).values(logData).catch((e: any) => logger.error(e, "Fallback insert error"));
   }
 }

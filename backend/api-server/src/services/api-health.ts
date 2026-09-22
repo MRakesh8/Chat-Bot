@@ -119,7 +119,7 @@ export async function updateKeyStats(params: UpdateKeyStatsParams) {
       await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, key.id!));
     }
 
-    const { enqueueApiLog } = require("../lib/queue");
+    const { enqueueApiLog } = await import("../lib/queue");
     // Insert Log asynchronously
     await enqueueApiLog({
       keyId: key.id,
