@@ -63,7 +63,7 @@ const allowedOrigins = [
 app.use("/api/widget", cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "x-organization-id", "X-Organization-Id"],
   preflightContinue: false,
   optionsSuccessStatus: 204,
 }));
@@ -74,7 +74,7 @@ app.use(
     origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "x-organization-id", "X-Organization-Id"],
   }),
 );
 
