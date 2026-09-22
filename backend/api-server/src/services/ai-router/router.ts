@@ -1,4 +1,4 @@
-import { db, projectApiKeys, userApiKeys } from "@workspace/db";
+import { db, projectApiKeys, userApiKeys, crypto } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { RoutingRequirement, ResolvedModel, NormalizedModel } from "./types";
 import { registry } from "./registry";
@@ -24,7 +24,7 @@ export class UniversalRouterService {
           return {
             provider: match.provider,
             modelId: preferredModel ||  "default",
-            credential: { id: match.id, apiKey: match.encryptedKey, type: "project" }
+            credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "project" }
           };
         }
       }
@@ -41,7 +41,7 @@ export class UniversalRouterService {
           return {
             provider: match.provider,
             modelId: preferredModel ||  "default",
-            credential: { id: match.id, apiKey: match.encryptedKey, type: "user" }
+            credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "user" }
           };
         }
       }
@@ -62,7 +62,7 @@ export class UniversalRouterService {
         return {
           provider: match.provider,
           modelId: preferredModel || "default",
-          credential: { id: match.id, apiKey: match.encryptedKey, type: "system" }
+          credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "system" }
         };
       }
     }
