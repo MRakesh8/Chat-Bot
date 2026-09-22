@@ -142,7 +142,7 @@ export class UniversalProviderAdapter {
     
     const client = new GoogleGenAI({ apiKey: this.config.apiKey, ...(httpOptions ? { httpOptions } : {}) });
     let actualModel = this.config.model;
-    if (actualModel === "gemini-1.5-flash") actualModel = "gemini-2.0-flash";
+    
 
     const contents = request.messages.filter(m => m.role !== "system").map(m => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -180,7 +180,7 @@ export class UniversalProviderAdapter {
     
     const client = new GoogleGenAI({ apiKey: this.config.apiKey, ...(httpOptions ? { httpOptions } : {}) });
     let actualModel = this.config.model;
-    if (actualModel === "gemini-1.5-flash") actualModel = "gemini-2.0-flash";
+    
 
     const contents = request.messages.filter(m => m.role !== "system").map(m => ({
       role: m.role === "assistant" ? "model" : "user",

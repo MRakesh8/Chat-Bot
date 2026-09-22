@@ -155,7 +155,7 @@ export class BusinessAgent extends BaseAgent {
       const executableCapabilities = capabilities.filter((c) => c.status === "EXECUTABLE");
 
       // ─── STEP 3: INTENT & TOOL SELECTION BY LLM (UNTRUSTED INPUT) ─────────
-      const systemPrompt = `You are RAGHUB's AI Business Agent.
+      const systemPrompt = `You are NOVA AI's AI Business Agent.
 Your job is to analyze the user's message, classify their intent into one of the exact categories below, and determine if an authorized business tool action should be executed or if a Knowledge Base response is required.
 
 AVAILABLE EXECUTABLE TOOLS:
@@ -190,7 +190,6 @@ DIRECTIVES:
       let llmDecision: any = { intent: "business_information", ragIntent: "UNKNOWN" };
       try {
         const aiRes = await ai.models.generateContent(userId || "system", {
-          model: "gemini-2.0-flash",
           contents: [
             { role: "user", parts: [{ text: systemPrompt }] },
             { role: "user", parts: [{ text: `User Message: ${userMessage}` }] },
@@ -283,7 +282,6 @@ RULES:
 - Only provide a source link if the user asks for it or it's directly useful.`;
 
         const synthRes = await ai.models.generateContent(userId || "system", {
-          model: "gemini-2.0-flash",
           contents: [{ role: "user", parts: [{ text: synthesisPrompt }] }],
         });
 

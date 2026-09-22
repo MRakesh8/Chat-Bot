@@ -23,7 +23,7 @@ export class UniversalRouterService {
         if (match) {
           return {
             provider: match.provider,
-            modelId: preferredModel ||  "default",
+            modelId: preferredModel || match.model || "default",
             credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "project" }
           };
         }
@@ -40,7 +40,7 @@ export class UniversalRouterService {
         if (match) {
           return {
             provider: match.provider,
-            modelId: preferredModel ||  "default",
+            modelId: preferredModel || "default",
             credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "user" }
           };
         }
@@ -49,7 +49,7 @@ export class UniversalRouterService {
 
     // Attempt 3: Global System Config Fallback
     // Attempt 3: Global System Config Fallback
-    const { isNull } = require("drizzle-orm");
+    const { isNull } = await import("drizzle-orm");
     const systemKeys = await db.select().from(userApiKeys).where(
       and(
         eq(userApiKeys.isEnabled, true),
@@ -99,7 +99,7 @@ export class UniversalRouterService {
     const catalog = await this.getCatalog(resolved);
     
     // Check if preferred model is compatible
-    if (req.preferredModel && resolved.modelId !== "default") {
+    if (resolved.modelId && resolved.modelId !== "default") {
        const model = catalog.find(m => m.modelId === resolved.modelId);
        if (model) return resolved;
     }
@@ -121,12 +121,43 @@ export class UniversalRouterService {
     throw new Error(`CAPABILITY_MISMATCH: No model found in provider ${resolved.provider} satisfying requirements.`);
   }
 
+  
+  static async persistRepairedModel(initialResolved: ResolvedModel, finalResolved: ResolvedModel, originalModelId?: string) {
+      if (originalModelId === finalResolved.modelId) return;
+    // Removed direct comparison since they are the same reference
+    try {
+      const { auditLogs } = await import("@workspace/db/schema");
+
+      if (initialResolved.credential.type === "project") {
+        await db.update(projectApiKeys)
+          .set({ model: finalResolved.modelId })
+          .where(eq(projectApiKeys.id, initialResolved.credential.id));
+      } else if (initialResolved.credential.type === "user") {
+        // userApiKeys does not have a "model" column, but we log the change.
+      } else if (initialResolved.credential.type === "system") {
+        // System keys are global; avoid mutating blindly unless supported.
+      }
+
+      await db.insert(auditLogs).values({
+        userId: initialResolved.credential.type === "user" ? initialResolved.credential.id : null,
+        action: "MODEL_AUTO_SUBSTITUTION",
+        target: initialResolved.credential.id,
+      } as any);
+      
+      console.log(`[AI-ROUTER] Automatically substituted ${initialResolved.modelId} -> ${finalResolved.modelId} for ${initialResolved.credential.type} key ${initialResolved.credential.id}`);
+    } catch (e) {
+      console.error("[AI-ROUTER] Failed to persist repaired model", e);
+    }
+  }
+
   static async executeChat(req: RoutingRequirement, messages: any[], temperature?: number) {
     const initialResolved = await this.resolveCredential(req);
-    let resolved = await this.selectModel(initialResolved, req);
+    (initialResolved as any)._originalModelId = initialResolved.modelId;
+      let resolved = await this.selectModel(initialResolved, req);
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
+    let wasRepaired = false;
     while (attempt < 2) {
       attempt++;
       const startTime = Date.now();
@@ -137,7 +168,8 @@ export class UniversalRouterService {
           model: resolved
         });
         
-        const { updateKeyStats } = require("../api-health");
+        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, (initialResolved as any)._originalModelId);
+        const { updateKeyStats } = await import("../api-health");
         updateKeyStats({
           key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
           success: true,
@@ -152,12 +184,12 @@ export class UniversalRouterService {
         return response;
       } catch (e: any) {
         const status = adapter.classifyError(e);
-        const { updateKeyStats } = require("../api-health");
+        const { updateKeyStats } = await import("../api-health");
         updateKeyStats({
           key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
           success: false,
           latencyMs: Date.now() - startTime,
-          status,
+          status: status as any,
           model: resolved.modelId,
           error: e.message
         }).catch((e2: any) => console.error(e2));
@@ -180,8 +212,10 @@ export class UniversalRouterService {
   }
 
   static async *executeStream(req: RoutingRequirement, messages: any[], temperature?: number) {
+    let wasRepaired = false;
     const initialResolved = await this.resolveCredential(req);
-    let resolved = await this.selectModel(initialResolved, req);
+    (initialResolved as any)._originalModelId = initialResolved.modelId;
+      let resolved = await this.selectModel(initialResolved, req);
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
@@ -196,8 +230,9 @@ export class UniversalRouterService {
         });
         
         yield* stream;
+        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, (initialResolved as any)._originalModelId);
 
-        const { updateKeyStats } = require("../api-health");
+        const { updateKeyStats } = await import("../api-health");
         updateKeyStats({
           key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
           success: true,
@@ -208,12 +243,12 @@ export class UniversalRouterService {
         return; // Success, exit
       } catch (e: any) {
         const status = adapter.classifyError(e);
-        const { updateKeyStats } = require("../api-health");
+        const { updateKeyStats } = await import("../api-health");
         updateKeyStats({
           key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
           success: false,
           latencyMs: Date.now() - startTime,
-          status,
+          status: status as any,
           model: resolved.modelId,
           error: e.message
         }).catch((e2: any) => console.error(e2));
@@ -226,6 +261,7 @@ export class UniversalRouterService {
              await redis.del(cacheKey);
            }
            resolved = await this.selectModel(initialResolved, req);
+           wasRepaired = true;
            continue;
         }
         throw e;

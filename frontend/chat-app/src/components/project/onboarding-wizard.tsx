@@ -30,21 +30,8 @@ const STEPS = [
   { id: 4, label: "Install Agent", icon: Sparkles },
 ];
 
-function useAuthFetch() {
-  const { session } = useAuth();
-  return async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    return fetch(url, {
-      ...options,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers ?? {}),
-      },
-    });
-  };
-}
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
+
 
 interface OnboardingWizardProps {
   onProjectCreated?: (projectId: string, shareToken: string) => void;

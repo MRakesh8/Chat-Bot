@@ -15,6 +15,7 @@ type DbUser = {
     canUseWidgetStudio: boolean;
     canUseContextEngine: boolean;
   };
+  memberships?: { organizationId: string; role: string }[];
 };
 
 type AuthContextType = {
@@ -22,6 +23,8 @@ type AuthContextType = {
   dbUser: DbUser | null;
   session: Session | null;
   isLoading: boolean;
+  activeOrganizationId: string | null;
+  setActiveOrganizationId: (id: string) => void;
   signOut: () => Promise<void>;
   loginAsDemo: () => void;
 };
@@ -46,6 +49,7 @@ const DEMO_DB_USER: DbUser = {
     canUseWidgetStudio: true,
     canUseContextEngine: true,
   },
+  memberships: [{ organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9", role: "owner" }]
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -53,6 +57,8 @@ const AuthContext = createContext<AuthContextType>({
   dbUser: null,
   session: null,
   isLoading: true,
+  activeOrganizationId: null,
+  setActiveOrganizationId: () => {},
   signOut: async () => {},
   loginAsDemo: () => {},
 });
@@ -63,6 +69,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeOrganizationId, setActiveOrgId] = useState<string | null>(null);
+
+  const setActiveOrganizationId = (id: string) => {
+    setActiveOrgId(id);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("aria_active_organization_id", id);
+    }
+  };
 
   const loginAsDemo = () => {
     if (typeof window !== "undefined") {
@@ -70,6 +84,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
     setUser(DEMO_USER);
     setDbUser(DEMO_DB_USER);
+    setActiveOrganizationId(DEMO_DB_USER.memberships![0].organizationId);
     setIsLoading(false);
   };
 
@@ -81,6 +96,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (res.ok) {
         const data = await res.json();
         setDbUser(data);
+        
+        // Ensure active organization is set
+        if (data.memberships && data.memberships.length > 0) {
+          const stored = typeof window !== "undefined" ? localStorage.getItem("aria_active_organization_id") : null;
+          const valid = stored && data.memberships.some((m: any) => m.organizationId === stored);
+          if (valid) {
+            setActiveOrgId(stored);
+          } else {
+            setActiveOrganizationId(data.memberships[0].organizationId);
+          }
+        }
       } else {
         setDbUser(null);
       }
@@ -104,6 +130,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (isDemo) {
       setUser(DEMO_USER);
       setDbUser(DEMO_DB_USER);
+      setActiveOrgId(DEMO_DB_USER.memberships![0].organizationId);
       setIsLoading(false);
     }
 
@@ -114,6 +141,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         fetchDbUser(data.session.access_token).finally(() => setIsLoading(false));
       } else if (!isDemo) {
         setDbUser(null);
+        setActiveOrgId(null);
         setIsLoading(false);
         queryClient.clear();
       }
@@ -138,6 +166,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setSession(null);
             setUser(null);
             setDbUser(null);
+            setActiveOrgId(null);
             setIsLoading(false);
             clearAllContinuityState();
             queryClient.clear();
@@ -166,7 +195,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, dbUser, session, isLoading, signOut, loginAsDemo }}>
+    <AuthContext.Provider value={{ user, dbUser, session, isLoading, activeOrganizationId, setActiveOrganizationId, signOut, loginAsDemo }}>
       {children}
     </AuthContext.Provider>
   );

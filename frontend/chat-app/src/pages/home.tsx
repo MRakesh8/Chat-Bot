@@ -153,7 +153,7 @@ export default function Home() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="text-5xl md:text-7xl font-bold tracking-tighter text-foreground max-w-4xl leading-[1.1]"
           >
-            Intelligence that feels <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">alive.</span>
+            From Conversations to <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-500">Business Actions.</span>
           </motion.h1>
 
           <motion.p 
@@ -162,7 +162,7 @@ export default function Home() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl"
           >
-            Your personal AI companion. Powerful enough for complex coding, casual enough for daily chats. Experience the next evolution of conversation.
+            Empower your company with NOVA AI. Automatically analyze your website, capture qualified leads, answer customer questions 24/7, and execute business actions.
           </motion.p>
 
           <motion.div 

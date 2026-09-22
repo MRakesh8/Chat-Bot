@@ -137,8 +137,11 @@ const MemoizedMessage = memo(function MemoizedMessage({
         {msg.role !== "user" && (
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <img src={`${basePath}/logo.svg`} alt="RAGHUB" className="h-5 w-5" />
-              <span className="text-xs font-medium text-muted-foreground">RAGHUB</span>
+              <div className="h-5 w-5 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-[10px]">
+                ✦
+              </div>
+              <span className="text-xs font-semibold text-foreground">NOVA AI</span>
+              <span className="text-[10px] text-muted-foreground px-1.5 py-0.2 rounded bg-secondary border border-border">Business Agent</span>
             </div>
             <div className="flex items-center gap-1 transition-opacity opacity-100">
               {hasSelectedProjects && (
@@ -736,7 +739,7 @@ export function ChatArea() {
 
       {!isCentered && (
         <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          RAGHUB can make mistakes. Consider verifying important information.
+          NOVA AI can make mistakes. Consider verifying important information.
         </p>
       )}
     </div>
@@ -869,14 +872,122 @@ export function ChatArea() {
         )}
       >
         {!conversationId ? (
-          <div className="w-full -translate-y-8 transition-transform duration-300 md:-translate-y-12">
-            <h2 className="mb-8 flex flex-wrap items-center justify-center gap-3 text-center font-serif text-3xl text-foreground md:text-5xl">
-              <Sparkle className="h-8 w-8 text-primary md:h-10 md:w-10" />
-              <span>
-                {greeting()}, {displayName}
-              </span>
-            </h2>
+          <div className="w-full max-w-3xl mx-auto py-6 px-4 space-y-8 text-center">
+            {/* Hero Header */}
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-semibold text-primary">
+                <Sparkle className="w-3.5 h-3.5" />
+                <span>NOVA Business AI Workspace</span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground">
+                Good to see you, {displayName} 👋
+              </h1>
+              <p className="text-muted-foreground text-sm sm:text-base max-w-lg mx-auto">
+                Ask anything about your business. NOVA is here to help you grow.
+              </p>
+            </div>
+
+            {/* Main Input Composer */}
             {renderInput(true)}
+
+            {/* Contextual Action Cards for Real Capabilities */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-4 text-left">
+              <button
+                type="button"
+                onClick={() => handleSend("Analyze my website and show key business insights")}
+                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-600 flex items-center justify-center font-bold text-sm">
+                  🌐
+                </div>
+                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+                  Analyze My Website
+                </h3>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  Extract FAQs, products, contact info, and business knowledge automatically.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSend("Show business intelligence and active project metrics")}
+                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-sm">
+                  📊
+                </div>
+                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+                  Show Business Insights
+                </h3>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  Review customer conversation metrics, captured leads, and active projects.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSend("Answer common business questions using project knowledge")}
+                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-sm">
+                  💬
+                </div>
+                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+                  Answer Business Questions
+                </h3>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  Test your AI assistant against your custom knowledge base and system rules.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSend("Help set up customer support widget for my website")}
+                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold text-sm">
+                  🎧
+                </div>
+                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+                  Help with Customer Support
+                </h3>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  Configure live chat widget styling, response guidelines, and notification alerts.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSend("Show connected services and integrations status")}
+                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                  🔌
+                </div>
+                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+                  Connect Integrations
+                </h3>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  Link Shopify store, webhooks, WhatsApp, or custom API endpoints.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSend("Automate customer lead capture and notifications")}
+                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold text-sm">
+                  ⚡
+                </div>
+                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+                  Automate Tasks
+                </h3>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  Set up automated follow-ups, lead extraction, and channel messaging.
+                </p>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="mx-auto mt-auto w-full max-w-3xl space-y-6">

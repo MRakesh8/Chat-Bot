@@ -15,22 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiBaseUrl, apiUrl } from "@/lib/api-url";
 import { useAuth } from "@/contexts/AuthContext";
 
-function useAuthFetch() {
-  const { session } = useAuth();
-  return async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    if (!(options.body instanceof FormData)) {
-      headers["Content-Type"] = "application/json";
-    }
-    return fetch(url, {
-      ...options,
-      headers: { ...headers, ...(options.headers as any) },
-    });
-  };
-}
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
 
 type Service = {
   id: string;

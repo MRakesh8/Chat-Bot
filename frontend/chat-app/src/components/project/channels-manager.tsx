@@ -10,21 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { MessageSquare, Smartphone, Trash2, Plus, Copy } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 
-function useAuthFetch() {
-  const { session } = useAuth();
-  return async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    return fetch(url, {
-      ...options,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
-    });
-  };
-}
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
+
 
 export function ChannelsManager({ projectId }: { projectId: string }) {
   const { toast } = useToast();

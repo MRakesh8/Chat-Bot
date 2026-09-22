@@ -61,21 +61,7 @@ type Project = {
   updatedAt: string;
 };
 
-function useAuthFetch() {
-  const { session } = useAuth();
-  return async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    return fetch(url, {
-      ...options,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers ?? {}),
-      },
-    });
-  };
-}
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
 
 import { getProjectsFilterState, saveProjectsFilterState } from "@/lib/workspace-continuity";
 

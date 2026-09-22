@@ -78,7 +78,7 @@ async function testGeminiKey(apiKey: string): Promise<{ success: boolean; messag
       apiKey, 
       ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
     });
-    await client.models.generateContent({ model: "gemini-2.0-flash", contents: "test" });
+    await client.models.generateContent({ model: "gemini-1.5-flash", contents: "test" });
     return { success: true, message: "API key verified successfully." };
   } catch (e: any) {
     const status = e?.status || e?.response?.status || e?.code;

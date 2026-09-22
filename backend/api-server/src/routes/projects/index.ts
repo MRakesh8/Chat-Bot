@@ -933,7 +933,7 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
     while (retries < 4 && !streamStarted) {
       try {
         const stream = await ai.models.generateContentStream(project.userId, {
-          model: "gemini-2.0-flash",
+          model: undefined,
           contents: chatMessages,
           config: { maxOutputTokens: 2048 },
           projectId: project.id,

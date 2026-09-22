@@ -20,22 +20,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
-function useAuthFetch() {
-  const { session } = useAuth();
-  return async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    if (!(options.body instanceof FormData)) {
-      headers["Content-Type"] = "application/json";
-    }
-    return fetch(url, {
-      ...options,
-      headers: { ...headers, ...(options.headers as any) },
-    });
-  };
-}
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
+
 
 async function parseApiError(res: Response, fallback: string) {
   try {

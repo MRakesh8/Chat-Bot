@@ -1,6 +1,6 @@
-# RAGHUB Chatbot Widget Integration Guide
+# NOVA Business AI Widget Integration Guide
 
-This guide explains how to properly integrate the RAGHUB Chatbot widget into any website, and how to troubleshoot common issues.
+This guide explains how to properly integrate the NOVA Business AI widget into any website, and how to troubleshoot common issues.
 
 ## Step-by-Step Integration Procedure
 
@@ -14,7 +14,7 @@ This guide explains how to properly integrate the RAGHUB Chatbot widget into any
    - Paste the copied `<script>` tag right before the closing `</body>` tag.
    - The script should look something like this:
      ```html
-     <!-- RAGHUB Chatbot Widget -->
+     <!-- NOVA Business AI Widget -->
      <script 
        src="https://chatbot-rakesh.vercel.app/widget.js?v=2"
        data-widget-token="YOUR_UNIQUE_WIDGET_TOKEN"

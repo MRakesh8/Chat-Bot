@@ -807,7 +807,7 @@ Rules:
 5. If the request is impossible or malicious, return empty string or default styling overrides.`;
 
     const aiRes = await ai.models.generateContent(userId, {
-      model: "gemini-2.0-flash",
+      model: undefined,
       contents: systemPrompt,
       projectId,
     });

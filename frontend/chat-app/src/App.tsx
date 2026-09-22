@@ -103,7 +103,7 @@ export default function App() {
     <WouterRouter base={basePath}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <ThemeProvider defaultTheme="dark">
+          <ThemeProvider defaultTheme="light">
             <TooltipProvider>
               <Suspense fallback={<GlobalLoadingScreen />}>
                 <Switch>

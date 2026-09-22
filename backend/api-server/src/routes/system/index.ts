@@ -15,11 +15,12 @@ router.get("/database", (req, res) => {
 // GET /api/system/me
 router.get("/me", (req, res) => {
   const dbUser = (req as any).auth?.dbUser;
+  const memberships = (req as any).auth?.memberships || [];
   if (!dbUser) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.json(dbUser);
+  res.json({ ...dbUser, memberships });
 });
 
 // GET /api/system/ai-status

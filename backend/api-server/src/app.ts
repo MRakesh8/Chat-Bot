@@ -13,6 +13,9 @@ import rateLimit from "express-rate-limit";
 // Initialize express
 const app: Express = express();
 
+// Trust Render reverse proxy to correctly identify client IPs for rate-limiting
+app.set("trust proxy", 1);
+
 // Speed optimization: Compress responses
 app.use(compression({
   filter: (req, res) => {

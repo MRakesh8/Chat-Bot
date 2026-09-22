@@ -397,7 +397,7 @@ router.post("/analyze", upload.single("file"), async (req, res) => {
     const prompt = `Based on the following extracted text from a knowledge source, suggest a concise title, 2-3 relevant tags, and detailed notes/data containing all critical details, definitions, step-by-step instructions, and key information (do not summarize briefly). Return strictly valid JSON with keys: "title" (string), "tags" (comma-separated string), "notes" (string). \n\nText: ${extractedText.substring(0, 30000)}`;
     
     const resAi = await ai.models.generateContent(userId, {
-      model: "gemini-2.0-flash",
+      model: undefined,
       contents: prompt
     });
 
