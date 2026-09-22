@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const STATUS_MESSAGES = [
-  "RAGHUB is thinking...",
+  "NOVA AI is thinking...",
   "Analyzing request...",
   "Searching knowledge...",
   "Understanding context...",

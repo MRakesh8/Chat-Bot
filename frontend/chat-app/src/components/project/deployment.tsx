@@ -50,7 +50,7 @@ export function Deployment({ projectId }: { projectId: string }) {
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin w-6 h-6" /></div>;
 
-  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://raghub.com";
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://chatbot-rakesh.vercel.app";
   const widgetUrl = `${currentOrigin}/widget.js`;
   const backendUrl = apiUrl("").replace(/\/+$/, ""); // Returns the current API base URL without trailing slash
   

@@ -134,7 +134,7 @@ export function BillingSection({ projectId: initialProjectId }: BillingSectionPr
         const options = {
           key: data.keyId,
           subscription_id: data.subscriptionId,
-          name: "RAGHUB",
+          name: "NOVA Business AI",
           description: data.description || "Pro Plan Subscription",
           handler: function () {
             toast({ title: "Payment Successful!", description: "Subscription activated successfully." });

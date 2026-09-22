@@ -4,9 +4,9 @@ import { useSEO } from "@/hooks/use-seo";
 
 export default function ChatPage() {
   useSEO({
-    title: "Chat - Rakesh AI Chatbot",
-    description: "Start a conversation with the Rakesh AI Chatbot, supporting OpenAI, Gemini AI, and multiple other AI providers.",
-    keywords: "AI chat, AI assistant, OpenAI chatbot, Gemini chatbot, conversational AI",
+    title: "Chat — NOVA Business AI",
+    description: "Start a conversation with NOVA AI, your intelligent business assistant supporting multiple AI providers.",
+    keywords: "AI chat, AI assistant, NOVA AI, business chatbot, conversational AI",
     canonicalPath: "/chat"
   });
 

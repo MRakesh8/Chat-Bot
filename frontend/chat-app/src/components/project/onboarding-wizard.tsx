@@ -92,7 +92,7 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
     },
     onSuccess: () => {
       setStep(2);
-      toast({ title: "Analysis started", description: "RAGHUB is crawling the website..." });
+      toast({ title: "Analysis started", description: "NOVA AI is crawling the website..." });
     },
     onError: (err: any) => {
       toast({ title: "Analysis Error", description: err.message, variant: "destructive" });
@@ -184,7 +184,7 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
           </div>
           <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-foreground to-foreground/70 tracking-tight mb-3">
             {step === 1 && "Connect your website"}
-            {step === 2 && "RAGHUB analyzes your website"}
+            {step === 2 && "NOVA AI analyzes your website"}
             {step === 3 && "Business Intelligence"}
             {step === 4 && "Install your AI Agent"}
           </h1>

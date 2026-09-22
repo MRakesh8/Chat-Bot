@@ -11,9 +11,9 @@ import { useSEO } from "@/hooks/use-seo";
 
 export default function Home() {
   useSEO({
-    title: "Rakesh AI Chatbot - Multi Provider AI Assistant",
-    description: "AI-powered chatbot supporting multiple AI providers, customer support, intelligent conversations, and business automation.",
-    keywords: "AI chatbot, customer support chatbot, Gemini AI, OpenAI chatbot, AI assistant, Rakesh chatbot",
+    title: "NOVA Business AI — From Conversations to Business Actions",
+    description: "AI-powered business assistant supporting multiple AI providers, customer support, intelligent conversations, and business automation.",
+    keywords: "AI chatbot, customer support chatbot, NOVA AI, business AI, AI assistant, business automation",
     canonicalPath: ""
   });
 
