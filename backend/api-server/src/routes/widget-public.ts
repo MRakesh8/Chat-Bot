@@ -910,6 +910,31 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
   }
 });
 
+router.post("/:widgetToken/feedback", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const projectId = (req as any).projectId;
+    const { type, text } = req.body;
+    
+    if (!type) {
+      return res.status(400).json({ error: "Missing feedback type" });
+    }
+
+    const category = type === "LIKE" ? "AI_RESPONSE_LIKE" : "AI_RESPONSE_DISLIKE";
+    
+    await submitProjectFeedback({
+      projectId,
+      category,
+      comment: text ? text.substring(0, 1000) : "No response text",
+      channel: "WEBSITE",
+    });
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    req.log.error("Failed to submit widget AI feedback:", err);
+    return res.status(500).json({ error: "Failed to submit feedback" });
+  }
+});
+
 export default router;
 
 

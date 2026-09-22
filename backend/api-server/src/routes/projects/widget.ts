@@ -1,4 +1,4 @@
-﻿import { Router, Request, Response } from "express";
+import { Router, Request, Response } from "express";
 import { db, crypto as dbCrypto } from "@workspace/db";
 import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings, chatSessions, messages, frequentQuestions, knowledgeGaps } from "@workspace/db/schema";
 import { eq, and, sql, ne, desc, gte, lte } from "drizzle-orm";
@@ -560,6 +560,13 @@ router.get("/analytics", async (req: any, res: Response) => {
       });
     }
 
+    // Fetch AI response feedback
+    const feedbackList = await db.query.projectFeedback.findMany({
+      where: (pf, { eq, and, like }) => and(eq(pf.projectId, projectId), like(pf.category, "AI_RESPONSE_%")),
+      orderBy: (pf, { desc }) => [desc(pf.createdAt)],
+      limit: 50
+    });
+
     recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     res.json({
@@ -588,6 +595,7 @@ router.get("/analytics", async (req: any, res: Response) => {
       unansweredQuestions,
       recentActivity: recentActivity.slice(0, 15),
       leads: leadsList,
+      feedback: feedbackList,
     });
   } catch (error) {
     req.log.error(error, "Analytics fetch error");

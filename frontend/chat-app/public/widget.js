@@ -381,6 +381,27 @@
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
       @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
 
+      .feedback-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        border-top: 1px solid var(--border);
+        padding-top: 8px;
+      }
+      .fb-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        opacity: 0.7;
+        font-size: 14px;
+        padding: 4px;
+        transition: opacity 0.2s, transform 0.2s;
+      }
+      .fb-btn:hover:not(:disabled) {
+        opacity: 1;
+        transform: scale(1.1);
+      }
+
       ${config.customCss || ''}
     `;
   }
@@ -922,6 +943,61 @@
           } else {
             chatHistory.push({ role: 'assistant', content: botResponse });
             saveHistory(chatHistory);
+            
+            // Append feedback buttons
+            const fbDiv = document.createElement('div');
+            fbDiv.className = 'feedback-actions';
+            fbDiv.style.flexDirection = 'column';
+            fbDiv.innerHTML = `
+              <div style="display: flex; gap: 8px;">
+                <button class="fb-btn like-btn" title="Helpful" aria-label="Like response">👍</button>
+                <button class="fb-btn dislike-btn" title="Not helpful" aria-label="Dislike response">👎</button>
+              </div>
+              <div class="feedback-input-area" style="display: none; margin-top: 8px;">
+                <input type="text" class="feedback-input" placeholder="Optional suggestion or feedback..." style="width: 100%; font-size: 12px; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-dark); color: var(--text-main); margin-bottom: 4px; outline: none;">
+                <button class="feedback-submit" style="font-size: 11px; padding: 4px 8px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">Send</button>
+              </div>
+            `;
+            botMsgDiv.appendChild(fbDiv);
+            
+            const likeBtn = fbDiv.querySelector('.like-btn');
+            const dislikeBtn = fbDiv.querySelector('.dislike-btn');
+            const inputArea = fbDiv.querySelector('.feedback-input-area');
+            const fbInput = fbDiv.querySelector('.feedback-input');
+            const fbSubmit = fbDiv.querySelector('.feedback-submit');
+            
+            let selectedType = null;
+
+            const handleFbClick = (type) => {
+              selectedType = type;
+              likeBtn.style.opacity = type === 'LIKE' ? '1' : '0.5';
+              dislikeBtn.style.opacity = type === 'DISLIKE' ? '1' : '0.5';
+              inputArea.style.display = 'block';
+              scrollToBottom();
+            };
+
+            likeBtn.addEventListener('click', () => handleFbClick('LIKE'));
+            dislikeBtn.addEventListener('click', () => handleFbClick('DISLIKE'));
+
+            fbSubmit.addEventListener('click', () => {
+              const text = fbInput.value.trim();
+              fbSubmit.disabled = true;
+              fbSubmit.textContent = 'Sent!';
+              likeBtn.disabled = true;
+              dislikeBtn.disabled = true;
+              fbInput.disabled = true;
+              
+              const commentStr = text ? \`User Note: \${text} | AI Context: \${botResponse.substring(0, 200)}...\` : \`AI Context: \${botResponse.substring(0, 200)}...\`;
+
+              fetch(apiBaseUrl + '/api/widget/' + widgetToken + '/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: selectedType,
+                  text: commentStr
+                })
+              }).catch(e => console.error(e));
+            });
           }
         } catch (err) {
           typingIndicator.classList.remove('visible');

@@ -490,7 +490,7 @@ export function Analytics({ projectId }: { projectId: string }) {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full bg-muted p-1 rounded-xl mb-6">
+            <TabsList className="grid grid-cols-2 md:grid-cols-6 w-full bg-muted p-1 rounded-xl mb-6">
               <TabsTrigger value="overview" className="gap-2 text-xs">
                 <BarChart2 className="w-3.5 h-3.5" />
                 Overview & Charts
@@ -506,6 +506,10 @@ export function Analytics({ projectId }: { projectId: string }) {
               <TabsTrigger value="leads" className="gap-2 text-xs">
                 <UserCheck className="w-3.5 h-3.5" />
                 Leads ({summary.capturedLeads})
+              </TabsTrigger>
+              <TabsTrigger value="feedback" className="gap-2 text-xs">
+                <MessageSquare className="w-3.5 h-3.5" />
+                Feedback
               </TabsTrigger>
               <TabsTrigger value="live-feed" className="gap-2 text-xs">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -1142,7 +1146,51 @@ export function Analytics({ projectId }: { projectId: string }) {
               )}
             </TabsContent>
 
-            {/* TAB 5: LIVE STREAM */}
+            {/* TAB 5: FEEDBACK */}
+            <TabsContent value="feedback" className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">AI Response Feedback</h3>
+                  <p className="text-xs text-muted-foreground">Monitor visitor satisfaction (likes and dislikes) regarding AI answers.</p>
+                </div>
+                <Badge variant="outline" className="text-xs">{(analyticsData?.feedback || []).length} Recorded</Badge>
+              </div>
+
+              {(analyticsData?.feedback || []).length > 0 ? (
+                <div className="space-y-3">
+                  {analyticsData.feedback.map((fb: any) => (
+                    <Card key={fb.id} className="bg-card border-border p-4 hover:border-primary/40 transition-all">
+                      <div className="flex items-start justify-between gap-3 text-xs">
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2">
+                            {fb.category === "AI_RESPONSE_LIKE" ? (
+                              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1">👍 Helpful</Badge>
+                            ) : (
+                              <Badge variant="destructive" className="gap-1 bg-red-500/10 text-red-500 border-red-500/20">👎 Not Helpful</Badge>
+                            )}
+                            <span className="text-[10px] text-muted-foreground">{new Date(fb.createdAt).toLocaleString()}</span>
+                          </div>
+                          <div className="p-3 bg-muted/40 rounded-md border border-border text-foreground font-medium">
+                            <span className="text-muted-foreground text-[10px] uppercase block mb-1">AI Response Context</span>
+                            {fb.comment}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-12 text-center bg-card border border-border rounded-xl">
+                  <MessageSquare className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
+                  <p className="text-sm font-medium">No feedback recorded yet.</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When visitors click 👍 or 👎 on AI responses in your widget, their feedback will appear here.
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* TAB 6: LIVE STREAM */}
             <TabsContent value="live-feed" className="space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <div className="flex items-center gap-2">
