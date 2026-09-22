@@ -1,4 +1,4 @@
-﻿import { UniversalRouterService } from '../../api-server/src/services/ai-router';
+const { UniversalRouterService } = require('../../api-server/src/services/ai-router');
 class GeminiFailoverModels {
   async generateContent(userId: string | null, options: any): Promise<any> {
     const chatMessages = this.mapOptionsToMessages(options);

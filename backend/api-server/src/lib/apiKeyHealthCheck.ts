@@ -7,9 +7,13 @@ import { logger } from "./logger";
 // Test a Gemini API key by making a cheap lightweight prompt request
 async function testApiKey(apiKey: string): Promise<{ success: boolean; isRateLimit: boolean; message: string }> {
   try {
+    const httpOptions: any = {};
+    if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+      httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
+    }
     const client = new GoogleGenAI({
       apiKey,
-      httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" }
+      ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
     });
     
     // Use a very short content generation to minimize token usage

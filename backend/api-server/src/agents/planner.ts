@@ -32,13 +32,13 @@ export class PlannerAgent extends BaseAgent {
       }
       
       const activeKey = crypto.decrypt(keyData.encryptedKey) || keyData.encryptedKey;
-      const httpOptions: any = { apiVersion: '' };
+      const httpOptions: any = {};
       if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
-         httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+         httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
       }
       const directClient = new GoogleGenAI({
         apiKey: activeKey,
-        httpOptions
+        ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
       });
 
       const systemPrompt = `You are RAGHUB's Planner Agent, an autonomous Website Agent.

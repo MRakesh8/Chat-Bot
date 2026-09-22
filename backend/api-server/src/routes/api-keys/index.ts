@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { db, userApiKeys, crypto, userApiSettings } from "@workspace/db";
 import { eq, and, ne } from "drizzle-orm";
 import { z } from "zod";
@@ -70,7 +70,14 @@ router.put("/settings", async (req, res): Promise<any> => {
 // Test API Key logic
 async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
   try {
-    const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "" } });
+    const httpOptions: any = {};
+    if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+      httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
+    }
+    const client = new GoogleGenAI({ 
+      apiKey, 
+      ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
+    });
     await client.models.generateContent({ model: "gemini-2.0-flash", contents: "test" });
     return { success: true, message: "API key verified successfully." };
   } catch (e: any) {

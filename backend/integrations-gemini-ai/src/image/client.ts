@@ -14,10 +14,11 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
 
 export const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
+  ...(process.env.AI_INTEGRATIONS_GEMINI_BASE_URL ? {
+    httpOptions: {
+      baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '')
+    }
+  } : {})
 });
 
 export async function generateImage(

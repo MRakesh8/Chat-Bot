@@ -19,6 +19,7 @@ import { ContextSettings } from "../components/project/context-settings";
 import { OnboardingWizard } from "../components/project/onboarding-wizard";
 import { IntegrationsList } from "../components/project/integrations/IntegrationsList";
 import { BillingSection } from "../components/project/billing-section";
+import { Notifications } from "../components/project/notifications";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSavedProjectTab, saveProjectTab } from "@/lib/workspace-continuity";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -440,6 +441,9 @@ export default function ProjectEditPage() {
             <TabsTrigger value="analytics" className="flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <LayoutDashboard className="w-4 h-4 mr-2" /> Analytics
             </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+              <AlertTriangle className="w-4 h-4 mr-2" /> Notifications
+            </TabsTrigger>
             <TabsTrigger value="integrations" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Sparkles className="w-4 h-4 mr-2" /> Integrations
             </TabsTrigger>
@@ -648,6 +652,14 @@ export default function ProjectEditPage() {
             {projectId && (
               <div className="mt-8">
                 <Analytics projectId={projectId} />
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            {projectId && (
+              <div className="mt-8">
+                <Notifications projectId={projectId} />
               </div>
             )}
           </TabsContent>

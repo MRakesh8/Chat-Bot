@@ -128,11 +128,19 @@ export class UniversalProviderAdapter {
     }
   }
 
+  private getHttpOptions(baseUrl?: string): any {
+    const rawUrl = baseUrl || process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+    if (rawUrl) {
+      const cleanUrl = rawUrl.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
+      if (cleanUrl) return { baseUrl: cleanUrl };
+    }
+    return undefined;
+  }
+
   private async handleGemini(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-    const httpOptions: any = { apiVersion: '' };
-    if (this.config.baseUrl) httpOptions.baseUrl = this.config.baseUrl;
+    const httpOptions = this.getHttpOptions(this.config.baseUrl);
     
-    const client = new GoogleGenAI({ apiKey: this.config.apiKey, httpOptions });
+    const client = new GoogleGenAI({ apiKey: this.config.apiKey, ...(httpOptions ? { httpOptions } : {}) });
     let actualModel = this.config.model;
     if (actualModel === "gemini-1.5-flash") actualModel = "gemini-2.0-flash";
 
@@ -168,10 +176,9 @@ export class UniversalProviderAdapter {
   }
 
   private async *handleGeminiStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
-    const httpOptions: any = { apiVersion: '' };
-    if (this.config.baseUrl) httpOptions.baseUrl = this.config.baseUrl;
+    const httpOptions = this.getHttpOptions(this.config.baseUrl);
     
-    const client = new GoogleGenAI({ apiKey: this.config.apiKey, httpOptions });
+    const client = new GoogleGenAI({ apiKey: this.config.apiKey, ...(httpOptions ? { httpOptions } : {}) });
     let actualModel = this.config.model;
     if (actualModel === "gemini-1.5-flash") actualModel = "gemini-2.0-flash";
 

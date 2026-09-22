@@ -947,8 +947,9 @@ router.post("/projects/:projectId/messages/:messageId/feedback", async (req, res
     if (!sessionId || !type) return res.status(400).json({ error: "Missing required fields" });
     if (type !== "LIKE" && type !== "DISLIKE") return res.status(400).json({ error: "Invalid type" });
     
-    const [session] = await db.select({ customerId: chatSessions.customerId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+    const [session] = await db.select({ customerId: chatSessions.customerId, projectId: chatSessions.projectId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
     if (!session) return res.status(404).json({ error: "Session not found" });
+    if (session.projectId !== projectId) return res.status(403).json({ error: "Session does not belong to project" });
     
     await submitMessageFeedback({ projectId, sessionId, messageId, customerId: session.customerId || undefined, type, comment, channel });
     return res.json({ success: true });
@@ -967,7 +968,8 @@ router.post("/projects/:projectId/feedback", async (req, res): Promise<any> => {
     
     let customerId = undefined;
     if (sessionId) {
-      const [session] = await db.select({ customerId: chatSessions.customerId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+      const [session] = await db.select({ customerId: chatSessions.customerId, projectId: chatSessions.projectId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
+      if (session && session.projectId !== projectId) return res.status(403).json({ error: "Session does not belong to project" });
       if (session && session.customerId) customerId = session.customerId;
     }
     
