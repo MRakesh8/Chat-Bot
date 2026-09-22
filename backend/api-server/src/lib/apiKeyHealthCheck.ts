@@ -4,9 +4,14 @@ import { eq, and, ne, lt } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
 import { logger } from "./logger";
 
-// Test a Gemini API key by making a cheap lightweight prompt request
-async function testApiKey(apiKey: string): Promise<{ success: boolean; isRateLimit: boolean; message: string }> {
+import { ProviderVerifier } from "../services/provider-verifier";
+
+// Test a Gemini API key by discovering models dynamically and executing a lightweight prompt request
+async function testApiKey(apiKey: string): Promise<{ success: boolean; isRateLimit: boolean; isInvalid: boolean; message: string }> {
   try {
+    const verified = await ProviderVerifier.verifyAndFetchModels(apiKey, "gemini");
+    const candidateModels = verified.models.length > 0 ? verified.models : [verified.defaultModel];
+    
     const httpOptions: any = {};
     if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
       httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
@@ -16,21 +21,43 @@ async function testApiKey(apiKey: string): Promise<{ success: boolean; isRateLim
       ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
     });
     
-    // Use a very short content generation to minimize token usage
-    await client.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: "ping"
-    });
+    let lastErr: any = null;
+    for (const targetModel of candidateModels) {
+      try {
+        await client.models.generateContent({
+          model: targetModel,
+          contents: "ping"
+        });
+        return { success: true, isRateLimit: false, isInvalid: false, message: "API key verified successfully." };
+      } catch (e: any) {
+        lastErr = e;
+        const status = e?.status || e?.response?.status || e?.code;
+        const errMessage = e?.message || String(e);
+        const isRateLimit = status === 429 || errMessage.includes("429") || errMessage.toLowerCase().includes("quota") || errMessage.toLowerCase().includes("rate limit");
+        const isAuthError = status === 401 || status === 403 || errMessage.toLowerCase().includes("permission denied") || errMessage.toLowerCase().includes("invalid key") || errMessage.toLowerCase().includes("invalid_credential");
+        
+        if (isRateLimit) {
+          return { success: false, isRateLimit: true, isInvalid: false, message: errMessage };
+        }
+        if (isAuthError) {
+          return { success: false, isRateLimit: false, isInvalid: true, message: errMessage };
+        }
+        // If 404 / MODEL_NOT_FOUND, loop to try next model in candidateModels
+      }
+    }
     
-    return { success: true, isRateLimit: false, message: "API key verified successfully." };
+    const finalErrMessage = lastErr?.message || "No supported model available for API key.";
+    return { success: false, isRateLimit: false, isInvalid: false, message: finalErrMessage };
   } catch (e: any) {
     const status = e?.status || e?.response?.status || e?.code;
     const errMessage = e?.message || String(e);
     const isRateLimit = status === 429 || errMessage.includes("429") || errMessage.toLowerCase().includes("quota") || errMessage.toLowerCase().includes("rate limit");
+    const isInvalid = status === 401 || status === 403 || errMessage.toLowerCase().includes("invalid") || errMessage.toLowerCase().includes("permission denied");
     
     return {
       success: false,
       isRateLimit,
+      isInvalid,
       message: errMessage
     };
   }
@@ -111,8 +138,8 @@ export async function checkAllUnhealthyKeys() {
                 lastFailure: now
               }).where(eq(userApiKeys.id, key.id));
             }
-          } else if (statusStr.includes("403") || statusStr.includes("permission denied") || statusStr.includes("invalid")) {
-            logger.info(`[HealthCheck] User/System Key ${key.id} (${key.name}) is invalid (403). Disabling.`);
+          } else if (testRes.isInvalid) {
+            logger.info(`[HealthCheck] User/System Key ${key.id} (${key.name}) is invalid (401/403/bad key). Disabling.`);
             await db.update(userApiKeys).set({
               status: "INVALID",
               isEnabled: false,
@@ -169,8 +196,8 @@ export async function checkAllUnhealthyKeys() {
                 lastFailure: now
               }).where(eq(projectApiKeys.id, key.id));
             }
-          } else if (statusStr.includes("403") || statusStr.includes("permission denied") || statusStr.includes("invalid")) {
-            logger.info(`[HealthCheck] Project Key ${key.id} (${key.name}) is invalid (403). Disabling.`);
+          } else if (testRes.isInvalid) {
+            logger.info(`[HealthCheck] Project Key ${key.id} (${key.name}) is invalid (401/403/bad key). Disabling.`);
             await db.update(projectApiKeys).set({
               status: "INVALID",
               isEnabled: false,

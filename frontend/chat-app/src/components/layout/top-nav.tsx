@@ -1,8 +1,10 @@
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,19 +19,43 @@ import {
   Moon,
   Search,
   Sparkles,
-  ChevronDown,
   Building2,
+  User,
+  CreditCard,
+  Settings,
+  Shield,
+  LogOut,
+  CheckCircle2,
 } from "lucide-react";
+import { apiUrl } from "@/lib/api-url";
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
 
 export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
   const [location, setLocation] = useLocation();
   const { user, dbUser, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
+  const authFetch = useAuthFetch();
+
+  // Extract project ID if present in URL
+  const projectMatch = location.match(/\/projects\/([^\/]+)/);
+  const projectId = projectMatch && projectMatch[1] !== "new" ? projectMatch[1] : null;
+
+  const { data: project } = useQuery({
+    queryKey: ["top-nav-project", projectId],
+    queryFn: async () => {
+      if (!projectId) return null;
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}`));
+      if (!res.ok) return null;
+      return res.json() as Promise<{ id: string; name: string; isActive: boolean }>;
+    },
+    enabled: !!projectId,
+    staleTime: 1000 * 60 * 5,
+  });
 
   const getPageTitle = () => {
     if (location === "/" || location.startsWith("/chat")) return "Chat Workspace";
     if (location.startsWith("/projects/new")) return "New Project";
-    if (location.startsWith("/projects/") && location.endsWith("/edit")) return "Project Settings";
+    if (location.startsWith("/projects/") && location.endsWith("/edit")) return project?.name || "Project Settings";
     if (location.startsWith("/projects")) return "Projects";
     if (location.startsWith("/services")) return "Connected Services";
     if (location.startsWith("/billing")) return "Billing & Plan";
@@ -44,36 +70,46 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
   return (
     <header className="h-16 w-full border-b border-border/80 bg-background/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0">
       {/* Left: Page Title & Context */}
-      <div className="flex items-center gap-3 pl-10 md:pl-0">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 pl-10 md:pl-0 min-w-0">
+        <div className="flex items-center gap-2 shrink-0">
           <div className="h-7 w-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
             <Sparkles className="w-4 h-4" />
           </div>
-          <h1 className="text-base font-semibold text-foreground tracking-tight">
+          <h1 className="text-sm md:text-base font-semibold text-foreground tracking-tight truncate max-w-[160px] sm:max-w-[240px]">
             {getPageTitle()}
           </h1>
         </div>
 
-        <span className="hidden sm:inline-block text-border">/</span>
+        <span className="hidden sm:inline-block text-border/80">/</span>
 
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground text-xs font-medium border border-border">
-          <Building2 className="w-3.5 h-3.5 text-primary" />
-          <span>NOVA Business AI</span>
+        {/* Compact Workspace / Project context indicator */}
+        <div className="hidden sm:flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary/80 text-secondary-foreground text-xs font-medium border border-border/60 shadow-2xs">
+            <Building2 className="w-3.5 h-3.5 text-primary" />
+            <span className="truncate max-w-[140px]">{project ? project.name : "NOVA Business AI"}</span>
+          </div>
+
+          {project && (
+            <Badge variant="outline" className="hidden lg:flex items-center gap-1 bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-[11px] px-2 py-0.5 rounded-full font-medium">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Website analyzed</span>
+            </Badge>
+          )}
         </div>
       </div>
 
       {/* Right Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         {/* Quick Search */}
         <Button
           variant="outline"
           size="sm"
           onClick={onOpenSearch}
-          className="hidden md:flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 border-border hover:bg-secondary hover:text-foreground h-9 px-3 rounded-xl transition-all"
+          className="hidden md:flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 border-border/60 hover:bg-secondary hover:text-foreground h-9 px-3 rounded-xl transition-all"
         >
           <Search className="w-3.5 h-3.5" />
           <span>Search or command...</span>
-          <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border border-border bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+          <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border border-border/80 bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
             <span className="text-xs">⌘</span>K
           </kbd>
         </Button>
@@ -83,10 +119,10 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary"
+          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
         >
-          {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+          {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
         </Button>
 
         {/* Notifications */}
@@ -94,7 +130,7 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
           variant="ghost"
           size="icon"
           onClick={() => setLocation("/settings?tab=notifications")}
-          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary relative"
+          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary relative transition-colors"
           title="Notifications"
         >
           <Bell className="w-4 h-4" />
@@ -106,9 +142,9 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="flex items-center gap-2 pl-2 pr-1 h-9 rounded-xl hover:bg-secondary transition-all border border-transparent hover:border-border"
+              className="flex items-center gap-2 pl-1.5 pr-2 h-9 rounded-xl hover:bg-secondary transition-all border border-transparent hover:border-border/60"
             >
-              <Avatar className="h-7 w-7 border border-border">
+              <Avatar className="h-7 w-7 border border-border/80 shadow-2xs">
                 <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
                 <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                   {displayName[0]?.toUpperCase()}
@@ -119,31 +155,39 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
               </span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 rounded-2xl p-1.5 shadow-lg bg-popover border-border">
-            <DropdownMenuLabel className="font-normal px-2 py-1.5">
+          <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-2xl p-1.5 shadow-xl bg-popover border-border z-50">
+            <DropdownMenuLabel className="font-normal px-2.5 py-2">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setLocation("/profile")} className="cursor-pointer rounded-xl text-xs py-2">
-              Profile & Account
+            <DropdownMenuSeparator className="my-1 bg-border/60" />
+            <DropdownMenuItem onClick={() => setLocation("/profile")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent flex items-center gap-2.5">
+              <User className="w-4 h-4 text-primary" />
+              <span>Profile & Account</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLocation("/billing")} className="cursor-pointer rounded-xl text-xs py-2">
-              Billing & Subscription
+            <DropdownMenuItem onClick={() => setLocation("/billing")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent flex items-center gap-2.5">
+              <CreditCard className="w-4 h-4 text-emerald-500" />
+              <span>Billing & Subscription</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLocation("/settings")} className="cursor-pointer rounded-xl text-xs py-2">
-              Workspace Settings
+            <DropdownMenuItem onClick={() => setLocation("/settings")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent flex items-center gap-2.5">
+              <Settings className="w-4 h-4 text-slate-400" />
+              <span>Workspace Settings</span>
             </DropdownMenuItem>
             {dbUser?.role === "super_admin" && (
-              <DropdownMenuItem onClick={() => setLocation("/admin/clarity")} className="cursor-pointer rounded-xl text-xs py-2 text-primary font-medium">
-                Super Admin Console
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuSeparator className="my-1 bg-border/60" />
+                <DropdownMenuItem onClick={() => setLocation("/admin/clarity")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent text-amber-500 font-medium flex items-center gap-2.5">
+                  <Shield className="w-4 h-4 text-amber-500" />
+                  <span>Super Admin Console</span>
+                </DropdownMenuItem>
+              </>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer rounded-xl text-xs py-2 text-destructive focus:bg-destructive/10 focus:text-destructive">
-              Sign Out
+            <DropdownMenuSeparator className="my-1 bg-border/60" />
+            <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer rounded-xl text-xs py-2 text-rose-500 hover:bg-rose-500/10 focus:bg-rose-500/10 focus:text-rose-600 flex items-center gap-2.5">
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -151,3 +195,4 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
     </header>
   );
 }
+

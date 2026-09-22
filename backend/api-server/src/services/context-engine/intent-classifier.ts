@@ -4,9 +4,9 @@
  * to optimize prompt construction and reduce token bloat.
  */
 import type { UserIntent } from "./types";
-import { GoogleGenAI } from "@google/genai";
 import nodeCrypto from "crypto";
 import { llmResponseCache } from "../cache-provider";
+import { ai } from "@workspace/integrations-gemini-ai";
 
 export class IntentClassifier {
   /**
@@ -15,7 +15,8 @@ export class IntentClassifier {
    */
   async classify(params: {
     userMessage: string;
-    apiKey: string;
+    apiKey?: string;
+    userId?: string;
   }): Promise<UserIntent> {
     try {
       const validIntents: UserIntent[] = [
@@ -32,8 +33,6 @@ export class IntentClassifier {
       if (cachedIntent && validIntents.includes(cachedIntent as UserIntent)) {
         return cachedIntent as UserIntent;
       }
-
-      const client = new GoogleGenAI({ apiKey: params.apiKey });
 
       const prompt = `Classify the following user message into exactly ONE of these intents. 
 Respond with ONLY the exact intent name, nothing else.
@@ -54,9 +53,8 @@ User Message: "${params.userMessage}"
 
 Intent:`;
 
-      const response = await client.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: prompt,
+      const response = await ai.models.generateContent(params.userId || null, {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
         config: {
           temperature: 0.1,
           maxOutputTokens: 10,

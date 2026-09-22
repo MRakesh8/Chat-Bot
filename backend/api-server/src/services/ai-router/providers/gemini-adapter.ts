@@ -134,8 +134,8 @@ export class GeminiAdapter extends BaseProviderAdapter {
     if (status === 429 || msg.includes("quota") || msg.includes("rate limit")) {
       return "RATE_LIMITED";
     }
-    if (status === 404) {
-      if (msg.includes("models/") || msg.includes("not found") || msg.includes("model")) {
+    if (status === 404 || msg.includes("not found") || msg.includes("is not found") || msg.includes("unsupported for generatecontent")) {
+      if (msg.includes("models/") || msg.includes("not found") || msg.includes("model") || status === 404) {
         return "MODEL_NOT_FOUND";
       }
       return "INVALID_REQUEST";

@@ -1,63 +1,93 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { ApiKeysSettings } from "@/components/ApiKeysSettings";
 import { BillingSection } from "@/components/project/billing-section";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Palette, Globe, Mic, Lock } from "lucide-react";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
 
   return (
     <div className="flex w-full h-full bg-transparent overflow-x-hidden">
-      <div className="flex-1 p-6 pt-16 md:p-8 text-foreground max-w-full overflow-x-hidden">
-        <h1 className="text-4xl font-bold mb-10 text-transparent bg-clip-text bg-gradient-to-r from-white to-foreground/70 tracking-tight">Settings</h1>
-        
-        <div className="max-w-3xl space-y-10">
-          <section className="space-y-6">
-            <h2 className="text-2xl font-semibold border-b border-foreground/10 pb-3 text-foreground/90">Appearance</h2>
-            <div className="p-5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex-1 p-6 md:p-8 text-foreground max-w-4xl mx-auto space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage workspace appearance, language preferences, billing, and API keys.</p>
+        </div>
+
+        <div className="space-y-8">
+          {/* Appearance */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-border/60 pb-3">
+              <Palette className="w-5 h-5 text-primary" />
+              <h2 className="text-xl font-semibold text-foreground">Appearance</h2>
+            </div>
+            <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <h3 className="font-medium text-lg">Theme</h3>
-                <p className="text-sm text-muted-foreground mt-1">Customize the look and feel of NOVA AI.</p>
+                <h3 className="font-medium text-base text-foreground">Theme Mode</h3>
+                <p className="text-xs text-muted-foreground mt-1">Customize the visual theme of NOVA AI across sessions.</p>
               </div>
               <select 
                 value={theme}
                 onChange={(e) => setTheme(e.target.value as any)}
-                className="w-full sm:w-auto bg-background border border-input rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                className="w-full sm:w-auto bg-secondary border border-border rounded-xl px-4 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 hover:bg-secondary/80 transition-colors cursor-pointer"
               >
-                <option value="system">System</option>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-                <option value="evergreen">Evergreen</option>
+                <option value="system">System Default</option>
+                <option value="dark">Dark Theme</option>
+                <option value="light">Light Theme</option>
+                <option value="evergreen">Evergreen Theme</option>
               </select>
             </div>
           </section>
 
-          <section className="space-y-6">
-            <h2 className="text-2xl font-semibold border-b border-border pb-3 text-foreground/90">Language & Voice</h2>
-            <div className="p-5 rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 opacity-50">
+          {/* Language & Voice */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-border/60 pb-3">
+              <Globe className="w-5 h-5 text-primary" />
+              <h2 className="text-xl font-semibold text-foreground">Language & Voice</h2>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <h3 className="font-medium text-lg">Language</h3>
-                <p className="text-sm text-muted-foreground mt-1">Select the primary language for interactions.</p>
+                <h3 className="font-medium text-base text-foreground">Default Language</h3>
+                <p className="text-xs text-muted-foreground mt-1">Select the primary interface and response language.</p>
               </div>
-              <select className="w-full sm:w-auto bg-background border border-input rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer">
-                <option>English</option>
-                <option>Tamil</option>
+              <select 
+                defaultValue="English"
+                className="w-full sm:w-auto bg-secondary border border-border rounded-xl px-4 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 hover:bg-secondary/80 transition-colors cursor-pointer"
+              >
+                <option value="English">English (US)</option>
+                <option value="Tamil">Tamil (IN)</option>
               </select>
             </div>
-            
-            <div className="p-5 rounded-2xl bg-foreground/[0.01] border border-foreground/[0.02] backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm opacity-50 pointer-events-none">
-              <div>
-                <h3 className="font-medium text-lg">Voice Mode</h3>
-                <p className="text-sm text-muted-foreground mt-1">Choose NOVA AI's spoken voice (Coming soon).</p>
+
+            {/* Coming Soon Voice Mode */}
+            <div className="p-5 rounded-2xl bg-muted/40 border border-border/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Mic className="w-4 h-4 text-muted-foreground" />
+                  <h3 className="font-medium text-base text-muted-foreground">Voice Mode</h3>
+                  <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary border-primary/20 gap-1 px-2 py-0.5 rounded-full font-semibold">
+                    <Lock className="w-3 h-3" /> Coming Soon
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground/80">Choose NOVA AI's spoken voice and speech synthesis parameters.</p>
               </div>
-              <button disabled className="w-full sm:w-auto px-6 py-2 bg-foreground/5 rounded-xl text-sm text-foreground font-medium border border-foreground/10">Select</button>
+              <Button disabled variant="outline" size="sm" className="w-full sm:w-auto opacity-50 cursor-not-allowed text-xs rounded-xl">
+                Unavailable
+              </Button>
             </div>
           </section>
 
+          {/* Billing & Subscriptions */}
           <BillingSection />
 
+          {/* API Keys */}
           <ApiKeysSettings />
         </div>
       </div>
     </div>
   );
 }
+

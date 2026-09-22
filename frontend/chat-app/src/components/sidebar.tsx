@@ -1,14 +1,14 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, BarChart3, Shield, CreditCard } from "lucide-react";
+import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, User } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
@@ -48,14 +48,14 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-300 ease-out cursor-pointer mx-2 mb-1",
+        "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-300 ease-out cursor-pointer mx-1 mb-1",
         isActive
-          ? "bg-gradient-to-r from-primary/20 to-primary/5 text-primary font-medium shadow-sm ring-1 ring-primary/30" 
+          ? "bg-primary/15 text-primary font-medium shadow-2xs ring-1 ring-primary/20" 
           : "text-sidebar-foreground/70 hover:bg-foreground/5 hover:text-sidebar-foreground"
       )}
       onClick={() => onLocationChange(conv.id)}
     >
-      <MessageSquare className="w-4 h-4 flex-shrink-0" />
+      <MessageSquare className="w-4 h-4 flex-shrink-0 text-muted-foreground group-hover:text-foreground" />
       {isEditing ? (
         <div className="flex-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
           <Input
@@ -68,11 +68,11 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
             }}
             className="h-6 px-1.5 py-0 bg-sidebar-accent border-border text-sidebar-foreground"
           />
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-green-500" onClick={() => onSaveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={onCancelEdit}><X className="w-3 h-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-emerald-500" onClick={() => onSaveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-rose-500" onClick={onCancelEdit}><X className="w-3 h-3" /></Button>
         </div>
       ) : (
-        <span className="flex-1 truncate select-none">{conv.title}</span>
+        <span className="flex-1 truncate select-none text-xs leading-relaxed">{conv.title}</span>
       )}
       
       {/* Always-visible favorite indicator */}
@@ -83,7 +83,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
           onClick={(e) => onToggleFavorite(conv.id, true, e)}
           title="Remove from favorites"
         >
-          <Heart className="w-3.5 h-3.5 fill-red-500 text-red-500" />
+          <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
         </Button>
       )}
 
@@ -101,7 +101,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
           >
             <Heart className={cn(
               "w-3.5 h-3.5 transition-colors",
-              conv.isFavorite ? "fill-red-500 text-red-500" : "text-muted-foreground hover:text-red-500",
+              conv.isFavorite ? "fill-rose-500 text-rose-500" : "text-muted-foreground hover:text-rose-500",
               pendingFavorite && "opacity-70",
             )} />
           </Button>
@@ -121,23 +121,6 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
               <DropdownMenuItem onClick={(e) => onStartEdit(conv.id, conv.title, e)} className="hover:bg-accent cursor-pointer">
                 <Edit2 className="w-4 h-4 mr-2" /> Rename
               </DropdownMenuItem>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="hover:bg-accent cursor-pointer">
-                  <FolderPlus className="w-4 h-4 mr-2" /> Move to Project
-                </DropdownMenuSubTrigger>
-                <DropdownMenuPortal>
-                  <DropdownMenuSubContent className="bg-popover border-border text-popover-foreground">
-                    <DropdownMenuItem onClick={(e) => onMoveToProject(conv.id, null, e)} className="hover:bg-accent cursor-pointer italic text-muted-foreground">
-                      None
-                    </DropdownMenuItem>
-                    {projectList?.filter(p => p.isActive).map(p => (
-                      <DropdownMenuItem key={p.id} onClick={(e) => onMoveToProject(conv.id, p.id, e)} className="hover:bg-accent cursor-pointer">
-                        {p.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuPortal>
-              </DropdownMenuSub>
               <DropdownMenuItem onClick={(e) => onDelete(conv.id, !!conv.isFavorite, e)} className="text-destructive focus:bg-destructive focus:text-destructive-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors group">
                 <Trash2 className="w-4 h-4 mr-2 group-hover:text-destructive group-focus:text-destructive-foreground" /> Delete
               </DropdownMenuItem>
@@ -214,7 +197,6 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       return;
     }
 
-    // Optimistically remove from cache
     queryClient.setQueryData(getListGeminiConversationsQueryKey(), (old: any) => {
       if (!Array.isArray(old)) return old;
       return old.filter((conv: any) => conv.id !== id);
@@ -223,14 +205,13 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     deleteConversation.mutate({ id }, {
       onSuccess: () => {
         toast({ title: "Conversation deleted successfully." });
-        // Handle redirect if currently active conversation was deleted
         if (location === `/chat/${id}`) {
           setLocation("/chat");
         }
       },
       onError: () => {
         toast({ title: "Unable to delete the conversation.", description: "Please try again.", variant: "destructive" });
-        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() }); // Restore if failed
+        queryClient.invalidateQueries({ queryKey: getListGeminiConversationsQueryKey() });
       }
     });
 
@@ -331,7 +312,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
 
   const handleBack = useCallback(() => {
     if (location.startsWith('/chat/')) {
-      setLocation('/');
+      setLocation('/chat');
     } else if (location.startsWith('/projects/') || location.startsWith('/admin/projects/')) {
       setLocation('/projects');
     } else {
@@ -344,15 +325,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     if (isRefreshing) return;
     setIsRefreshing(true);
     const startTime = Date.now();
-    console.log('SIDEBAR_REFRESH_START');
-    
     try {
       await queryClient.refetchQueries();
-      const duration = Date.now() - startTime;
-      console.log(`SIDEBAR_REFRESH_SUCCESS\nDuration: ${duration} ms`);
     } catch (err) {
-      const duration = Date.now() - startTime;
-      console.error(`SIDEBAR_REFRESH_FAILED\nDuration: ${duration} ms`, err);
       toast({ title: "Unable to refresh. Please try again.", variant: "destructive" });
     } finally {
       setIsRefreshing(false);
@@ -368,12 +343,12 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
   }), [typedConversations, search, showFavorites]);
 
   return (
-    <div className={cn("w-full md:w-64 bg-sidebar backdrop-blur-2xl border-r border-sidebar-border flex flex-col h-full shadow-[8px_0_32px_rgba(0,0,0,0.5)] z-20", className)}>
-      <div className="p-4 space-y-4 border-b border-foreground/[0.05]">
-        {/* Logo and window controls */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2.5 px-1">
-            <div className="bg-primary/10 p-1.5 rounded-xl border border-primary/20 shadow-xs flex items-center justify-center">
+    <div className={cn("w-full md:w-64 bg-sidebar backdrop-blur-2xl border-r border-sidebar-border/80 flex flex-col h-full shadow-[4px_0_24px_rgba(0,0,0,0.2)] z-20", className)}>
+      {/* Brand Header */}
+      <div className="p-4 border-b border-border/40">
+        <div className="flex items-center justify-between">
+          <Link href="/chat" onClick={() => onClose?.()} className="flex items-center gap-2.5 px-1 group cursor-pointer">
+            <div className="bg-primary/10 p-1.5 rounded-xl border border-primary/20 shadow-xs flex items-center justify-center transition-transform group-hover:scale-105">
                <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-5 h-5" />
             </div>
             <div className="flex flex-col">
@@ -382,7 +357,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               </span>
               <span className="text-[10px] text-muted-foreground leading-none font-medium">Business Agent</span>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-1">
             {onClose && (
               <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground md:hidden transition-colors">
@@ -396,14 +371,75 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             )}
           </div>
         </div>
+      </div>
 
-        {/* Primary Actions */}
+      {/* Primary Navigation Section */}
+      <div className="px-3 py-2 space-y-0.5 border-b border-border/40">
+        <Link
+          href="/chat"
+          onClick={() => onClose?.()}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            location === "/" || location.startsWith("/chat")
+              ? "bg-primary/15 text-primary shadow-2xs"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
+          )}
+        >
+          <MessageSquare className="w-4 h-4 text-primary" />
+          <span>Chat</span>
+        </Link>
+
+        <Link
+          href="/projects"
+          onClick={() => onClose?.()}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            location.startsWith("/projects")
+              ? "bg-primary/15 text-primary shadow-2xs"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
+          )}
+        >
+          <FolderKanban className="w-4 h-4 text-blue-400" />
+          <span>Projects</span>
+        </Link>
+
+        <Link
+          href="/services"
+          onClick={() => onClose?.()}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            location.startsWith("/services")
+              ? "bg-primary/15 text-primary shadow-2xs"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
+          )}
+        >
+          <Heart className="w-4 h-4 text-pink-400" />
+          <span>Connected Services</span>
+        </Link>
+
+        <Link
+          href="/settings"
+          onClick={() => onClose?.()}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            location.startsWith("/settings")
+              ? "bg-primary/15 text-primary shadow-2xs"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
+          )}
+        >
+          <Settings className="w-4 h-4 text-slate-400" />
+          <span>Settings</span>
+        </Link>
+      </div>
+
+      {/* New Chat & Actions */}
+      <div className="p-3 space-y-2 border-b border-border/40">
         <div className="flex gap-2">
           <Button 
             onClick={handleNewChat}
-            className="flex-1 justify-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 h-10 rounded-xl font-medium transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+            className="flex-1 justify-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-primary-foreground border-0 h-9 rounded-xl font-medium text-xs shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             New Chat
           </Button>
           <Button
@@ -411,51 +447,46 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             size="icon"
             disabled={isRefreshing}
             onClick={reloadSidebar}
-            className="w-10 h-10 rounded-xl bg-foreground/5 hover:bg-foreground/10 border-foreground/5 text-muted-foreground hover:text-foreground shrink-0 transition-all duration-300"
+            className="w-9 h-9 rounded-xl bg-foreground/5 hover:bg-foreground/10 border-border/40 text-muted-foreground hover:text-foreground shrink-0 transition-all duration-200"
             title="Refresh"
           >
-            {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+            {isRefreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
           </Button>
         </div>
 
         {/* Search and Secondary Actions */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleBack}
-            className="w-9 h-9 rounded-lg bg-transparent border-0 hover:bg-foreground/5 text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-            title="Back"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
+        <div className="flex items-center gap-1.5">
           <div className="relative flex-1 group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
             <Input 
-              placeholder="Search..." 
+              placeholder="Search chats..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-8 h-9 rounded-lg bg-foreground/5 border-transparent hover:bg-foreground/10 focus:bg-foreground/10 focus:border-primary/30 text-sm text-foreground placeholder:text-muted-foreground/70 transition-all duration-300 focus-visible:ring-0"
+              className="pl-8 pr-3 h-8 text-xs rounded-lg bg-foreground/5 border-transparent hover:bg-foreground/10 focus:bg-foreground/10 focus:border-primary/30 text-foreground placeholder:text-muted-foreground/70 transition-all duration-200 focus-visible:ring-0"
             />
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setShowFavorites(!showFavorites)}
-            className={cn("h-9 w-9 rounded-lg transition-all duration-300 border border-transparent", showFavorites ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}
+            className={cn("h-8 w-8 rounded-lg transition-all duration-200 border border-transparent", showFavorites ? "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20" : "bg-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}
             title="Toggle Favorites"
           >
-            <Heart className={cn("w-4 h-4", showFavorites && "fill-current")} />
+            <Heart className={cn("w-3.5 h-3.5", showFavorites && "fill-current")} />
           </Button>
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-1 pr-4">
+      {/* Recent Conversations List */}
+      <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Recent Conversations</span>
+      </div>
+      <ScrollArea className="flex-1 px-2 py-1">
+        <div className="space-y-0.5">
           {isLoading ? (
-            <div className="text-sm text-muted-foreground p-2">Loading...</div>
+            <div className="text-xs text-muted-foreground p-3 text-center">Loading chats...</div>
           ) : filteredConversations?.length === 0 ? (
-            <div className="text-sm text-muted-foreground p-2">No conversations</div>
+            <div className="text-xs text-muted-foreground p-3 text-center">No chats found</div>
           ) : (
             filteredConversations?.map((conv) => (
               <MemoizedConversationItem
@@ -500,65 +531,48 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="p-3 mt-auto flex-shrink-0 bg-gradient-to-t from-background/80 to-transparent">
+      {/* Compact Account Footer */}
+      <div className="p-3 mt-auto flex-shrink-0 border-t border-border/40 bg-sidebar/50">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start px-3 py-6 h-auto rounded-xl hover:bg-foreground/10 transition-all duration-300 group border border-transparent hover:border-foreground/5 shadow-sm hover:shadow-md">
-              <div className="flex items-center gap-3 w-full">
-                <Avatar className="h-9 w-9 ring-2 ring-foreground/10 shadow-lg transition-transform duration-300 group-hover:scale-105 group-hover:ring-primary/30">
+            <Button variant="ghost" className="w-full justify-start px-2 py-2 h-auto rounded-xl hover:bg-foreground/5 transition-all duration-200 group border border-transparent hover:border-border/40">
+              <div className="flex items-center gap-2.5 w-full min-w-0">
+                <Avatar className="h-8 w-8 ring-1 ring-border shadow-xs shrink-0">
                   <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
-                  <AvatarFallback className="bg-primary/20 text-primary">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
+                  <AvatarFallback className="bg-primary/20 text-primary text-xs">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 text-left truncate flex flex-col justify-center">
-                  <p className="text-sm font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
+                <div className="flex-1 text-left truncate flex flex-col justify-center min-w-0">
+                  <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">{user?.email?.split('@')[0] || user?.email}</p>
+                  <p className="text-[10px] text-muted-foreground truncate leading-tight">{user?.email}</p>
                 </div>
-                <div className="bg-foreground/5 rounded-full p-1 transition-opacity duration-300">
-                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                </div>
+                <MoreVertical className="w-4 h-4 text-muted-foreground shrink-0" />
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[240px] bg-popover backdrop-blur-xl border-border text-popover-foreground mb-2 rounded-xl shadow-2xl p-1">
+          <DropdownMenuContent align="end" sideOffset={8} className="w-48 bg-popover border-border text-popover-foreground mb-1 rounded-xl shadow-xl p-1 z-50">
+            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent rounded-lg py-1.5 transition-colors">
+              <Link href="/profile" className="flex items-center gap-2.5 text-xs w-full">
+                <User className="w-3.5 h-3.5 text-primary" />
+                Profile & Account
+              </Link>
+            </DropdownMenuItem>
+
             {dbUser?.role === "super_admin" && (
-              <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-                <Link href="/admin/clarity" className="flex items-center gap-3 w-full py-2">
-                  <Shield className="w-4 h-4 text-primary" />
+              <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent rounded-lg py-1.5 transition-colors">
+                <Link href="/admin/clarity" className="flex items-center gap-2.5 text-xs w-full">
+                  <Shield className="w-3.5 h-3.5 text-amber-500" />
                   Admin Console
                 </Link>
               </DropdownMenuItem>
             )}
 
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-              <Link href="/projects" className="flex items-center gap-3 w-full py-2">
-                <FolderKanban className="w-4 h-4 text-blue-400" />
-                Projects
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-              <Link href="/services" className="flex items-center gap-3 w-full py-2">
-                <Heart className="w-4 h-4 text-pink-400" />
-                Connected Services
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-              <Link href="/billing" className="flex items-center gap-3 w-full py-2">
-                <CreditCard className="w-4 h-4 text-emerald-400" />
-                Billing & Subscription
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-foreground/10 rounded-lg my-0.5 transition-colors">
-              <Link href="/settings" className="flex items-center gap-3 w-full py-2">
-                <Settings className="w-4 h-4 text-gray-400" />
-                Settings
-              </Link>
-            </DropdownMenuItem>
-            <div className="h-px bg-foreground/10 my-1 mx-2" />
+            <div className="h-px bg-border/60 my-1 mx-1" />
             <DropdownMenuItem 
               onClick={() => signOut()}
-              className="cursor-pointer text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5 transition-colors"
+              className="cursor-pointer text-rose-500 hover:bg-rose-500/10 hover:text-rose-600 focus:bg-rose-500/10 focus:text-rose-600 rounded-lg py-1.5 text-xs transition-colors"
             >
-              <LogOut className="w-4 h-4 mr-3" />
-              Log out
+              <LogOut className="w-3.5 h-3.5 mr-2" />
+              Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -566,3 +580,4 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
     </div>
   );
 }
+

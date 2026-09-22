@@ -11,8 +11,8 @@ async function run() {
     httpOptions: { baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || '' }
   });
   try {
-    const res = await directClient.models.generateContent({ model: 'gemini-1.5-flash', contents: 'test' });
-    console.log('1.5-flash OK', res.text);
+    const res = await directClient.models.generateContent({ model: 'gemini-2.5-flash', contents: 'test' });
+    console.log('2.5-flash OK', res.text);
   } catch (e) {
     console.error('1.5-flash failed', e);
   }

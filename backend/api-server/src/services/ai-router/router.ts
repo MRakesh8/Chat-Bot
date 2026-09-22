@@ -93,19 +93,21 @@ export class UniversalRouterService {
   }
 
   /**
-   * Matches a model against capabilities.
+   * Matches a model against capabilities, skipping excluded models (e.g., after 404 MODEL_NOT_FOUND).
    */
-  static async selectModel(resolved: ResolvedModel, req: RoutingRequirement): Promise<ResolvedModel> {
+  static async selectModel(resolved: ResolvedModel, req: RoutingRequirement, excludeModels?: Set<string>): Promise<ResolvedModel> {
     const catalog = await this.getCatalog(resolved);
     
-    // Check if preferred model is compatible
-    if (resolved.modelId && resolved.modelId !== "default") {
+    // Check if preferred model is compatible and not excluded
+    if (resolved.modelId && resolved.modelId !== "default" && (!excludeModels || !excludeModels.has(resolved.modelId))) {
        const model = catalog.find(m => m.modelId === resolved.modelId);
        if (model) return resolved;
     }
 
     // Capability based selection
     for (const model of catalog) {
+       if (excludeModels && excludeModels.has(model.modelId)) continue;
+
        let match = true;
        if (req.capabilities.textGeneration && !model.capabilities.textGeneration) match = false;
        if (req.capabilities.vision && !model.capabilities.vision) match = false;
@@ -113,18 +115,19 @@ export class UniversalRouterService {
        if (req.capabilities.streaming && !model.capabilities.streaming) match = false;
        
        if (match) {
-         resolved.modelId = model.modelId;
-         return resolved;
+         return {
+           ...resolved,
+           modelId: model.modelId
+         };
        }
     }
 
-    throw new Error(`CAPABILITY_MISMATCH: No model found in provider ${resolved.provider} satisfying requirements.`);
+    throw new Error(`CAPABILITY_MISMATCH: No compatible model found in provider ${resolved.provider} satisfying requirements.`);
   }
 
-  
   static async persistRepairedModel(initialResolved: ResolvedModel, finalResolved: ResolvedModel, originalModelId?: string) {
-      if (originalModelId === finalResolved.modelId) return;
-    // Removed direct comparison since they are the same reference
+    if (originalModelId === finalResolved.modelId) return;
+
     try {
       const { auditLogs } = await import("@workspace/db/schema");
 
@@ -132,28 +135,25 @@ export class UniversalRouterService {
         await db.update(projectApiKeys)
           .set({ model: finalResolved.modelId })
           .where(eq(projectApiKeys.id, initialResolved.credential.id));
-      } else if (initialResolved.credential.type === "user") {
-        // userApiKeys does not have a "model" column, but we log the change.
-      } else if (initialResolved.credential.type === "system") {
-        // System keys are global; avoid mutating blindly unless supported.
       }
 
       await db.insert(auditLogs).values({
-        userId: initialResolved.credential.type === "user" ? initialResolved.credential.id : null,
+        userId: null,
         action: "MODEL_AUTO_SUBSTITUTION",
         target: initialResolved.credential.id,
       } as any);
       
-      console.log(`[AI-ROUTER] Automatically substituted ${initialResolved.modelId} -> ${finalResolved.modelId} for ${initialResolved.credential.type} key ${initialResolved.credential.id}`);
+      console.log(`[AI-ROUTER] Automatically substituted model ${originalModelId || initialResolved.modelId} -> ${finalResolved.modelId} for ${initialResolved.credential.type} key ${initialResolved.credential.id}`);
     } catch (e) {
       console.error("[AI-ROUTER] Failed to persist repaired model", e);
     }
   }
 
   static async executeChat(req: RoutingRequirement, messages: any[], temperature?: number) {
+    const excludeModels = new Set<string>();
     const initialResolved = await this.resolveCredential(req);
-    (initialResolved as any)._originalModelId = initialResolved.modelId;
-      let resolved = await this.selectModel(initialResolved, req);
+    const originalModelId = initialResolved.modelId;
+    let resolved = await this.selectModel(initialResolved, req, excludeModels);
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
@@ -168,7 +168,7 @@ export class UniversalRouterService {
           model: resolved
         });
         
-        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, (initialResolved as any)._originalModelId);
+        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, originalModelId);
         const { updateKeyStats } = await import("../api-health");
         updateKeyStats({
           key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
@@ -195,13 +195,15 @@ export class UniversalRouterService {
         }).catch((e2: any) => console.error(e2));
 
         if (status === "MODEL_NOT_FOUND" && attempt === 1) {
-           // Invalidate cache and retry once
+           if (resolved.modelId) excludeModels.add(resolved.modelId);
            const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
            const redis = getRedisClient();
            if (redis && redis.status === "ready") {
              await redis.del(cacheKey);
            }
-           resolved = await this.selectModel(initialResolved, req);
+           const freshResolved = { ...initialResolved, modelId: "default" };
+           resolved = await this.selectModel(freshResolved, req, excludeModels);
+           wasRepaired = true;
            continue;
         }
 
@@ -212,10 +214,11 @@ export class UniversalRouterService {
   }
 
   static async *executeStream(req: RoutingRequirement, messages: any[], temperature?: number) {
+    const excludeModels = new Set<string>();
     let wasRepaired = false;
     const initialResolved = await this.resolveCredential(req);
-    (initialResolved as any)._originalModelId = initialResolved.modelId;
-      let resolved = await this.selectModel(initialResolved, req);
+    const originalModelId = initialResolved.modelId;
+    let resolved = await this.selectModel(initialResolved, req, excludeModels);
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
@@ -230,7 +233,7 @@ export class UniversalRouterService {
         });
         
         yield* stream;
-        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, (initialResolved as any)._originalModelId);
+        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, originalModelId);
 
         const { updateKeyStats } = await import("../api-health");
         updateKeyStats({
@@ -254,13 +257,14 @@ export class UniversalRouterService {
         }).catch((e2: any) => console.error(e2));
 
         if (status === "MODEL_NOT_FOUND" && attempt === 1) {
-           // Invalidate cache and retry once
+           if (resolved.modelId) excludeModels.add(resolved.modelId);
            const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
            const redis = getRedisClient();
            if (redis && redis.status === "ready") {
              await redis.del(cacheKey);
            }
-           resolved = await this.selectModel(initialResolved, req);
+           const freshResolved = { ...initialResolved, modelId: "default" };
+           resolved = await this.selectModel(freshResolved, req, excludeModels);
            wasRepaired = true;
            continue;
         }

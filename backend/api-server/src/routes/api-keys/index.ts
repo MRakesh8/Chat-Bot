@@ -70,6 +70,9 @@ router.put("/settings", async (req, res): Promise<any> => {
 // Test API Key logic
 async function testGeminiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
   try {
+    const verified = await ProviderVerifier.verifyAndFetchModels(apiKey, "gemini");
+    const candidateModels = verified.models.length > 0 ? verified.models : [verified.defaultModel];
+    
     const httpOptions: any = {};
     if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
       httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
@@ -78,13 +81,25 @@ async function testGeminiKey(apiKey: string): Promise<{ success: boolean; messag
       apiKey, 
       ...(Object.keys(httpOptions).length > 0 ? { httpOptions } : {})
     });
-    await client.models.generateContent({ model: "gemini-1.5-flash", contents: "test" });
-    return { success: true, message: "API key verified successfully." };
+    
+    let lastError: any = null;
+    for (const targetModel of candidateModels) {
+      try {
+        await client.models.generateContent({ model: targetModel, contents: "test" });
+        return { success: true, message: `API key verified successfully using model ${targetModel}.` };
+      } catch (e: any) {
+        lastError = e;
+        const status = e?.status || e?.response?.status || e?.code;
+        const isRateLimit = status === 429 || e?.message?.includes("429") || e?.message?.toLowerCase().includes("quota");
+        if (isRateLimit) return { success: true, message: "API key is valid (Quota Exceeded)" };
+      }
+    }
+    return { success: false, message: lastError?.message || "Invalid API key." };
   } catch (e: any) {
     const status = e?.status || e?.response?.status || e?.code;
     const isRateLimit = status === 429 || e?.message?.includes("429");
     if (isRateLimit) return { success: true, message: "API key is valid (Quota Exceeded)" };
-    return { success: false, message: "Invalid API key." };
+    return { success: false, message: e?.message || "Invalid API key." };
   }
 }
 
