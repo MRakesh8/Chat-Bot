@@ -8,7 +8,9 @@ export class GeminiAdapter extends BaseProviderAdapter {
   async discoverModels(apiKey: string, baseUrl?: string): Promise<NormalizedModel[]> {
     const response = await fetch(`${baseUrl || "https://generativelanguage.googleapis.com"}/v1beta/models?key=${apiKey}`);
     if (!response.ok) {
-      if (response.status === 403 || response.status === 401) throw new Error("Invalid Gemini API key.");
+      if (response.status === 403 || response.status === 401 || response.status === 400) {
+        throw new Error("INVALID_CREDENTIAL: The provided Gemini API key is invalid or malformed.");
+      }
       throw new Error(`Gemini API Error: ${response.status}`);
     }
     const data = await response.json() as any;
@@ -117,10 +119,13 @@ export class GeminiAdapter extends BaseProviderAdapter {
 
   classifyError(error: any): any {
     const status = error?.status || error?.response?.status;
+    const msg = error?.message?.toLowerCase() || "";
     if (status === 404) return "MODEL_NOT_FOUND";
     if (status === 429) return "RATE_LIMITED";
-    if (status === 401 || status === 403) return "INVALID_CREDENTIAL";
+    if (status === 401 || status === 403 || (status === 400 && msg.includes("api key"))) return "INVALID_CREDENTIAL";
+    if (status === 400) return "INVALID_REQUEST";
     if (status >= 500) return "PROVIDER_UNAVAILABLE";
+    if (msg.includes("invalid_credential")) return "INVALID_CREDENTIAL";
     return "UNKNOWN_ERROR";
   }
 }
