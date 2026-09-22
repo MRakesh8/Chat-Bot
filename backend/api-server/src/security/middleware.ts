@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { db, projects, users, organizationMembers, securityAuditLogs } from "@workspace/db";
+import { db, projects, users, organizationMembers, securityAuditLogs, withBypassRLS } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { sendSafeError, getRequestId } from "./errorResponse";
@@ -37,10 +37,12 @@ export async function adminRoleGuard(req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const [user] = await db
-      .select({ id: users.id, role: users.role })
-      .from(users)
-      .where(eq(users.id, auth.userId));
+    const [user] = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .select({ id: users.id, role: users.role })
+        .from(users)
+        .where(eq(users.id, auth.userId));
+    });
 
     if (!user || (user.role !== "super_admin" && user.role !== "admin")) {
       logger.warn(
@@ -95,11 +97,13 @@ export function projectOwnershipGuard(paramName = "projectId") {
         return;
       }
 
-      // Check direct project ownership
-      const [project] = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId));
+      // Check direct project ownership using withBypassRLS for pre-tenant-context lookup
+      const [project] = await withBypassRLS(async (tx: any) => {
+        return await tx
+          .select()
+          .from(projects)
+          .where(eq(projects.id, projectId));
+      });
 
       if (!project) {
         sendSafeError(res, 404, "PROJECT_NOT_FOUND", "Project not found.", req);
@@ -114,15 +118,17 @@ export function projectOwnershipGuard(paramName = "projectId") {
 
       // Check organization membership if project belongs to an organization
       if (project.organizationId) {
-        const [member] = await db
-          .select()
-          .from(organizationMembers)
-          .where(
-            and(
-              eq(organizationMembers.organizationId, project.organizationId),
-              eq(organizationMembers.userId, auth.userId)
-            )
-          );
+        const [member] = await withBypassRLS(async (tx: any) => {
+          return await tx
+            .select()
+            .from(organizationMembers)
+            .where(
+              and(
+                eq(organizationMembers.organizationId, project.organizationId),
+                eq(organizationMembers.userId, auth.userId)
+              )
+            );
+        });
 
         if (member) {
           (req as any).project = project;

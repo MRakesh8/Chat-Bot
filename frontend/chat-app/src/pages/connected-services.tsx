@@ -48,11 +48,14 @@ export default function ConnectedServicesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: services = [], isLoading } = useQuery<Service[]>({
+  const { data: services = [], isLoading, isError, error, refetch, isFetching } = useQuery<Service[]>({
     queryKey: ["connectedServices"],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/services"));
-      if (!res.ok) throw new Error("Failed to fetch services");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || errJson.error || `Server responded with status ${res.status}`);
+      }
       return res.json();
     },
     enabled: !!session,
@@ -160,6 +163,26 @@ export default function ConnectedServicesPage() {
 
         {isLoading ? (
           <div className="text-center py-20 text-muted-foreground">Loading services...</div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-red-500/20 rounded-xl bg-red-500/5">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+              <Globe className="w-8 h-8 text-red-400" />
+            </div>
+            <div>
+              <p className="text-foreground font-medium mb-1">Failed to load services</p>
+              <p className="text-muted-foreground text-sm max-w-sm">
+                {(error as Error)?.message || "Could not connect to the server."}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-2"
+            >
+              {isFetching ? "Retrying..." : "Retry"}
+            </Button>
+          </div>
         ) : services.length === 0 ? (
           <div className="text-center py-20 border border-dashed border-foreground/10 rounded-2xl bg-foreground/[0.02] backdrop-blur-xl">
             <Globe className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />

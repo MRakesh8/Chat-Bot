@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Request, Response, NextFunction } from "express";
-import { db, users, organizations, organizationMembers } from "@workspace/db";
+import { db, users, organizations, organizationMembers, withBypassRLS } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
@@ -30,27 +30,35 @@ export const supabaseAuthMiddleware = async (
   if (!authHeader?.startsWith("Bearer ")) {
     if (process.env.LOCAL_DEMO_MODE === "true") {
       try {
-        await db
-          .insert(users)
-          .values({ id: LOCAL_DEMO_USER_ID, email: "local-demo@example.com" })
-          .onConflictDoNothing();
+        await withBypassRLS(async (tx: any) => {
+          await tx
+            .insert(users)
+            .values({ id: LOCAL_DEMO_USER_ID, email: "local-demo@example.com" })
+            .onConflictDoNothing();
+        });
 
         // Ensure organization and membership for demo user
-        let memberships = await db.select()
-          .from(organizationMembers)
-          .where(eq(organizationMembers.userId, LOCAL_DEMO_USER_ID));
+        let memberships = await withBypassRLS(async (tx: any) => {
+          return await tx.select()
+            .from(organizationMembers)
+            .where(eq(organizationMembers.userId, LOCAL_DEMO_USER_ID));
+        });
 
         if (memberships.length === 0) {
-          const [newOrg] = await db.insert(organizations).values({
-            name: "Demo Workspace",
-            planId: "00000000-0000-0000-0000-000000000001",
-            subscriptionStatus: "active"
-          }).returning();
+          const [newOrg] = await withBypassRLS(async (tx: any) => {
+            return await tx.insert(organizations).values({
+              name: "Demo Workspace",
+              planId: "00000000-0000-0000-0000-000000000001",
+              subscriptionStatus: "active"
+            }).returning();
+          });
 
-          await db.insert(organizationMembers).values({
-            organizationId: newOrg.id,
-            userId: LOCAL_DEMO_USER_ID,
-            role: "owner"
+          await withBypassRLS(async (tx: any) => {
+            await tx.insert(organizationMembers).values({
+              organizationId: newOrg.id,
+              userId: LOCAL_DEMO_USER_ID,
+              role: "owner"
+            });
           });
 
           memberships.push({
@@ -62,7 +70,7 @@ export const supabaseAuthMiddleware = async (
 
         (req as any).auth = { 
           userId: LOCAL_DEMO_USER_ID,
-          memberships: memberships.map(m => ({
+          memberships: memberships.map((m: any) => ({
             organizationId: m.organizationId,
             role: m.role
           }))
@@ -91,16 +99,20 @@ export const supabaseAuthMiddleware = async (
   try {
     const email = data.user.email || "no-email@example.com";
 
-    // 1. Look up existing user by email (since email is unique)
-    const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    // 1. Look up existing user by email (using withBypassRLS for auth context initialization)
+    const existingUser = await withBypassRLS(async (tx: any) => {
+      return await tx.select().from(users).where(eq(users.email, email)).limit(1);
+    });
 
     if (existingUser.length === 0) {
       // User doesn't exist locally, insert them
-      const inserted = await db.insert(users).values({
-        id: data.user.id, // Use Supabase ID
-        email,
-        role: "user",
-      }).returning();
+      const inserted = await withBypassRLS(async (tx: any) => {
+        return await tx.insert(users).values({
+          id: data.user.id, // Use Supabase ID
+          email,
+          role: "user",
+        }).returning();
+      });
       dbUser = inserted[0];
     } else {
       dbUser = existingUser[0];
@@ -109,22 +121,28 @@ export const supabaseAuthMiddleware = async (
     // 2. Set mappedUserId to this user's DB ID
     let mappedUserId = dbUser.id;
 
-    // 4. Fetch/sync memberships for user
-    let memberships = await db.select()
-      .from(organizationMembers)
-      .where(eq(organizationMembers.userId, mappedUserId));
+    // 3. Fetch memberships for user (using withBypassRLS to bypass zero-row RLS filter during auth resolution)
+    let memberships = await withBypassRLS(async (tx: any) => {
+      return await tx.select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, mappedUserId));
+    });
 
     if (memberships.length === 0) {
-      const [newOrg] = await db.insert(organizations).values({
-        name: `${email.split("@")[0]}'s Workspace`,
-        planId: "00000000-0000-0000-0000-000000000001",
-        subscriptionStatus: "active"
-      }).returning();
+      const [newOrg] = await withBypassRLS(async (tx: any) => {
+        return await tx.insert(organizations).values({
+          name: `${email.split("@")[0]}'s Workspace`,
+          planId: "00000000-0000-0000-0000-000000000001",
+          subscriptionStatus: "active"
+        }).returning();
+      });
 
-      await db.insert(organizationMembers).values({
-        organizationId: newOrg.id,
-        userId: mappedUserId,
-        role: "owner"
+      await withBypassRLS(async (tx: any) => {
+        await tx.insert(organizationMembers).values({
+          organizationId: newOrg.id,
+          userId: mappedUserId,
+          role: "owner"
+        });
       });
 
       memberships.push({
@@ -138,7 +156,7 @@ export const supabaseAuthMiddleware = async (
       userId: mappedUserId, 
       user: data.user, 
       dbUser,
-      memberships: memberships.map(m => ({
+      memberships: memberships.map((m: any) => ({
         organizationId: m.organizationId,
         role: m.role
       }))

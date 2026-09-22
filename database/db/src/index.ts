@@ -57,11 +57,12 @@ export async function withTenantContext<T>(
   orgId: string,
   cb: (tx: any) => Promise<T>
 ): Promise<T> {
-  if (!orgId) {
+  if (!orgId || typeof orgId !== "string" || !orgId.trim()) {
     throw new Error("Missing organizationId in withTenantContext. Failing closed to prevent data leakage.");
   }
+  const cleanOrgId = orgId.trim();
   return await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
+    await tx.execute(sql`SELECT set_config('app.current_organization_id', ${cleanOrgId}, true)`);
     return await cb(tx);
   });
 }
