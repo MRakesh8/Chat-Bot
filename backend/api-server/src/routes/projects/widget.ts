@@ -560,12 +560,17 @@ router.get("/analytics", async (req: any, res: Response) => {
       });
     }
 
-    // Fetch AI response feedback
-    const feedbackList = await db.query.projectFeedback.findMany({
-      where: (pf, { eq, and, like }) => and(eq(pf.projectId, projectId), like(pf.category, "AI_RESPONSE_%")),
-      orderBy: (pf, { desc }) => [desc(pf.createdAt)],
-      limit: 50
-    });
+    // Fetch AI response feedback safely
+    let feedbackList: any[] = [];
+    try {
+      feedbackList = await db.query.projectFeedback.findMany({
+        where: (pf, { eq, and, like }) => and(eq(pf.projectId, projectId), like(pf.category, "AI_RESPONSE_%")),
+        orderBy: (pf, { desc }) => [desc(pf.createdAt)],
+        limit: 50
+      });
+    } catch (err) {
+      req.log.warn(err, "Failed to fetch project feedback for analytics");
+    }
 
     recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 

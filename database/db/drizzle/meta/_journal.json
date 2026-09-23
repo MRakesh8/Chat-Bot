@@ -57,6 +57,13 @@
       "when": 1787076139330,
       "tag": "0007_bent_pretty_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790143340473,
+      "tag": "0008_lean_tusk",
+      "breakpoints": true
     }
   ]
 }
