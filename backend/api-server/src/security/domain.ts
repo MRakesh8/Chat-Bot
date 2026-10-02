@@ -63,6 +63,11 @@ export function isDomainAllowed(
     return true;
   }
 
+  // Empty allowedDomains array indicates unrestricted domain access
+  if (!allowedDomains || allowedDomains.length === 0) {
+    return true;
+  }
+
   const normalizedAllowed = allowedDomains
     .map((d) => normalizeDomain(d))
     .filter(Boolean);

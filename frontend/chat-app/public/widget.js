@@ -4,20 +4,39 @@
  * Feature: Draggable widget (drag FAB or header to reposition)
  */
 (function() {
-  // Prevent multiple initializations
-  if (window.AriaWidgetInitialized) return;
-  window.AriaWidgetInitialized = true;
+  // Find script element using robust fallbacks
+  let scriptTag = document.currentScript;
+  if (!scriptTag || !scriptTag.getAttribute('data-widget-token')) {
+    scriptTag = document.querySelector('script[data-widget-token]') || 
+                document.querySelector('script[src*="widget.js"][data-widget-token]') ||
+                document.querySelector('script[src*="widget.js"]');
+  }
 
-  const scriptTag = document.currentScript || document.querySelector('script[src*="widget.js"]');
-  const widgetToken = scriptTag ? scriptTag.getAttribute('data-widget-token') : null;
-  const passedApiUrl = scriptTag ? scriptTag.getAttribute('data-api-url') : null;
+  // Extract widget token with fallbacks
+  const widgetToken = (scriptTag && scriptTag.getAttribute('data-widget-token')) ||
+                      window.NOVA_WIDGET_TOKEN ||
+                      window.ARIA_WIDGET_TOKEN ||
+                      null;
 
   if (!widgetToken) {
-    console.error("NOVA AI Widget: Missing data-widget-token attribute on script tag.");
+    console.error("NOVA AI Widget: Missing data-widget-token attribute or global token.");
     return;
   }
 
+  // Track initialized tokens to ensure idempotency per token
+  window.AriaWidgetInitializedTokens = window.AriaWidgetInitializedTokens || new Set();
+  if (window.AriaWidgetInitializedTokens.has(widgetToken)) {
+    return;
+  }
+  window.AriaWidgetInitializedTokens.add(widgetToken);
+  window.AriaWidgetInitialized = true;
+
   // Determine API base URL
+  const passedApiUrl = (scriptTag && scriptTag.getAttribute('data-api-url')) ||
+                       window.NOVA_API_URL ||
+                       window.ARIA_API_URL ||
+                       null;
+
   let apiBaseUrl = passedApiUrl || "https://chat-bot-api-ns81.onrender.com"; 
   if (!passedApiUrl && scriptTag && scriptTag.src) {
     try {
