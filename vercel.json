@@ -13,6 +13,10 @@
       "destination": "https://dirvyhkvyplwtnenbuqo.supabase.co/:path*"
     },
     {
+      "source": "/api/:path*",
+      "destination": "https://chat-bot-api-ns81.onrender.com/api/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
