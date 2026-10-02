@@ -4,12 +4,23 @@
  * Feature: Draggable widget (drag FAB or header to reposition)
  */
 (function() {
-  // Find script element using robust fallbacks
+  // Find script element using deterministic fallbacks
   let scriptTag = document.currentScript;
   if (!scriptTag || !scriptTag.getAttribute('data-widget-token')) {
-    scriptTag = document.querySelector('script[data-widget-token]') || 
-                document.querySelector('script[src*="widget.js"][data-widget-token]') ||
-                document.querySelector('script[src*="widget.js"]');
+    const tokenScripts = Array.from(document.querySelectorAll('script[data-widget-token]'));
+    const uninitializedScripts = tokenScripts.filter(s => {
+      const t = s.getAttribute('data-widget-token');
+      return t && !(window.AriaWidgetInitializedTokens && window.AriaWidgetInitializedTokens.has(t));
+    });
+
+    if (uninitializedScripts.length === 1) {
+      scriptTag = uninitializedScripts[0];
+    } else if (uninitializedScripts.length > 1) {
+      console.error("NOVA AI Widget: Ambiguous multi-widget initialization detected without document.currentScript context. Aborting load.");
+      return;
+    } else {
+      scriptTag = document.querySelector('script[src*="widget.js"]');
+    }
   }
 
   // Extract widget token with fallbacks
@@ -119,8 +130,15 @@
     }
   }
 
+  const rootContainerId = `aria-ai-widget-root-${widgetToken}`;
+  if (document.getElementById(rootContainerId)) {
+    return;
+  }
+
   const container = document.createElement('div');
-  container.id = 'aria-ai-widget-root';
+  container.id = rootContainerId;
+  container.setAttribute('aria-ai-widget-root', 'true');
+  container.setAttribute('data-widget-token', widgetToken);
   
   // Shadow DOM initialization
   const shadow = container.attachShadow({ mode: 'open' });
