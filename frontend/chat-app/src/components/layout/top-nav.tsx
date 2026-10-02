@@ -65,7 +65,8 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
     return "NOVA Workspace";
   };
 
-  const displayName = user?.email?.split("@")[0] || "User";
+  const rawName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+  const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
   return (
     <header className="h-16 w-full border-b border-border/80 bg-background/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0">

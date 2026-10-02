@@ -223,7 +223,7 @@ export default function ProjectsPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div className="flex items-start gap-4">
             <div>
-              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-foreground/70 tracking-tight">Projects</h1>
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">Projects</h1>
               <div className="text-sm text-muted-foreground mt-2 flex gap-3 font-medium">
                 <span className="bg-foreground/5 px-3 py-1 rounded-full border border-foreground/10">Total: {projectList?.length || 0}</span>
                 <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20">
@@ -263,7 +263,7 @@ export default function ProjectsPage() {
               <SelectTrigger className="h-11 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:ring-primary/50 text-foreground">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
-              <SelectContent className="bg-[#121214]/95 backdrop-blur-xl border-foreground/10 rounded-xl">
+              <SelectContent className="bg-popover border border-border text-popover-foreground rounded-xl shadow-xl">
                 <SelectItem value="newest" className="rounded-lg my-0.5 hover:bg-foreground/10">Newest First</SelectItem>
                 <SelectItem value="oldest" className="rounded-lg my-0.5 hover:bg-foreground/10">Oldest First</SelectItem>
                 <SelectItem value="alpha" className="rounded-lg my-0.5 hover:bg-foreground/10">Alphabetical</SelectItem>
@@ -350,7 +350,7 @@ export default function ProjectsPage() {
             {paginatedProjects.map((project) => (
               <div
                 key={project.id}
-                className="group flex flex-col md:flex-row md:items-center rounded-3xl bg-foreground/[0.02] border border-foreground/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] p-6 hover:bg-foreground/[0.04] hover:border-foreground/[0.1] hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300 gap-5 relative overflow-hidden"
+                className="group flex flex-col md:flex-row md:items-center rounded-3xl bg-card border border-border shadow-xs hover:shadow-md transition-all duration-300 p-6 gap-5 relative overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                 
@@ -416,7 +416,7 @@ export default function ProjectsPage() {
                         <MoreVertical className="w-4 h-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-[#121214]/95 backdrop-blur-xl border-foreground/10 rounded-xl">
+                    <DropdownMenuContent align="end" className="w-48 bg-popover border border-border text-popover-foreground rounded-xl shadow-xl">
                       <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-foreground/10" onClick={() => setLocation(`/projects/${project.id}/edit`)}>
                         <Pencil className="w-4 h-4 mr-2" /> Edit
                       </DropdownMenuItem>

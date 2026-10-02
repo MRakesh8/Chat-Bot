@@ -546,7 +546,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
                   <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 text-left truncate flex flex-col justify-center min-w-0">
-                  <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">{user?.email?.split('@')[0] || user?.email}</p>
+                  <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">
+                    {user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : "User")}
+                  </p>
                   <p className="text-[10px] text-muted-foreground truncate leading-tight">{user?.email}</p>
                 </div>
                 <MoreVertical className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -555,7 +557,9 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={8} className="w-48 bg-popover border-border text-popover-foreground mb-1 rounded-xl shadow-xl p-1 z-50">
             <div className="px-2.5 py-1.5 border-b border-border/50 mb-1">
-              <p className="text-xs font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
+              <p className="text-xs font-semibold text-foreground truncate">
+                {user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : "User")}
+              </p>
               <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
             </div>
             <DropdownMenuItem 

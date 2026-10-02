@@ -143,7 +143,7 @@ export default function ConnectedServicesPage() {
       <div className="flex-1 overflow-y-auto p-6 pt-16 md:p-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-10 gap-4">
           <div>
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-foreground/70 tracking-tight">Connected Services</h1>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">Connected Services</h1>
             <p className="text-muted-foreground mt-2 text-sm">Manage and quickly access your integrated platforms.</p>
           </div>
           <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -279,7 +279,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="p-6 rounded-3xl bg-foreground/[0.02] border border-foreground/[0.05] backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:bg-foreground/[0.04] hover:border-foreground/[0.1] transition-all duration-300 flex flex-col group relative overflow-hidden">
+    <div className="p-6 rounded-3xl bg-card border border-border shadow-xs hover:shadow-md transition-all duration-300 flex flex-col group relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       
       <div className="flex justify-between items-start mb-5 relative z-10">
@@ -299,7 +299,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-xl border-foreground/10 bg-[#121214]/95 backdrop-blur-xl">
+            <DropdownMenuContent align="end" className="rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
               <DropdownMenuItem onClick={() => onOpen(service.url)} className="rounded-lg my-0.5 hover:bg-foreground/10"><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onCopy(service.url)} className="rounded-lg my-0.5 hover:bg-foreground/10"><Copy className="w-4 h-4 mr-2" /> Copy URL</DropdownMenuItem>
               <DropdownMenuItem onClick={onEdit} className="rounded-lg my-0.5 hover:bg-foreground/10"><Edit2 className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
@@ -310,7 +310,7 @@ function ServiceCard({ service, ProviderIcon, onOpen, onCopy, onEdit, onDelete }
       </div>
       
       {service.description && (
-        <div className="relative mb-5 flex-1 z-10 bg-black/20 rounded-xl border border-foreground/5 overflow-hidden flex flex-col">
+        <div className="relative mb-5 flex-1 z-10 bg-muted/40 rounded-xl border border-border overflow-hidden flex flex-col">
           <div className={`p-4 text-sm text-foreground/80 overflow-y-auto custom-scrollbar transition-all duration-300 ${expanded ? 'max-h-[200px]' : 'max-h-[80px] line-clamp-3'} whitespace-pre-wrap`}>
             {service.description}
           </div>

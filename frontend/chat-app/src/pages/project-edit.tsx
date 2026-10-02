@@ -327,7 +327,7 @@ export default function ProjectEditPage() {
                   className="flex items-center gap-3 group cursor-pointer" 
                   onClick={() => { setTempName(project?.name || name); setIsEditingName(true); }}
                 >
-                  <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 tracking-tight">
+                  <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
                     {project?.name || "Loading..."}
                   </h1>
                   <Button 
@@ -393,7 +393,7 @@ export default function ProjectEditPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
+          <TabsList className="mb-8 bg-muted/60 border border-border p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
             <TabsTrigger value="overview" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <LayoutDashboard className="w-4 h-4 mr-2" /> Overview
             </TabsTrigger>

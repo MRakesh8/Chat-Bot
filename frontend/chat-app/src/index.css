@@ -62,53 +62,53 @@
 }
 
 :root {
-  /* Apple-like Neo-Minimalism */
-  --background: 220 20% 98%;
-  --foreground: 224 71% 11%;
+  /* Commercial SaaS Production Light Theme */
+  --background: 220 18% 97%;
+  --foreground: 222 47% 11%;
+  
   --card: 0 0% 100%;
-  --card-foreground: 224 71% 11%;
-  --card-border: 220 13% 91%;
+  --card-foreground: 222 47% 11%;
+  --card-border: 220 13% 86%;
   
   --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 10%;
-  --popover-border: 240 5% 90%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 220 13% 86%;
   
-  /* Vibrant Blue for interactive elements */
-  --primary: 255 75% 58%; 
+  /* NOVA Brand Purple Accent */
+  --primary: 258 75% 56%; 
   --primary-foreground: 0 0% 100%;
   
-  /* Soft grey for secondary */
-  --secondary: 240 5% 96%;
-  --secondary-foreground: 240 10% 15%;
+  --secondary: 220 14% 93%;
+  --secondary-foreground: 222 47% 14%;
   
-  --muted: 240 5% 96%;
-  --muted-foreground: 240 5% 45%;
+  --muted: 220 14% 93%;
+  --muted-foreground: 220 12% 40%;
   
-  --accent: 212 100% 97%;
-  --accent-foreground: 212 100% 48%;
+  --accent: 258 80% 95%;
+  --accent-foreground: 258 75% 45%;
   
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   
-  --border: 240 5% 90%;
-  --input: 240 5% 90%;
-  --ring: 212 100% 48%;
+  --border: 220 13% 86%;
+  --input: 220 13% 86%;
+  --ring: 258 75% 56%;
 
-  --sidebar: 240 10% 98%;
-  --sidebar-foreground: 240 10% 25%;
-  --sidebar-border: 240 5% 90%;
-  --sidebar-primary: 212 100% 48%;
+  --sidebar: 220 16% 95%;
+  --sidebar-foreground: 222 40% 20%;
+  --sidebar-border: 220 13% 86%;
+  --sidebar-primary: 258 75% 56%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 5% 94%;
-  --sidebar-accent-foreground: 240 10% 10%;
-  --sidebar-ring: 212 100% 48%;
+  --sidebar-accent: 220 14% 90%;
+  --sidebar-accent-foreground: 222 47% 11%;
+  --sidebar-ring: 258 75% 56%;
 
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: 0.75rem;
 
-  --chart-1: 212 100% 48%;
+  --chart-1: 258 75% 56%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 37% 24%;
   --chart-4: 43 74% 66%;
@@ -127,7 +127,7 @@
   --popover-foreground: 0 0% 98%;
   --popover-border: 240 5% 15%;
   
-  --primary: 212 100% 55%;
+  --primary: 258 75% 62%;
   --primary-foreground: 0 0% 100%;
   
   --secondary: 240 5% 12%;
@@ -136,26 +136,26 @@
   --muted: 240 5% 12%;
   --muted-foreground: 240 5% 65%;
   
-  --accent: 212 50% 15%;
-  --accent-foreground: 212 100% 65%;
+  --accent: 258 40% 18%;
+  --accent-foreground: 258 85% 70%;
   
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   
   --border: 240 5% 15%;
   --input: 240 5% 15%;
-  --ring: 212 100% 55%;
+  --ring: 258 75% 62%;
   
   --sidebar: 240 10% 6%;
   --sidebar-foreground: 240 5% 75%;
   --sidebar-border: 240 5% 15%;
-  --sidebar-primary: 212 100% 55%;
+  --sidebar-primary: 258 75% 62%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 240 5% 12%;
   --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-ring: 212 100% 55%;
+  --sidebar-ring: 258 75% 62%;
 
-  --chart-1: 212 100% 55%;
+  --chart-1: 258 75% 62%;
   --chart-2: 200 90% 60%;
   --chart-3: 320 85% 60%;
   --chart-4: 150 80% 50%;
