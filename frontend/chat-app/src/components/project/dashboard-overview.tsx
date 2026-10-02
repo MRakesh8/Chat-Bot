@@ -5,6 +5,7 @@ import { apiUrl } from "@/lib/api-url";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Loader2, 
   Users, 
@@ -21,7 +22,13 @@ import {
   TrendingUp,
   ArrowRight,
   ShieldCheck,
-  Rocket
+  Rocket,
+  Mail,
+  Phone,
+  Clock,
+  ExternalLink,
+  Layers,
+  Building2
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -35,6 +42,8 @@ import {
 
 export function DashboardOverview({ projectId }: { projectId: string }) {
   const { session } = useAuth();
+  const { toast } = useToast();
+  const [isReAnalyzing, setIsReAnalyzing] = React.useState(false);
 
   const authFetch = async (url: string, options: RequestInit = {}) => {
     const token = session?.access_token;
@@ -280,21 +289,134 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
 
         {/* Right Column: Status & System Health */}
         <div className="space-y-6">
-          {/* Website Status */}
-          <Card className="bg-card border-border shadow-xs">
-            <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
-                  <Globe className="w-5 h-5" />
+          {/* Website Intelligence Profile Card */}
+          <Card className="bg-card border-border shadow-xs overflow-hidden">
+            <CardHeader className="pb-3 border-b border-border bg-muted/30">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-blue-500" />
+                  Website Intelligence Profile
+                </span>
+                <div className="flex items-center gap-2">
+                  <Badge variant={website.status === 'READY' || website.status === 'COMPLETED' ? 'default' : 'outline'} className={website.status === 'READY' || website.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20' : ''}>
+                    {website.status || 'READY'}
+                  </Badge>
+                  {website.url && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      disabled={isReAnalyzing}
+                      onClick={async () => {
+                        if (!website?.url) return;
+                        setIsReAnalyzing(true);
+                        try {
+                          const res = await authFetch(apiUrl(`/api/projects/${projectId}/discovery/start`), {
+                            method: "POST",
+                            body: JSON.stringify({ url: website.url }),
+                          });
+                          if (!res.ok) {
+                            const errJson = await res.json().catch(() => ({}));
+                            throw new Error(errJson.error || "Failed to start website re-analysis");
+                          }
+                          toast({ title: "Analysis Started", description: "Website Intelligence 2.0 is updating your Business Profile." });
+                          refetch();
+                        } catch (e: any) {
+                          toast({ title: "Error", description: e.message || "Failed to restart analysis", variant: "destructive" });
+                        } finally {
+                          setIsReAnalyzing(false);
+                        }
+                      }}
+                      title="Re-analyze Website"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isReAnalyzing ? 'animate-spin' : ''}`} />
+                    </Button>
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">Website</p>
-                  <p className="text-xs text-muted-foreground truncate max-w-[150px]">{website.url ? new URL(website.url).hostname : 'No URL'}</p>
-                </div>
+              </CardTitle>
+              {website.url && (
+                <CardDescription className="text-xs truncate flex items-center gap-1 mt-1">
+                  <span className="text-foreground font-medium truncate">{website.intelligence?.identity?.name || website.intelligence?.title || (website.url ? new URL(website.url).hostname : '')}</span>
+                  <a href={website.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5 ml-1 shrink-0">
+                    {website.url ? new URL(website.url).hostname : ''} <ExternalLink className="w-3 h-3 inline" />
+                  </a>
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              {/* Identity & Badges */}
+              <div className="flex flex-wrap gap-1.5">
+                {website.businessType && (
+                  <Badge variant="outline" className="text-[10px] capitalize bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20">
+                    <Building2 className="w-3 h-3 mr-1" /> {website.businessType.replace('_', ' ')}
+                  </Badge>
+                )}
+                {website.platform && (
+                  <Badge variant="outline" className="text-[10px] capitalize bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20">
+                    {website.platform}
+                  </Badge>
+                )}
+                {website.intelligence?.pages?.length > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                    <Layers className="w-3 h-3 mr-1" /> {website.intelligence.pages.length} Pages Indexed
+                  </Badge>
+                )}
               </div>
-              <Badge variant={website.status === 'COMPLETED' ? 'default' : 'outline'} className={website.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 shrink-0' : 'shrink-0'}>
-                {website.status || 'READY'}
-              </Badge>
+
+              {/* Contact & Hours */}
+              {(website.intelligence?.contact?.emails?.length > 0 || website.intelligence?.contact?.phones?.length > 0 || website.intelligence?.contact?.hours?.length > 0) && (
+                <div className="space-y-1.5 text-xs text-muted-foreground border-t border-border pt-3">
+                  {website.intelligence?.contact?.emails?.[0] && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="truncate">{website.intelligence.contact.emails[0]}</span>
+                    </div>
+                  )}
+                  {website.intelligence?.contact?.phones?.[0] && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span className="truncate">{website.intelligence.contact.phones[0]}</span>
+                    </div>
+                  )}
+                  {website.intelligence?.contact?.hours?.[0] && (
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="truncate">{website.intelligence.contact.hours[0]}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Discovered Offerings & FAQs Summary */}
+              {((website.intelligence?.offerings?.length || 0) > 0 || (website.intelligence?.faqs?.length || 0) > 0) && (
+                <div className="grid grid-cols-2 gap-2 text-xs border-t border-border pt-3">
+                  <div className="p-2 rounded bg-muted/50 border border-border">
+                    <span className="text-[10px] uppercase text-muted-foreground block font-medium">Offerings</span>
+                    <span className="text-sm font-semibold text-foreground">{website.intelligence?.offerings?.length || 0} extracted</span>
+                  </div>
+                  <div className="p-2 rounded bg-muted/50 border border-border">
+                    <span className="text-[10px] uppercase text-muted-foreground block font-medium">FAQs</span>
+                    <span className="text-sm font-semibold text-foreground">{website.intelligence?.faqs?.length || 0} extracted</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Page Index Breakdown */}
+              {website.intelligence?.pages?.length > 0 && (
+                <div className="border-t border-border pt-3 space-y-1.5">
+                  <span className="text-[10px] uppercase text-muted-foreground font-medium block">Crawled Page Map</span>
+                  <div className="space-y-1 max-h-[140px] overflow-y-auto pr-1">
+                    {website.intelligence.pages.map((p: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded bg-muted/40 border border-border">
+                        <span className="truncate max-w-[160px] text-foreground">{p.title || p.url}</span>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4">
+                          {p.category}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

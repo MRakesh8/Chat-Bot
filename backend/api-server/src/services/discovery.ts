@@ -140,6 +140,155 @@ export class WebsiteDiscoveryService {
     return [...new Set(validInternalUrls)];
   }
 
+  public static classifyPageUrl(urlStr: string, pageTitle = ""): { category: string; priority: number } {
+    const lowerUrl = urlStr.toLowerCase();
+    const lowerTitle = pageTitle.toLowerCase();
+
+    if (lowerUrl.includes("/pricing") || lowerUrl.includes("/plans") || lowerUrl.includes("/rates") || lowerUrl.includes("/price") || lowerUrl.includes("/cost") || lowerTitle.includes("pricing")) {
+      return { category: "PRICING", priority: 90 };
+    }
+    if (lowerUrl.includes("/product") || lowerUrl.includes("/shop") || lowerUrl.includes("/store") || lowerUrl.includes("/catalog") || lowerUrl.includes("/item") || lowerTitle.includes("product") || lowerTitle.includes("shop")) {
+      return { category: "PRODUCTS", priority: 85 };
+    }
+    if (lowerUrl.includes("/service") || lowerUrl.includes("/solution") || lowerUrl.includes("/offering") || lowerUrl.includes("/what-we-do") || lowerTitle.includes("service")) {
+      return { category: "SERVICES", priority: 80 };
+    }
+    if (lowerUrl.includes("/contact") || lowerUrl.includes("/location") || lowerUrl.includes("/reach-us") || lowerUrl.includes("/support") || lowerTitle.includes("contact")) {
+      return { category: "CONTACT", priority: 75 };
+    }
+    if (lowerUrl.includes("/faq") || lowerUrl.includes("/help") || lowerUrl.includes("/support-center") || lowerUrl.includes("/kb") || lowerTitle.includes("faq")) {
+      return { category: "FAQ", priority: 70 };
+    }
+    if (lowerUrl.includes("/book") || lowerUrl.includes("/schedule") || lowerUrl.includes("/appointment") || lowerUrl.includes("/reservation") || lowerTitle.includes("book")) {
+      return { category: "BOOKING", priority: 65 };
+    }
+    if (lowerUrl.includes("/about") || lowerUrl.includes("/company") || lowerUrl.includes("/our-story") || lowerUrl.includes("/who-we-are") || lowerTitle.includes("about")) {
+      return { category: "ABOUT", priority: 60 };
+    }
+    if (lowerUrl.includes("/privacy") || lowerUrl.includes("/terms") || lowerUrl.includes("/refund") || lowerUrl.includes("/legal") || lowerTitle.includes("privacy")) {
+      return { category: "POLICY", priority: 50 };
+    }
+
+    try {
+      const parsed = new URL(urlStr);
+      if (parsed.pathname === "/" || parsed.pathname === "" || parsed.pathname === "/index.html") {
+        return { category: "HOME", priority: 100 };
+      }
+    } catch (e) {}
+
+    return { category: "OTHER", priority: 10 };
+  }
+
+  private static extractContactDetails(html: string): { emails: string[], phones: string[], addresses: string[], hours: string[] } {
+    const emails = new Set<string>();
+    const phones = new Set<string>();
+    const addresses = new Set<string>();
+    const hours = new Set<string>();
+
+    const mailtoMatches = [...html.matchAll(/href=["']mailto:([^"'\?]+)["']/gi)];
+    for (const m of mailtoMatches) {
+      const email = m[1].trim();
+      if (email && !email.includes(".png") && !email.includes("schema@org") && !email.includes("wix@")) {
+        emails.add(email);
+      }
+    }
+
+    const emailRegexMatches = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+    for (const em of emailRegexMatches) {
+      if (!em.includes(".png") && !em.includes("schema@org") && !em.includes("wix@") && !em.includes("example.com")) {
+        emails.add(em);
+      }
+    }
+
+    const telMatches = [...html.matchAll(/href=["']tel:([^"']+)\b["']/gi)];
+    for (const m of telMatches) {
+      phones.add(m[1].trim());
+    }
+
+    const hoursMatch = html.match(/(?:mon(?:day)?\s*[-–]\s*fri(?:day)?|mon(?:day)?\s*[-–]\s*sat(?:urday)?|open\s+24\/7|hours?:?\s*[^<]+)/gi);
+    if (hoursMatch) {
+      for (const h of hoursMatch.slice(0, 3)) {
+        const clean = h.replace(/<[^>]+>/g, '').trim();
+        if (clean.length > 5 && clean.length < 80) hours.add(clean);
+      }
+    }
+
+    return {
+      emails: Array.from(emails).slice(0, 5),
+      phones: Array.from(phones).slice(0, 5),
+      addresses: Array.from(addresses).slice(0, 3),
+      hours: Array.from(hours).slice(0, 3)
+    };
+  }
+
+  private static extractSocialLinks(html: string): Record<string, string> {
+    const social: Record<string, string> = {};
+    const platforms: { name: string; pattern: RegExp }[] = [
+      { name: "twitter", pattern: /href=["'](https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/[^"'\s]+)["']/i },
+      { name: "linkedin", pattern: /href=["'](https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[^"'\s]+)["']/i },
+      { name: "facebook", pattern: /href=["'](https?:\/\/(?:www\.)?facebook\.com\/[^"'\s]+)["']/i },
+      { name: "instagram", pattern: /href=["'](https?:\/\/(?:www\.)?instagram\.com\/[^"'\s]+)["']/i },
+      { name: "youtube", pattern: /href=["'](https?:\/\/(?:www\.)?youtube\.com\/[^"'\s]+)["']/i },
+      { name: "github", pattern: /href=["'](https?:\/\/(?:www\.)?github\.com\/[^"'\s]+)["']/i },
+      { name: "tiktok", pattern: /href=["'](https?:\/\/(?:www\.)?tiktok\.com\/[^"'\s]+)["']/i }
+    ];
+
+    for (const { name, pattern } of platforms) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        social[name] = match[1];
+      }
+    }
+    return social;
+  }
+
+  private static extractOfferings(html: string, structuredData: any[]): Array<{ name: string; description?: string; price?: string; category?: string }> {
+    const offerings: Array<{ name: string; description?: string; price?: string; category?: string }> = [];
+    const seenNames = new Set<string>();
+
+    for (const data of structuredData) {
+      if (!data) continue;
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (item["@type"] === "Product" || item["@type"] === "Service" || item["@type"] === "Offer") {
+          const name = item.name;
+          if (name && typeof name === "string" && !seenNames.has(name)) {
+            seenNames.add(name);
+            offerings.push({
+              name,
+              description: typeof item.description === "string" ? item.description.slice(0, 200) : undefined,
+              price: item.offers?.price ? `${item.offers.priceCurrency || '$'}${item.offers.price}` : undefined,
+              category: item["@type"] === "Product" ? "product" : "service"
+            });
+          }
+        }
+      }
+    }
+    return offerings.slice(0, 15);
+  }
+
+  private static extractFaqs(html: string, structuredData: any[]): Array<{ question: string; answer: string }> {
+    const faqs: Array<{ question: string; answer: string }> = [];
+    const seen = new Set<string>();
+
+    for (const data of structuredData) {
+      if (!data) continue;
+      if (data["@type"] === "FAQPage" && Array.isArray(data.mainEntity)) {
+        for (const item of data.mainEntity) {
+          if (item["@type"] === "Question" && item.name && item.acceptedAnswer?.text) {
+            const q = item.name.trim();
+            const a = item.acceptedAnswer.text.replace(/<[^>]+>/g, '').trim();
+            if (q && a && !seen.has(q)) {
+              seen.add(q);
+              faqs.push({ question: q, answer: a.slice(0, 300) });
+            }
+          }
+        }
+      }
+    }
+    return faqs.slice(0, 10);
+  }
+
   private static analyzeHtml(html: string, sourceUrl: string): { platform: string, platformConfidence: string, businessType: string, businessTypeConfidence: string, intelligence: any } {
     let platform = "unknown";
     let platformConfidence = "low";
@@ -216,12 +365,29 @@ export class WebsiteDiscoveryService {
     const faviconMatch = html.match(/<link\s+rel=["'](?:shortcut\s+)?icon["']\s+href=["']([^"']+)["']/i) || html.match(/<link\s+href=["']([^"']+)["']\s+rel=["'](?:shortcut\s+)?icon["']/i);
     const favicon = faviconMatch ? faviconMatch[1].trim() : undefined;
 
+    const contactDetails = this.extractContactDetails(html);
+    const socialLinks = this.extractSocialLinks(html);
+    const offerings = this.extractOfferings(html, structuredData);
+    const faqs = this.extractFaqs(html, structuredData);
+
     const intelligence = {
       title,
       description,
       favicon,
       evidence,
       structuredData,
+      identity: {
+        name: title || "Business Website",
+        description,
+        industry: businessType,
+        platform
+      },
+      contact: contactDetails,
+      socialLinks,
+      offerings,
+      faqs,
+      pages: [],
+      crawledPages: [],
       analyzedAt: new Date().toISOString()
     };
 
@@ -279,12 +445,12 @@ export class WebsiteDiscoveryService {
   public static async runDiscovery(projectId: string, rawUrl: string, orgId: string): Promise<void> {
     const jobStartTime = Date.now();
     try {
-      logger.info({ projectId, rawUrl }, "[DISCOVERY] Starting bounded multi-page discovery process");
+      logger.info({ projectId, rawUrl }, "[DISCOVERY] Starting bounded multi-page discovery process (Website Intelligence 2.0)");
       
       await db.update(projects).set({ discoveryStatus: "ANALYZING" } as any).where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
 
       const visitedUrls = new Set<string>();
-      const queue: { url: string, depth: number }[] = [{ url: rawUrl, depth: 0 }];
+      const queue: { url: string, depth: number, priority: number }[] = [{ url: rawUrl, depth: 0, priority: 100 }];
       
       let platform = "unknown";
       let businessType = "unknown";
@@ -292,17 +458,29 @@ export class WebsiteDiscoveryService {
       const capabilitiesMap = new Map<string, Capability>();
       const allExtractedLinks = new Set<string>();
       
+      const crawledPagesMap: Array<{ url: string; title: string; category: string; summary: string }> = [];
+      const crawledPagesHtml: Array<{ url: string; title: string; html: string }> = [];
+      const aggregatedEmails = new Set<string>();
+      const aggregatedPhones = new Set<string>();
+      const aggregatedHours = new Set<string>();
+      const aggregatedSocial: Record<string, string> = {};
+      const aggregatedOfferings: Array<{ name: string; description?: string; price?: string; category?: string }> = [];
+      const aggregatedFaqs: Array<{ question: string; answer: string }> = [];
+      const offeringNames = new Set<string>();
+      const faqQuestions = new Set<string>();
+
       let homepageHtml: string | null = null;
       let homepageUrl: URL | null = null;
 
-      // In-Memory Bounded BFS Crawl
+      // Bounded BFS Crawl with Priority Queue
       while (queue.length > 0 && visitedUrls.size < MAX_PAGES) {
         if (Date.now() - jobStartTime > TOTAL_JOB_TIMEOUT_MS) {
            logger.warn({ projectId }, "[DISCOVERY] Job timeout reached during multi-page crawl");
            break;
         }
 
-        // Bounded concurrency processing
+        // Sort queue by priority descending before splicing batch
+        queue.sort((a, b) => b.priority - a.priority);
         const batch = queue.splice(0, CONCURRENCY_LIMIT);
         
         await Promise.all(batch.map(async (item) => {
@@ -312,14 +490,46 @@ export class WebsiteDiscoveryService {
           try {
             const { html, finalUrl } = await this.fetchWithRedirectProtection(item.url);
             
-            // Only aggregate business logic from homepage for base profile
+            const pageAnalysis = this.analyzeHtml(html, finalUrl.toString());
+            const classification = this.classifyPageUrl(finalUrl.toString(), pageAnalysis.intelligence?.title || "");
+
+            // Track page html & summary
+            crawledPagesHtml.push({ url: finalUrl.toString(), title: pageAnalysis.intelligence?.title || classification.category, html });
+            crawledPagesMap.push({
+              url: finalUrl.toString(),
+              title: pageAnalysis.intelligence?.title || classification.category,
+              category: classification.category,
+              summary: pageAnalysis.intelligence?.description || ""
+            });
+
+            // Aggregate Contact & Social
+            pageAnalysis.intelligence?.contact?.emails?.forEach((e: string) => aggregatedEmails.add(e));
+            pageAnalysis.intelligence?.contact?.phones?.forEach((p: string) => aggregatedPhones.add(p));
+            pageAnalysis.intelligence?.contact?.hours?.forEach((h: string) => aggregatedHours.add(h));
+            Object.assign(aggregatedSocial, pageAnalysis.intelligence?.socialLinks || {});
+
+            // Aggregate Offerings
+            pageAnalysis.intelligence?.offerings?.forEach((off: any) => {
+              if (off.name && !offeringNames.has(off.name)) {
+                offeringNames.add(off.name);
+                aggregatedOfferings.push(off);
+              }
+            });
+
+            // Aggregate FAQs
+            pageAnalysis.intelligence?.faqs?.forEach((faq: any) => {
+              if (faq.question && !faqQuestions.has(faq.question)) {
+                faqQuestions.add(faq.question);
+                aggregatedFaqs.push(faq);
+              }
+            });
+
             if (item.depth === 0) {
                homepageHtml = html;
                homepageUrl = finalUrl;
-               const analysis = this.analyzeHtml(html, finalUrl.toString());
-               platform = analysis.platform;
-               businessType = analysis.businessType;
-               intelligenceSnapshot = analysis.intelligence;
+               platform = pageAnalysis.platform;
+               businessType = pageAnalysis.businessType;
+               intelligenceSnapshot = pageAnalysis.intelligence;
             }
 
             // Extract capabilities from EVERY visited page
@@ -330,12 +540,9 @@ export class WebsiteDiscoveryService {
                const newLinks = this.extractLinks(html, finalUrl);
                for (const link of newLinks) {
                  allExtractedLinks.add(link);
-                 // Prioritize high-value links (search, product, contact, book, cart, checkout)
-                 const lowerLink = link.toLowerCase();
-                 if (!visitedUrls.has(link) && (lowerLink.includes('search') || lowerLink.includes('product') || lowerLink.includes('contact') || lowerLink.includes('book') || lowerLink.includes('cart') || lowerLink.includes('checkout'))) {
-                    queue.unshift({ url: link, depth: item.depth + 1 }); // Push to front for priority
-                 } else if (!visitedUrls.has(link)) {
-                    queue.push({ url: link, depth: item.depth + 1 });
+                 if (!visitedUrls.has(link)) {
+                   const linkClassification = this.classifyPageUrl(link);
+                   queue.push({ url: link, depth: item.depth + 1, priority: linkClassification.priority });
                  }
                }
             }
@@ -349,31 +556,57 @@ export class WebsiteDiscoveryService {
          throw new Error("Failed to fetch or validate homepage URL");
       }
 
-      // Finalize capability snapshot
+      // Finalize multi-page intelligence profile snapshot
       const capabilitiesObject: Record<string, Capability> = {};
       capabilitiesMap.forEach((val, key) => { capabilitiesObject[key] = val; });
+
       intelligenceSnapshot.capabilities = capabilitiesObject;
       intelligenceSnapshot.links = { discoveredInternal: Array.from(allExtractedLinks).slice(0, 50) };
+      intelligenceSnapshot.pages = crawledPagesMap;
+      intelligenceSnapshot.crawledPages = Array.from(visitedUrls);
+      intelligenceSnapshot.contact = {
+        emails: Array.from(aggregatedEmails),
+        phones: Array.from(aggregatedPhones),
+        hours: Array.from(aggregatedHours)
+      };
+      intelligenceSnapshot.socialLinks = aggregatedSocial;
+      intelligenceSnapshot.offerings = aggregatedOfferings;
+      intelligenceSnapshot.faqs = aggregatedFaqs;
+      intelligenceSnapshot.identity = {
+        name: intelligenceSnapshot.title || "Business Website",
+        description: intelligenceSnapshot.description || "",
+        industry: businessType,
+        platform
+      };
 
-      // Seamless RAG Integration for Homepage only (to prevent queue flooding)
-      let sourceId: string | null = null;
-      const [existingSource] = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.projectId, projectId), eq(knowledgeSources.sourceUrl, (homepageUrl as any).toString())));
-      
-      if (existingSource) {
-         sourceId = existingSource.id;
-      } else {
-         const [newSource] = await db.insert(knowledgeSources).values({
-           projectId,
-           sourceType: "website",
-           sourceUrl: (homepageUrl as any).toString(),
-           title: intelligenceSnapshot.title || "Website Homepage",
-           rawContent: homepageHtml,
-           status: "pending"
-         }).returning();
-         sourceId = newSource.id;
+      // Freshness & Upsert Strategy for Knowledge Sources (Multi-Page Indexing)
+      const sourceIdsToProcess: string[] = [];
+      for (const pageItem of crawledPagesHtml) {
+        const [existingSource] = await db.select().from(knowledgeSources).where(and(eq(knowledgeSources.projectId, projectId), eq(knowledgeSources.sourceUrl, pageItem.url)));
+        
+        if (existingSource) {
+           await db.update(knowledgeSources)
+             .set({
+               title: pageItem.title || "Website Page",
+               rawContent: pageItem.html,
+               status: "pending"
+             })
+             .where(eq(knowledgeSources.id, existingSource.id));
+           sourceIdsToProcess.push(existingSource.id);
+        } else {
+           const [newSource] = await db.insert(knowledgeSources).values({
+             projectId,
+             sourceType: "website",
+             sourceUrl: pageItem.url,
+             title: pageItem.title || "Website Page",
+             rawContent: pageItem.html,
+             status: "pending"
+           }).returning();
+           sourceIdsToProcess.push(newSource.id);
+        }
       }
 
-      // Completely replace snapshot
+      // Save complete snapshot into project database
       await db.update(projects)
         .set({
            platform: platform as any,
@@ -384,9 +617,10 @@ export class WebsiteDiscoveryService {
         } as any)
         .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
       
-      logger.info({ projectId, pagesCrawled: visitedUrls.size }, "[DISCOVERY] Discovery process completed successfully");
+      logger.info({ projectId, pagesCrawled: visitedUrls.size, sourcesIndexed: sourceIdsToProcess.length }, "[DISCOVERY] Website Intelligence 2.0 process completed successfully");
 
-      if (sourceId) {
+      // Enqueue background processing for all indexed knowledge sources
+      for (const sourceId of sourceIdsToProcess) {
          enqueueKnowledgeProcessing(sourceId).catch(err => logger.error({ err, sourceId }, "Failed to enqueue knowledge processing after discovery"));
       }
 

@@ -1,4 +1,4 @@
-﻿import { Router, Response } from "express";
+import { Router, Response } from "express";
 import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { 
   projects, 
@@ -125,7 +125,10 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
         })),
         website: {
           status: project?.discoveryStatus || 'Not Connected',
-          url: project?.websiteUrl
+          url: project?.websiteUrl,
+          platform: project?.platform,
+          businessType: project?.businessType,
+          intelligence: project?.intelligence || {}
         },
         whatsapp: {
           status: whatsappConnection ? whatsappConnection.status : 'Not connected'
