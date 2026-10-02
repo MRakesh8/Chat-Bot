@@ -142,51 +142,52 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="flex items-center gap-2 pl-1.5 pr-2 h-9 rounded-xl hover:bg-secondary transition-all border border-transparent hover:border-border/60"
+              aria-label="User Menu"
+              className="flex items-center gap-2 pl-1.5 pr-2.5 h-9 rounded-xl hover:bg-secondary transition-all border border-transparent hover:border-border/60 focus-visible:ring-2 focus-visible:ring-primary/50"
             >
-              <Avatar className="h-7 w-7 border border-border/80 shadow-2xs">
+              <Avatar className="h-7 w-7 border border-border/80 shadow-2xs shrink-0">
                 <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
                 <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                   {displayName[0]?.toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <span className="text-xs font-medium text-foreground max-w-[100px] truncate hidden md:inline-block">
+              <span className="text-xs font-medium text-foreground max-w-[120px] truncate hidden md:inline-block">
                 {displayName}
               </span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-2xl p-1.5 shadow-xl bg-popover border-border z-50">
             <DropdownMenuLabel className="font-normal px-2.5 py-2">
-              <div className="flex flex-col space-y-1">
+              <div className="flex flex-col space-y-0.5">
                 <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="my-1 bg-border/60" />
-            <DropdownMenuItem onClick={() => setLocation("/profile")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent flex items-center gap-2.5">
-              <User className="w-4 h-4 text-primary" />
+            <DropdownMenuItem onClick={() => setLocation("/profile")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors">
+              <User className="w-4 h-4 text-primary shrink-0" />
               <span>Profile & Account</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLocation("/billing")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent flex items-center gap-2.5">
-              <CreditCard className="w-4 h-4 text-emerald-500" />
+            <DropdownMenuItem onClick={() => setLocation("/billing")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors">
+              <CreditCard className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>Billing & Subscription</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLocation("/settings")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent flex items-center gap-2.5">
-              <Settings className="w-4 h-4 text-slate-400" />
+            <DropdownMenuItem onClick={() => setLocation("/settings")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors">
+              <Settings className="w-4 h-4 text-slate-400 shrink-0" />
               <span>Workspace Settings</span>
             </DropdownMenuItem>
             {dbUser?.role === "super_admin" && (
               <>
                 <DropdownMenuSeparator className="my-1 bg-border/60" />
-                <DropdownMenuItem onClick={() => setLocation("/admin/clarity")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent text-amber-500 font-medium flex items-center gap-2.5">
-                  <Shield className="w-4 h-4 text-amber-500" />
-                  <span>Super Admin Console</span>
+                <DropdownMenuItem onClick={() => setLocation("/admin/clarity")} className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent text-amber-500 font-medium flex items-center gap-2.5 transition-colors">
+                  <Shield className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>Admin Console</span>
                 </DropdownMenuItem>
               </>
             )}
             <DropdownMenuSeparator className="my-1 bg-border/60" />
-            <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer rounded-xl text-xs py-2 text-rose-500 hover:bg-rose-500/10 focus:bg-rose-500/10 focus:text-rose-600 flex items-center gap-2.5">
-              <LogOut className="w-4 h-4" />
+            <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer rounded-xl text-xs py-2 text-rose-500 hover:bg-rose-500/10 focus:bg-rose-500/10 focus:text-rose-600 flex items-center gap-2.5 transition-colors font-medium">
+              <LogOut className="w-4 h-4 shrink-0" />
               <span>Sign Out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>

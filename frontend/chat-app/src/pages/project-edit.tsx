@@ -393,44 +393,44 @@ export default function ProjectEditPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl">
-            <TabsTrigger value="overview" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+          <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
+            <TabsTrigger value="overview" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <LayoutDashboard className="w-4 h-4 mr-2" /> Overview
             </TabsTrigger>
-            <TabsTrigger value="chat" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="chat" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <MessageSquare className="w-4 h-4 mr-2" /> Test Chat
             </TabsTrigger>
-            <TabsTrigger value="knowledge" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="knowledge" className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Database className="w-4 h-4 mr-2" /> Knowledge Base
             </TabsTrigger>
-            <TabsTrigger value="reports" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="reports" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <FileText className="w-4 h-4 mr-2" /> Reports
             </TabsTrigger>
-            <TabsTrigger value="settings" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="settings" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Settings className="w-4 h-4 mr-2" /> Settings
             </TabsTrigger>
-            <TabsTrigger value="context-engine" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="context-engine" className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Brain className="w-4 h-4 mr-2" /> Context Engine
             </TabsTrigger>
-            <TabsTrigger value="widget-studio" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="widget-studio" className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Paintbrush className="w-4 h-4 mr-2" /> Widget Studio
             </TabsTrigger>
-            <TabsTrigger value="channels" className="flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="channels" className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Smartphone className="w-4 h-4 mr-2" /> Channels
             </TabsTrigger>
-            <TabsTrigger value="deployment" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="deployment" className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Rocket className="w-4 h-4 mr-2" /> Deployment
             </TabsTrigger>
-            <TabsTrigger value="api-keys" className="flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="api-keys" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Key className="w-4 h-4 mr-2" /> API Keys
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="analytics" className="shrink-0 flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <LayoutDashboard className="w-4 h-4 mr-2" /> Analytics
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="notifications" className="shrink-0 flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <AlertTriangle className="w-4 h-4 mr-2" /> Notifications
             </TabsTrigger>
-            <TabsTrigger value="integrations" className="flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="integrations" className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Sparkles className="w-4 h-4 mr-2" /> Integrations
             </TabsTrigger>
           </TabsList>

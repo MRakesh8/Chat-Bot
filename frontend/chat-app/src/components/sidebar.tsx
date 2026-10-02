@@ -535,11 +535,15 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       <div className="p-3 mt-auto flex-shrink-0 border-t border-border/40 bg-sidebar/50">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full justify-start px-2 py-2 h-auto rounded-xl hover:bg-foreground/5 transition-all duration-200 group border border-transparent hover:border-border/40">
+            <Button
+              variant="ghost"
+              aria-label="User Account Menu"
+              className="w-full justify-start px-2 py-2 h-auto rounded-xl hover:bg-foreground/5 transition-all duration-200 group border border-transparent hover:border-border/40 focus-visible:ring-2 focus-visible:ring-primary/50"
+            >
               <div className="flex items-center gap-2.5 w-full min-w-0">
                 <Avatar className="h-8 w-8 ring-1 ring-border shadow-xs shrink-0">
                   <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`} />
-                  <AvatarFallback className="bg-primary/20 text-primary text-xs">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
+                  <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 text-left truncate flex flex-col justify-center min-w-0">
                   <p className="text-xs font-semibold text-sidebar-foreground truncate leading-tight">{user?.email?.split('@')[0] || user?.email}</p>
@@ -550,28 +554,15 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={8} className="w-48 bg-popover border-border text-popover-foreground mb-1 rounded-xl shadow-xl p-1 z-50">
-            <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent rounded-lg py-1.5 transition-colors">
-              <Link href="/profile" className="flex items-center gap-2.5 text-xs w-full">
-                <User className="w-3.5 h-3.5 text-primary" />
-                Profile & Account
-              </Link>
-            </DropdownMenuItem>
-
-            {dbUser?.role === "super_admin" && (
-              <DropdownMenuItem asChild className="cursor-pointer hover:bg-accent rounded-lg py-1.5 transition-colors">
-                <Link href="/admin/clarity" className="flex items-center gap-2.5 text-xs w-full">
-                  <Shield className="w-3.5 h-3.5 text-amber-500" />
-                  Admin Console
-                </Link>
-              </DropdownMenuItem>
-            )}
-
-            <div className="h-px bg-border/60 my-1 mx-1" />
+            <div className="px-2.5 py-1.5 border-b border-border/50 mb-1">
+              <p className="text-xs font-semibold text-foreground truncate">{user?.email?.split('@')[0] || user?.email}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+            </div>
             <DropdownMenuItem 
               onClick={() => signOut()}
-              className="cursor-pointer text-rose-500 hover:bg-rose-500/10 hover:text-rose-600 focus:bg-rose-500/10 focus:text-rose-600 rounded-lg py-1.5 text-xs transition-colors"
+              className="cursor-pointer text-rose-500 hover:bg-rose-500/10 hover:text-rose-600 focus:bg-rose-500/10 focus:text-rose-600 rounded-lg py-1.5 text-xs transition-colors font-medium flex items-center gap-2"
             >
-              <LogOut className="w-3.5 h-3.5 mr-2" />
+              <LogOut className="w-3.5 h-3.5" />
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
