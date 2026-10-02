@@ -129,7 +129,13 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setLocation("/settings?tab=notifications")}
+          onClick={() => {
+            if (projectId) {
+              setLocation(`/settings?tab=notifications&projectId=${projectId}`);
+            } else {
+              setLocation("/settings?tab=notifications");
+            }
+          }}
           className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary relative transition-colors"
           title="Notifications"
         >
