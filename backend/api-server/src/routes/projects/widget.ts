@@ -560,11 +560,11 @@ router.get("/analytics", async (req: any, res: Response) => {
       });
     }
 
-    // Fetch AI response feedback safely
+    // Fetch AI response & suggestion feedback safely
     let feedbackList: any[] = [];
     try {
       feedbackList = await db.query.projectFeedback.findMany({
-        where: (pf, { eq, and, like }) => and(eq(pf.projectId, projectId), like(pf.category, "AI_RESPONSE_%")),
+        where: (pf, { eq, and, or, like }) => and(eq(pf.projectId, projectId), or(like(pf.category, "AI_RESPONSE_%"), eq(pf.category, "SUGGESTION"))),
         orderBy: (pf, { desc }) => [desc(pf.createdAt)],
         limit: 50
       });

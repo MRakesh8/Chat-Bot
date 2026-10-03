@@ -10,6 +10,7 @@ import { Notifications } from "@/components/project/notifications";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useSettingsTabPrefetch } from "@/hooks/use-tab-prefetch";
 import {
   Select,
   SelectContent,
@@ -71,6 +72,7 @@ export default function SettingsPage() {
   });
 
   const effectiveProjectId = selectedProjectId || (projects && projects.length > 0 ? projects[0].id : null);
+  const { getTabTriggerProps } = useSettingsTabPrefetch(effectiveProjectId, activeTab);
 
   const handleProjectSelect = (id: string) => {
     setSelectedProjectId(id);
@@ -91,16 +93,16 @@ export default function SettingsPage() {
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-12 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
-            <TabsTrigger value="general" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="general" {...getTabTriggerProps("general")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Settings className="w-4 h-4 mr-2" /> General
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="notifications" {...getTabTriggerProps("notifications")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Bell className="w-4 h-4 mr-2" /> Notifications
             </TabsTrigger>
-            <TabsTrigger value="billing" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="billing" {...getTabTriggerProps("billing")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <CreditCard className="w-4 h-4 mr-2" /> Billing
             </TabsTrigger>
-            <TabsTrigger value="api-keys" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="api-keys" {...getTabTriggerProps("api-keys")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Key className="w-4 h-4 mr-2" /> API Keys
             </TabsTrigger>
           </TabsList>

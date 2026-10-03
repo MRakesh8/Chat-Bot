@@ -1074,7 +1074,7 @@
               const text = fbInput.value.trim();
               if (!text) return;
               feedbackSubmitted = true;
-              submitFeedback('LIKE', text);
+              submitFeedback('SUGGESTION', text);
               fbSubmit.disabled = true;
               fbSubmit.textContent = 'Sent!';
               fbInput.disabled = true;

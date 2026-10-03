@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import { 
   projects,
+  organizationMembers,
   messageFeedback, 
   projectFeedback, 
   notifications, 
@@ -76,16 +77,95 @@ export async function submitProjectFeedback(params: {
   comment: string;
   channel: string;
 }) {
-  await db.insert(projectFeedback).values({
+  const [feedback] = await db.insert(projectFeedback).values({
     projectId: params.projectId,
     customerId: params.customerId || null,
     category: params.category || "Other",
     rating: params.rating,
     comment: params.comment,
     channel: params.channel
-  });
+  }).returning();
   
-  return { success: true };
+  // If this is a website visitor suggestion, notify project owner/admin asynchronously
+  if (params.category === "SUGGESTION" || params.category === "Suggestion") {
+    processSuggestionNotification(params.projectId, feedback.id, params.comment)
+      .catch(e => logger.error({ err: e }, "Failed to process suggestion notification"));
+  }
+
+  return { success: true, feedback };
+}
+
+async function processSuggestionNotification(projectId: string, feedbackId: string, rawComment: string) {
+  try {
+    // 1. Resolve project and organization scope
+    const [proj] = await db
+      .select({
+        userId: projects.userId,
+        organizationId: projects.organizationId,
+        name: projects.name
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId));
+
+    if (!proj) {
+      logger.warn({ projectId }, "Cannot create suggestion notification: project not found");
+      return;
+    }
+
+    let orgId = proj.organizationId;
+    if (!orgId && proj.userId) {
+      const [member] = await db
+        .select({ organizationId: organizationMembers.organizationId })
+        .from(organizationMembers)
+        .where(eq(organizationMembers.userId, proj.userId))
+        .limit(1);
+      if (member) {
+        orgId = member.organizationId;
+      }
+    }
+    const finalOrgId = orgId || "default";
+
+    // 2. Extract clean suggestion preview (without leaking internal metadata or sensitive payloads)
+    let cleanText = rawComment || "A visitor submitted a new suggestion.";
+    if (cleanText.startsWith("User Note: ")) {
+      const match = cleanText.match(/^User Note:\s*(.*?)(?:\s*\|\s*AI Context:|$)/s);
+      if (match && match[1]) {
+        cleanText = match[1].trim();
+      }
+    }
+    const preview = cleanText.length > 150 ? cleanText.substring(0, 147) + "..." : cleanText;
+
+    // 3. Deduplication check
+    // Prevent duplicate notifications on fast duplicate clicks or network retries within short window
+    const dedupeKey = `suggestion_${projectId}_${feedbackId}`;
+    const [existing] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.projectId, projectId), eq(notifications.dedupeKey, dedupeKey)))
+      .limit(1);
+
+    if (existing) {
+      logger.info({ projectId, dedupeKey }, "Suggestion notification deduplicated");
+      return;
+    }
+
+    // 4. Create notification in existing notifications table
+    await db.insert(notifications).values({
+      organizationId: finalOrgId as string,
+      projectId,
+      type: "SUGGESTION",
+      severity: "info",
+      title: "New website suggestion",
+      message: preview,
+      referenceId: feedbackId,
+      dedupeKey,
+      createdAt: new Date(),
+    });
+
+    logger.info({ projectId, feedbackId, organizationId: finalOrgId }, "Created suggestion notification for project owner/admins");
+  } catch (error) {
+    logger.error({ err: error, projectId, feedbackId }, "Error creating suggestion notification");
+  }
 }
 
 async function processNotificationThresholds(projectId: string, type: "LIKE" | "DISLIKE") {
@@ -115,7 +195,7 @@ async function processNotificationThresholds(projectId: string, type: "LIKE" | "
     const dedupeKey = `threshold_${projectId}_${type}_24h_b${block}`;
     
     const [org] = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId));
-    if (!org) return;
+    if (!org || !org.organizationId) return;
 
     // We can't easily onConflictDoNothing with an index on just dedupeKey unless we make it unique.
     // Instead we query first to prevent dupes.

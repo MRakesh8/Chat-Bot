@@ -934,7 +934,12 @@ router.post("/:widgetToken/feedback", async (req: Request, res: Response): Promi
       return res.status(400).json({ error: "Missing feedback type" });
     }
 
-    const category = type === "LIKE" ? "AI_RESPONSE_LIKE" : "AI_RESPONSE_DISLIKE";
+    let category = "AI_RESPONSE_LIKE";
+    if (type === "SUGGESTION") {
+      category = "SUGGESTION";
+    } else if (type === "DISLIKE") {
+      category = "AI_RESPONSE_DISLIKE";
+    }
     
     await submitProjectFeedback({
       projectId,
@@ -945,7 +950,7 @@ router.post("/:widgetToken/feedback", async (req: Request, res: Response): Promi
 
     return res.json({ success: true });
   } catch (err: any) {
-    req.log.error("Failed to submit widget AI feedback:", err);
+    req.log?.error ? req.log.error(err, "Failed to submit widget AI feedback") : console.error("Failed to submit widget AI feedback", err);
     return res.status(500).json({ error: "Failed to submit feedback" });
   }
 });

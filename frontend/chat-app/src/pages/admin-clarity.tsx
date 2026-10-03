@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { apiUrl } from "@/lib/api-url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminClarityTabPrefetch } from "@/hooks/use-tab-prefetch";
 import { Switch } from "@/components/ui/switch";
 import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabase";
@@ -121,6 +122,7 @@ export default function AdminConsolePage() {
 
   // Strict client-side admin check
   const isAdmin = dbUser?.role === "super_admin";
+  const { getTabTriggerProps } = useAdminClarityTabPrefetch(isAdmin, activeTab);
 
   // Fetch Users
   const { data: users, isLoading: usersLoading } = useQuery({
@@ -448,6 +450,7 @@ export default function AdminConsolePage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
+              {...getTabTriggerProps(tab.id)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1.5 ${
                 activeTab === tab.id 
                   ? "bg-card text-foreground shadow-sm" 

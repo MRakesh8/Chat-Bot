@@ -1163,7 +1163,9 @@ export function Analytics({ projectId }: { projectId: string }) {
                       <div className="flex items-start justify-between gap-3 text-xs">
                         <div className="space-y-1.5 flex-1">
                           <div className="flex items-center gap-2">
-                            {fb.category === "AI_RESPONSE_LIKE" ? (
+                            {fb.category === "SUGGESTION" ? (
+                              <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 gap-1">💡 Suggestion</Badge>
+                            ) : fb.category === "AI_RESPONSE_LIKE" ? (
                               <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1">👍 Helpful</Badge>
                             ) : (
                               <Badge variant="destructive" className="gap-1 bg-red-500/10 text-red-500 border-red-500/20">👎 Not Helpful</Badge>
@@ -1171,7 +1173,9 @@ export function Analytics({ projectId }: { projectId: string }) {
                             <span className="text-[10px] text-muted-foreground">{new Date(fb.createdAt).toLocaleString()}</span>
                           </div>
                           <div className="p-3 bg-muted/40 rounded-md border border-border text-foreground font-medium">
-                            <span className="text-muted-foreground text-[10px] uppercase block mb-1">AI Response Context</span>
+                            <span className="text-muted-foreground text-[10px] uppercase block mb-1">
+                              {fb.category === "SUGGESTION" ? "Visitor Suggestion Note" : "AI Response Context"}
+                            </span>
                             {fb.comment}
                           </div>
                         </div>

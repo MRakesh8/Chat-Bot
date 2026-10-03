@@ -5,10 +5,10 @@ import { apiUrl } from "@/lib/api-url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Bell, CheckCircle, AlertCircle, Info, RefreshCw, Check } from "lucide-react";
+import { Loader2, Bell, CheckCircle, AlertCircle, Info, RefreshCw, Check, Lightbulb, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-export function Notifications({ projectId }: { projectId: string }) {
+export function Notifications({ projectId, onSelectTab }: { projectId: string; onSelectTab?: (tab: string) => void }) {
   const { session } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -53,6 +53,15 @@ export function Notifications({ projectId }: { projectId: string }) {
     },
   });
 
+  const handleNotificationClick = (notif: any) => {
+    if (!notif.readAt) {
+      markAsRead.mutate(notif.id);
+    }
+    if ((notif.type === "SUGGESTION" || notif.type === "QUALITY_ALERT") && onSelectTab) {
+      onSelectTab("analytics");
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -67,7 +76,11 @@ export function Notifications({ projectId }: { projectId: string }) {
   const notifications = data?.notifications || [];
   const unreadCount = notifications.filter((n: any) => !n.readAt).length;
 
-  const getIconForSeverity = (severity: string) => {
+  const getIconForNotification = (notif: any) => {
+    if (notif.type === "SUGGESTION") {
+      return <Lightbulb className="h-5 w-5 text-amber-500" />;
+    }
+    const severity = notif.severity || "info";
     switch (severity.toLowerCase()) {
       case "error":
       case "critical":
@@ -95,7 +108,7 @@ export function Notifications({ projectId }: { projectId: string }) {
             )}
           </CardTitle>
           <CardDescription>
-            System alerts, feedback thresholds, and critical events for this project.
+            System alerts, feedback thresholds, and visitor suggestions for this project.
           </CardDescription>
         </div>
         <Button 
@@ -112,28 +125,45 @@ export function Notifications({ projectId }: { projectId: string }) {
           <div className="text-center p-8 bg-muted/20 rounded-xl border border-dashed">
             <Bell className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-sm font-medium text-muted-foreground">No notifications yet.</p>
-            <p className="text-xs text-muted-foreground mt-1">When system events or feedback thresholds are reached, you will see alerts here.</p>
+            <p className="text-xs text-muted-foreground mt-1">When visitor suggestions or system events occur, you will see alerts here.</p>
           </div>
         ) : (
           <div className="space-y-4">
             {notifications.map((notif: any) => (
               <div 
                 key={notif.id} 
-                className={`p-4 rounded-xl border flex gap-4 ${!notif.readAt ? 'bg-primary/5 border-primary/20' : 'bg-background border-border/50 opacity-80'}`}
+                className={`p-4 rounded-xl border flex gap-4 transition-all ${
+                  !notif.readAt ? 'bg-primary/5 border-primary/20 hover:border-primary/40' : 'bg-background border-border/50 opacity-80'
+                }`}
               >
                 <div className="shrink-0 mt-1">
-                  {getIconForSeverity(notif.severity)}
+                  {getIconForNotification(notif)}
                 </div>
-                <div className="flex-1 space-y-1">
+                <div 
+                  className="flex-1 space-y-1 cursor-pointer"
+                  onClick={() => handleNotificationClick(notif)}
+                >
                   <div className="flex items-start justify-between">
-                    <h4 className={`text-sm font-semibold ${!notif.readAt ? 'text-foreground' : 'text-muted-foreground'}`}>
-                      {notif.title}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className={`text-sm font-semibold ${!notif.readAt ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {notif.title}
+                      </h4>
+                      {notif.type === "SUGGESTION" && (
+                        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">
+                          Suggestion
+                        </Badge>
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground shrink-0 ml-4">
                       {new Date(notif.createdAt).toLocaleString()}
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{notif.message}</p>
+                  {(notif.type === "SUGGESTION" || notif.type === "QUALITY_ALERT") && onSelectTab && (
+                    <p className="text-xs text-primary font-medium flex items-center gap-1 pt-1">
+                      <ExternalLink className="w-3 h-3" /> View in Analytics & Feedback
+                    </p>
+                  )}
                 </div>
                 <div className="shrink-0 flex items-center justify-center pl-2">
                   {!notif.readAt && (
