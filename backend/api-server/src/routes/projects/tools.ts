@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import {
   db,
@@ -7,6 +7,7 @@ import {
   integrationTools,
   crypto,
   withTenantContext,
+  withBypassRLS,
   enterpriseAuditLogs,
   executionSteps,
   workflowExecutions
@@ -21,6 +22,24 @@ import { logger } from "../../lib/logger";
 
 const router = Router({ mergeParams: true });
 
+async function resolveAuthContext(req: any, projectId: string) {
+  const userId: string | undefined = req.auth?.userId;
+  if (!userId) return null;
+
+  const isSuperAdmin = req.auth?.dbUser?.role === "super_admin";
+
+  const projectMeta = await withBypassRLS(async (tx: any) => {
+    return await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  });
+  const project = projectMeta[0];
+  if (!project) return null;
+
+  const orgId: string = project.organizationId;
+  const membership = req.auth?.memberships?.find((m: any) => m.organizationId === orgId);
+
+  return { userId, isSuperAdmin, orgId, membership, project };
+}
+
 const ExecuteToolBody = z.object({
   input: z.any(),
   confirmationToken: z.string().optional(),
@@ -30,8 +49,15 @@ const ExecuteToolBody = z.object({
 router.post("/:toolId/execute", async (req: any, res: any) => {
   try {
     const { projectId, toolId } = req.params;
-    const orgId = req.user?.organizationId;
-    const userId = req.user?.id || "authenticated_user";
+
+    const ctx = await resolveAuthContext(req, projectId);
+    if (!ctx) return res.status(401).json({ error: "Unauthorized" });
+
+    const { userId, isSuperAdmin, orgId, membership } = ctx;
+    if (!isSuperAdmin && !membership) {
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
     const parsed = ExecuteToolBody.safeParse(req.body);
     
     if (!parsed.success) {
@@ -85,3 +111,4 @@ router.post("/:toolId/execute", async (req: any, res: any) => {
 });
 
 export default router;
+

@@ -12,6 +12,7 @@ import {
   organizationMembers
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { providerRegistry } from "./integrations/provider-registry";
 import { checkProjectEntitlement } from "../security/entitlement";
 import { checkAndIncrementUsage, refundUsage } from "../security/quota";
@@ -81,6 +82,8 @@ export async function executeServerTool(
     confirmationToken,
     customerContext
   } = params;
+
+  const executionStart = Date.now();
 
   if (!projectId) {
     return {
@@ -473,6 +476,9 @@ export async function executeServerTool(
         projectId,
         actionType: isVerified ? "TOOL_EXECUTION_SUCCESS" : "TOOL_EXECUTION_FAILED",
         details: {
+          requestId: executionId || randomUUID(),
+          organizationId: effectiveOrgId,
+          durationMs: Date.now() - executionStart,
           toolId: matchedTool.id,
           actionName: resolvedActionName,
           providerName,

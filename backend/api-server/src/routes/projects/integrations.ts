@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import {
   db,
@@ -100,8 +100,8 @@ router.post("/connect", async (req: any, res: any) => {
     if (!ctx) return res.status(401).json({ error: "Unauthorized" });
 
     const { userId, isSuperAdmin, orgId, membership } = ctx;
-    if (!isSuperAdmin && !membership) {
-      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    if (!isSuperAdmin && (!membership || !["owner", "admin", "manager"].includes(membership.role))) {
+      return res.status(403).json({ error: "Insufficient permissions to connect integrations" });
     }
 
     const parsed = ConnectBody.safeParse(req.body);
@@ -180,8 +180,8 @@ router.post("/:integrationId/verify", async (req: any, res: any) => {
     if (!ctx) return res.status(401).json({ error: "Unauthorized" });
 
     const { userId, isSuperAdmin, orgId, membership } = ctx;
-    if (!isSuperAdmin && !membership) {
-      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    if (!isSuperAdmin && (!membership || !["owner", "admin", "manager"].includes(membership.role))) {
+      return res.status(403).json({ error: "Insufficient permissions to verify integrations" });
     }
 
     let credentialsObj: any = null;
@@ -196,6 +196,10 @@ router.post("/:integrationId/verify", async (req: any, res: any) => {
       });
       if (!integration) throw new Error("Integration not found");
       
+      if (["REVOKED", "DISCONNECTED", "NOT_CONNECTED"].includes(integration.status)) {
+        throw new Error(`Cannot verify integration in status: ${integration.status}. Must be CONNECTED or HEALTH_CHECK_FAILED.`);
+      }
+
       providerName = integration.provider;
       if (integration.encryptedCredentials) {
         credentialsObj = JSON.parse(crypto.decrypt(integration.encryptedCredentials));
