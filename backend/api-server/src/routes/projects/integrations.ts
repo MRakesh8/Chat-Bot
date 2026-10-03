@@ -7,6 +7,7 @@ import {
   integrationTools,
   crypto,
   withTenantContext,
+  withBypassRLS,
   organizations,
   enterpriseAuditLogs
 } from "@workspace/db";
@@ -20,14 +21,41 @@ import "../../services/integrations/providers/shopify";
 
 const router = Router({ mergeParams: true });
 
+// Helper to extract auth context — mirrors projects/index.ts pattern
+async function resolveAuthContext(req: any, projectId: string) {
+  const userId: string | undefined = req.auth?.userId;
+  if (!userId) return null;
+
+  const isSuperAdmin = req.auth?.dbUser?.role === "super_admin";
+
+  // Resolve project parent organization using bypass RLS
+  const projectMeta = await withBypassRLS(async (tx: any) => {
+    return await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  });
+  const project = projectMeta[0];
+  if (!project) return null;
+
+  const orgId: string = project.organizationId;
+  const membership = req.auth?.memberships?.find((m: any) => m.organizationId === orgId);
+
+  return { userId, isSuperAdmin, orgId, membership, project };
+}
+
 // List integrations
 router.get("/", async (req: any, res: any) => {
   try {
     const { projectId } = req.params;
-    const orgId = req.user.organizationId;
-    
+
+    const ctx = await resolveAuthContext(req, projectId);
+    if (!ctx) return res.status(401).json({ error: "Unauthorized" });
+
+    const { isSuperAdmin, orgId, membership } = ctx;
+    if (!isSuperAdmin && !membership) {
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
     // Auth & Tenant
-    const items = await withTenantContext(orgId, async (tx) => {
+    const items = await withTenantContext(orgId, async (tx: any) => {
       // Ensure project exists and belongs to org
       const proj = await tx.query.projects.findFirst({
         where: and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
@@ -67,7 +95,15 @@ const ConnectBody = z.object({
 router.post("/connect", async (req: any, res: any) => {
   try {
     const { projectId } = req.params;
-    const orgId = req.user.organizationId;
+
+    const ctx = await resolveAuthContext(req, projectId);
+    if (!ctx) return res.status(401).json({ error: "Unauthorized" });
+
+    const { userId, isSuperAdmin, orgId, membership } = ctx;
+    if (!isSuperAdmin && !membership) {
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
     const parsed = ConnectBody.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
@@ -81,7 +117,7 @@ router.post("/connect", async (req: any, res: any) => {
     const providerImpl = providerRegistry.getProvider(provider);
     const encryptedCredentials = crypto.encrypt(JSON.stringify(credentials));
 
-    const result = await withTenantContext(orgId, async (tx) => {
+    const result = await withTenantContext(orgId, async (tx: any) => {
       const proj = await tx.query.projects.findFirst({
         where: and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
       });
@@ -100,7 +136,7 @@ router.post("/connect", async (req: any, res: any) => {
       const tools = providerImpl.getAvailableTools();
       if (tools.length > 0) {
         await tx.insert(integrationTools).values(
-          tools.map(t => ({
+          tools.map((t: any) => ({
             integrationId: integration.id,
             projectId,
             actionName: t.actionName,
@@ -118,7 +154,7 @@ router.post("/connect", async (req: any, res: any) => {
       await tx.insert(enterpriseAuditLogs).values({
         projectId,
         actionType: "INTEGRATION_CONNECTED",
-        details: { integrationId: integration.id, provider, userId: req.user.id }
+        details: { integrationId: integration.id, provider, userId }
       });
 
       return integration;
@@ -139,12 +175,19 @@ router.post("/connect", async (req: any, res: any) => {
 router.post("/:integrationId/verify", async (req: any, res: any) => {
   try {
     const { projectId, integrationId } = req.params;
-    const orgId = req.user.organizationId;
+
+    const ctx = await resolveAuthContext(req, projectId);
+    if (!ctx) return res.status(401).json({ error: "Unauthorized" });
+
+    const { userId, isSuperAdmin, orgId, membership } = ctx;
+    if (!isSuperAdmin && !membership) {
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
 
     let credentialsObj: any = null;
     let providerName = "";
 
-    await withTenantContext(orgId, async (tx) => {
+    await withTenantContext(orgId, async (tx: any) => {
       const integration = await tx.query.projectIntegrations.findFirst({
         where: and(
           eq(projectIntegrations.id, integrationId),
@@ -168,7 +211,7 @@ router.post("/:integrationId/verify", async (req: any, res: any) => {
 
     const newStatus = isValid ? "VERIFIED" : "HEALTH_CHECK_FAILED";
 
-    await withTenantContext(orgId, async (tx) => {
+    await withTenantContext(orgId, async (tx: any) => {
       await tx.update(projectIntegrations)
         .set({ status: newStatus, updatedAt: new Date() })
         .where(eq(projectIntegrations.id, integrationId));
@@ -186,7 +229,7 @@ router.post("/:integrationId/verify", async (req: any, res: any) => {
       await tx.insert(enterpriseAuditLogs).values({
         projectId,
         actionType: "INTEGRATION_VERIFIED",
-        details: { integrationId, provider: providerName, isValid, userId: req.user.id }
+        details: { integrationId, provider: providerName, isValid, userId }
       });
     });
 
@@ -201,14 +244,20 @@ router.post("/:integrationId/verify", async (req: any, res: any) => {
 router.post("/:integrationId/authorize", async (req: any, res: any) => {
   try {
     const { projectId, integrationId } = req.params;
-    const orgId = req.user.organizationId;
 
-    // RBAC Check: Ensure user is owner/admin (assuming we have role in req.user, or we use a middleware)
-    if (req.user.role === "viewer") {
+    const ctx = await resolveAuthContext(req, projectId);
+    if (!ctx) return res.status(401).json({ error: "Unauthorized" });
+
+    const { userId, isSuperAdmin, membership } = ctx;
+
+    // RBAC Check: owner, admin, or manager required (Step 6 fix)
+    if (!isSuperAdmin && (!membership || !["owner", "admin", "manager"].includes(membership.role))) {
       return res.status(403).json({ error: "Insufficient permissions to authorize integrations" });
     }
 
-    const result = await withTenantContext(orgId, async (tx) => {
+    const { orgId } = ctx;
+
+    const result = await withTenantContext(orgId, async (tx: any) => {
       const integration = await tx.query.projectIntegrations.findFirst({
         where: and(
           eq(projectIntegrations.id, integrationId),
@@ -237,7 +286,7 @@ router.post("/:integrationId/authorize", async (req: any, res: any) => {
       await tx.insert(enterpriseAuditLogs).values({
         projectId,
         actionType: "INTEGRATION_AUTHORIZED",
-        details: { integrationId, provider: integration.provider, userId: req.user.id }
+        details: { integrationId, provider: integration.provider, userId }
       });
 
       return { status: "AUTHORIZED" };
@@ -254,13 +303,20 @@ router.post("/:integrationId/authorize", async (req: any, res: any) => {
 router.post("/:integrationId/revoke", async (req: any, res: any) => {
   try {
     const { projectId, integrationId } = req.params;
-    const orgId = req.user.organizationId;
 
-    if (req.user.role === "viewer") {
-      return res.status(403).json({ error: "Insufficient permissions" });
+    const ctx = await resolveAuthContext(req, projectId);
+    if (!ctx) return res.status(401).json({ error: "Unauthorized" });
+
+    const { userId, isSuperAdmin, membership } = ctx;
+
+    // RBAC Check: owner, admin, or manager required (Step 6 fix)
+    if (!isSuperAdmin && (!membership || !["owner", "admin", "manager"].includes(membership.role))) {
+      return res.status(403).json({ error: "Insufficient permissions to revoke integrations" });
     }
 
-    const result = await withTenantContext(orgId, async (tx) => {
+    const { orgId } = ctx;
+
+    const result = await withTenantContext(orgId, async (tx: any) => {
       const integration = await tx.query.projectIntegrations.findFirst({
         where: and(
           eq(projectIntegrations.id, integrationId),
@@ -284,7 +340,7 @@ router.post("/:integrationId/revoke", async (req: any, res: any) => {
       await tx.insert(enterpriseAuditLogs).values({
         projectId,
         actionType: "INTEGRATION_REVOKED",
-        details: { integrationId, provider: integration.provider, userId: req.user.id }
+        details: { integrationId, provider: integration.provider, userId }
       });
 
       return { status: "REVOKED" };

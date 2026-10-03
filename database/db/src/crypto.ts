@@ -8,6 +8,11 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
   ? crypto.scryptSync(process.env.ENCRYPTION_KEY, "salt", KEY_LENGTH)
   : crypto.scryptSync("fallback_dummy_key_for_local_dev_only", "salt", KEY_LENGTH);
 
+// Production guard: refuse to start with the fallback dummy key in production
+if (!process.env.ENCRYPTION_KEY && process.env.NODE_ENV === "production") {
+  throw new Error("ENCRYPTION_KEY must be set in production. Refusing to start with fallback key.");
+}
+
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);

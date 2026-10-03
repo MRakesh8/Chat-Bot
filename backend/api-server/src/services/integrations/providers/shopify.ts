@@ -1,4 +1,4 @@
-import { IntegrationProvider, ToolDefinition } from "../provider-registry";
+import { IntegrationProvider, ToolDefinition, providerRegistry } from "../provider-registry";
 import dns from "dns/promises";
 
 export class ShopifyProvider implements IntegrationProvider {
@@ -41,14 +41,29 @@ export class ShopifyProvider implements IntegrationProvider {
       throw new Error("SSRF Protection: Target domain or IP is blocked.");
     }
 
+    // AbortController timeout — 10 seconds (Step 7)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     // Explicitly prevent following redirects to prevent SSRF via 301/302
     const safeOptions: RequestInit = {
       ...options,
       redirect: "manual",
+      signal: controller.signal,
     };
 
-    const response = await fetch(targetUrl.toString(), safeOptions);
-    
+    let response: Response;
+    try {
+      response = await fetch(targetUrl.toString(), safeOptions);
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        throw new Error("Provider timeout: Shopify API did not respond within 10 seconds.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
     // If we receive a redirect status, reject it outright
     if (response.status >= 300 && response.status < 400) {
       throw new Error("SSRF Protection: Redirects are not permitted for this provider.");
@@ -188,3 +203,7 @@ export class ShopifyProvider implements IntegrationProvider {
     throw new Error(`Action ${actionName} is not supported by ShopifyProvider`);
   }
 }
+
+// Self-register with the provider registry so any import of this file
+// automatically makes 'shopify' available via providerRegistry.getProvider('shopify').
+providerRegistry.register(new ShopifyProvider());

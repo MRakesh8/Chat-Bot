@@ -14,7 +14,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { providerRegistry } from "./integrations/provider-registry";
 import { checkProjectEntitlement } from "../security/entitlement";
-import { checkAndIncrementUsage } from "../security/quota";
+import { checkAndIncrementUsage, refundUsage } from "../security/quota";
 import {
   evaluateActionRisk,
   requiresConfirmation,
@@ -139,14 +139,25 @@ export async function executeServerTool(
     const effectiveOrgId = orgId || project.organizationId;
 
     if (!isSuperAdmin && effectiveOrgId) {
-       const [membership] = await db
+      if (userId && userId !== "public_visitor" && userId !== "whatsapp_contact") {
+        const [membership] = await db
           .select({ role: organizationMembers.role })
           .from(organizationMembers)
           .where(and(eq(organizationMembers.organizationId, effectiveOrgId), eq(organizationMembers.userId, userId)))
           .limit(1);
-        if (membership && (membership.role === "owner" || membership.role === "admin" || membership.role === "manager")) {
+
+        if (!membership) {
+          return {
+            success: false,
+            status: "FORBIDDEN",
+            error: "Tenant isolation violation: User is not a member of the project organization."
+          };
+        }
+
+        if (membership.role === "owner" || membership.role === "admin" || membership.role === "manager") {
           isBusinessAdmin = true;
         }
+      }
     }
 
     // 2. Authoritative Project Entitlement Check
@@ -409,7 +420,6 @@ export async function executeServerTool(
       executionResult = await providerImpl.executeTool(resolvedActionName, input, credentialsObj);
     } catch (execErr: any) {
       executionError = execErr.message || "Provider tool execution failed.";
-      const { refundUsage } = require("../../security/quota");
       await refundUsage(projectId, "action", 1);
     }
 

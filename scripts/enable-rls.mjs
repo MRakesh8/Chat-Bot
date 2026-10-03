@@ -25,7 +25,10 @@ const tables = [
   'widget_analytics', 'widget_leads', 'website_memory', 'agent_workflows',
   'agent_skills', 'website_adapters', 'enterprise_audit_logs',
   'website_permissions', 'workflow_executions', 'execution_steps', 'api_logs',
-  'plans', 'project_licenses', 'payments', 'payment_logs'
+  'plans', 'project_licenses', 'payments', 'payment_logs',
+  'project_integrations', 'integration_tools',
+  'security_audit_logs', 'project_entitlements', 'consumed_confirmations',
+  'browser_capabilities'
 ];
 
 async function main() {
