@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002",
+  "type": "test",
+  "description": "Add integration-2e-specific verification test file that proves the complete execution chain end-to-end (lifecycle, security properties, failure cases, audit log, tenant isolation). Also add requestId + duration + organizationId to audit log entries in tool-execution.ts. Independent of FEAT-001 steps but must run after FEAT-001 is committed since it depends on the fixed req.auth mapping and ShopifyProvider registration.",
+  "status": "completed",
+  "steps": [
+    "Step 1 — Add requestId and duration to audit log in backend/api-server/src/services/tool-execution.ts. At the top of executeServerTool, capture `const executionStart = Date.now()`. In the audit log insert (around line 436), add to the details object: `requestId: executionId || randomUUID(), organizationId: effectiveOrgId, durationMs: Date.now() - executionStart`. Import `randomUUID` from 'crypto' at the top of the file.",
+    "Step 2 — Create integration verification test file backend/api-server/tests/integrations-2e-verification.test.ts. This test must NOT require real Shopify credentials (uses mock/unit approach for provider execution). It must verify: (A) providerRegistry correctly has 'shopify' after import, (B) ShopifyProvider.getAvailableTools() returns shopify_get_products and shopify_get_orders both with riskLevel READ_ONLY, (C) ShopifyProvider SSRF guard rejects non-.myshopify.com domains, (D) ShopifyProvider SSRF guard rejects localhost/127.0.0.1, (E) ShopifyProvider throws on unknown actionName, (F) crypto.encrypt/decrypt round-trip works correctly, (G) crypto.decrypt returns empty string on empty input without throwing, (H) withTenantContext throws on empty orgId (fail-closed), (I) integrationTools schema has correct status default 'DISCOVERED', (J) projectIntegrations schema has correct status default 'NOT_CONNECTED'.",
+    "Step 3 — Add failure scenario tests in the same file: (K) executeServerTool with unknown projectId returns FORBIDDEN, (L) executeServerTool with known projectId but toolId from different project returns FORBIDDEN (uses DB — requires DATABASE_URL), (M) executeServerTool with expired entitlement returns ENTITLEMENT_EXPIRED (mock checkProjectEntitlement), (N) executeServerTool with quota exhausted returns QUOTA_EXCEEDED. Tests K-N can be skipped if DATABASE_URL is not set, with a clear skip message.",
+    "Step 4 — Add lifecycle transition tests: (O) provider-registry rejects duplicate registration (register same providerId twice throws), (P) getProvider for unknown provider throws with message containing 'not found in registry'.",
+    "Step 5 — Update the FEAT-002 findings field in this file with test run results after execution."
+  ],
+  "acceptance_criteria": [
+    "Running `npx tsx tests/integrations-2e-verification.test.ts` from backend/api-server/ reports 0 FAILED assertions for non-DB tests (A-H, K skipped if no DB, O, P)",
+    "With DATABASE_URL set, all assertions including DB tests pass",
+    "Test file clearly labels DB-requiring tests and gracefully skips them when DATABASE_URL is absent",
+    "audit log entries in enterprise_audit_logs now contain requestId, organizationId, and durationMs in the details JSONB",
+    "npx tsc --noEmit continues to report zero errors after Step 1 changes"
+  ],
+  "verification": [
+    "npx tsc --noEmit  (from d:/Project/Chat-bot/backend/api-server/ — zero errors after audit log changes)",
+    "npx tsx tests/integrations-2e-verification.test.ts  (from d:/Project/Chat-bot/backend/api-server/ — all non-DB tests PASS, DB tests pass or skip cleanly)",
+    "npx tsx tests/phase2f-verification.test.ts  (from d:/Project/Chat-bot/backend/api-server/ — must still pass after audit log changes)"
+  ],
+  "blocked_reason": null,
+  "findings": "Test run completed successfully. Results: integrations-2e-verification.test.ts — 20 PASSED, 0 FAILED, 0 SKIPPED (DATABASE_URL was set; all K-N DB tests ran and passed). phase2f-verification.test.ts — 96 PASSED, 0 FAILED. tsc --noEmit — exit code 0 (no TypeScript errors). Changes made: (1) tool-execution.ts: added `import { randomUUID } from 'crypto'` and `const executionStart = Date.now()` at function start; audit log details now include requestId (executionId || randomUUID()), organizationId (effectiveOrgId), and durationMs (Date.now() - executionStart). (2) Created tests/integrations-2e-verification.test.ts with 20 assertions covering provider registry (A), tool definitions & risk levels (B1-B4), SSRF protection (C-D), unknown action rejection (E), crypto round-trip (F-G), withTenantContext fail-closed (H), schema defaults (I-J), executeServerTool failure paths K-N, and registry lifecycle invariants O-P."
+}
