@@ -1024,7 +1024,7 @@
               dislikeBtn.disabled = true;
               fbInput.disabled = true;
               
-              const commentStr = text ? \`User Note: \${text} | AI Context: \${botResponse.substring(0, 200)}...\` : \`AI Context: \${botResponse.substring(0, 200)}...\`;
+              const commentStr = text ? `User Note: ${text} | AI Context: ${botResponse.substring(0, 200)}...` : `AI Context: ${botResponse.substring(0, 200)}...`;
 
               fetch(apiBaseUrl + '/api/widget/' + widgetToken + '/feedback', {
                 method: 'POST',
