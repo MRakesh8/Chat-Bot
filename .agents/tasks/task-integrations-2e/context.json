@@ -1,0 +1,29 @@
+{
+  "project_type": "Full-stack TypeScript monorepo — Express/Node.js backend + React/Vite frontend",
+  "language": "TypeScript (backend + frontend), SQL (Drizzle migrations)",
+  "build_system": "pnpm workspaces. Backend: esbuild via build.mjs. Frontend: Vite. DB package: tsc. Run from workspace root with pnpm.",
+  "test_framework": "No vitest/jest configured. Tests are tsx scripts run directly: `npx tsx tests/<file>.ts` from backend/api-server/. Some tests require live DB (DATABASE_URL set).",
+  "build_command": "pnpm -F api-server build  (from workspace root) OR  node build.mjs  (from backend/api-server/)",
+  "test_command": "npx tsx tests/phase2f-verification.test.ts  AND  npx tsx tests/tenant-isolation.test.ts  (from backend/api-server/ with DATABASE_URL set)",
+  "verification_instructions": "1. From backend/api-server/: run `npx tsx tests/tenant-isolation.test.ts` — all assertions must pass. 2. Run `npx tsx tests/phase2f-verification.test.ts` — all assertions must pass. 3. Run `npx tsx tests/rls-cross-tenant-verification.ts` — all assertions must pass. 4. TypeScript compile check: `npx tsc --noEmit` from backend/api-server/. 5. Confirm `providerRegistry.hasProvider('shopify')` returns true (add a test or check by running src/scripts/verify-provider-routing.ts).",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "ENCRYPTION_KEY is NOT set in .env (fallback dummy key used). No Shopify credentials in .env. DATABASE_URL must be set for any DB tests. Do NOT touch widget.js, widget-public.ts, domain.ts, Widget Studio, widget deployment, or widget-related files. Do NOT touch Gemini router, Business Agent, browser automation, voice, authentication architecture, or RLS architecture unless a direct integration dependency is proven.",
+  "contribution_requirements": "Never create duplicate systems (no second entitlement engine, tool registry, credential service, or execution engine). Reuse existing architecture. All fixes must leave the codebase in a buildable state.",
+  "key_patterns": "Auth context: supabaseAuth.ts sets req.auth = { userId, memberships: [{organizationId, role}], dbUser: {role} }. Other routes use (req as any).auth?.userId, (req as any).auth?.memberships?.find(m => m.organizationId === orgId)?.role, (req as any).auth?.dbUser?.role. Tenant isolation: withTenantContext(orgId, cb) sets app.current_organization_id for RLS. Integration routes are mounted at /:projectId/integrations and /:projectId/tools inside the projects router. providerRegistry is a singleton in provider-registry.ts — register providers by importing the provider file which calls providerRegistry.register() as a side effect.",
+  "relevant_files": [
+    "backend/api-server/src/routes/projects/integrations.ts",
+    "backend/api-server/src/routes/projects/tools.ts",
+    "backend/api-server/src/services/integrations/providers/shopify.ts",
+    "backend/api-server/src/services/integrations/provider-registry.ts",
+    "backend/api-server/src/services/tool-execution.ts",
+    "backend/api-server/src/security/quota.ts",
+    "database/db/src/crypto.ts",
+    "scripts/enable-rls.mjs",
+    "backend/api-server/tests/phase2f-verification.test.ts",
+    "backend/api-server/tests/tenant-isolation.test.ts",
+    "backend/api-server/tests/rls-cross-tenant-verification.ts",
+    "backend/api-server/src/middlewares/supabaseAuth.ts",
+    "backend/api-server/src/routes/projects/index.ts"
+  ],
+  "directory_structure": "d:/Project/Chat-bot/ — workspace root. backend/api-server/src/ — Express server source (routes/, services/, security/, middlewares/, agents/). database/db/src/ — Drizzle schema + crypto. database/db/drizzle/ — SQL migrations. scripts/ — utility scripts including enable-rls.mjs. frontend/chat-app/src/ — React frontend. .agents/tasks/ — agent artifact root."
+}

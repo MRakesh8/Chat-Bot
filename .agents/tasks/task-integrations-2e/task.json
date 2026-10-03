@@ -1,0 +1,7 @@
+{
+  "task_id": "task-integrations-2e",
+  "task_description": "NOVA Business AI — Authorized Integrations 2E: Fix 4 production blockers (req.user→req.auth mapping, ShopifyProvider self-registration, ENCRYPTION_KEY production guard, RLS table list), fix 4 secondary bugs (require→import for refundUsage, RBAC role check, Shopify timeout, audit requestId), write verification tests, prove the execution chain works end-to-end.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
