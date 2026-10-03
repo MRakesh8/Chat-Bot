@@ -43,6 +43,9 @@ export async function trackKnowledgeGap(signal: KnowledgeGapSignal): Promise<voi
   const norm = normalizeQuestion(questionText);
   if (!norm) return;
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validSessionId = sessionId && UUID_RE.test(sessionId) ? sessionId : undefined;
+
   try {
     const existing = await db.query.knowledgeGaps.findFirst({
       where: and(
@@ -56,7 +59,7 @@ export async function trackKnowledgeGap(signal: KnowledgeGapSignal): Promise<voi
         .update(knowledgeGaps)
         .set({
           askedCount: existing.askedCount + 1,
-          sessionId: sessionId || existing.sessionId,
+          sessionId: validSessionId || existing.sessionId,
           sourceUrl: sourceUrl || existing.sourceUrl,
           confidence,
           reason,
@@ -71,7 +74,7 @@ export async function trackKnowledgeGap(signal: KnowledgeGapSignal): Promise<voi
         askedCount: 1,
         isResolved: false,
         sourceUrl: sourceUrl || null,
-        sessionId: sessionId as any,
+        sessionId: (validSessionId as any) || null,
         confidence,
         reason,
         createdAt: new Date(),

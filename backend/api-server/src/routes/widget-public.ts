@@ -307,7 +307,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
     if (lastUserMessage) {
       processAndSaveLead({
         projectId,
-        sessionId,
+        sessionId: (sessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) ? sessionId : undefined,
         sourcePageUrl: websiteContext?.url,
         userMessage: lastUserMessage,
       }).catch((e) => req.log.error({ err: e }, "Background lead processing error"));
@@ -458,12 +458,19 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
       throw err;
     }
 
+    // UUID v4 format validation — the widget's context engine sends a short
+    // client-generated ID (Math.random base-36) as sessionId which is used
+    // only for in-memory delta reconstruction / session memory.  We must NOT
+    // pass non-UUID values to the chat_sessions.id (uuid) column.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuidSessionId = sessionId && UUID_RE.test(sessionId);
+
     let customerId: string | undefined = undefined;
     let customerVerified = false;
     try {
-      if (sessionId) {
+      if (isUuidSessionId) {
         const sessionRec = await db.query.chatSessions.findFirst({
-          where: eq(chatSessions.id, sessionId)
+          where: and(eq(chatSessions.id, sessionId), eq(chatSessions.projectId, projectId))
         });
         if (sessionRec?.customerId) {
           customerId = sessionRec.customerId;
@@ -474,6 +481,8 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
             customerVerified = custRec.isVerified;
           }
         }
+      } else if (sessionId) {
+        req.log.debug({ sessionId }, "Widget sessionId is not a UUID — skipping chat_sessions lookup (context-engine client ID)");
       }
     } catch (err) {
       req.log.warn({ err }, "Could not resolve customer identity for widget session");
@@ -695,7 +704,7 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         trackKnowledgeGap({
           projectId,
           questionText: lastUserMessage,
-          sessionId,
+          sessionId: isUuidSessionId ? sessionId : undefined,
           sourceUrl: websiteContext?.url,
           confidence: "low",
           reason: isFallbackResponse(fullResponseText) ? "AI_FALLBACK" : "NO_RAG_MATCH",
@@ -758,6 +767,11 @@ router.post("/:widgetToken/action-result", async (req: Request, res: Response): 
   const { executionId, actionId, status, tool, duration, url, domDelta, verification, error, confirmationToken } = req.body;
   if (!executionId || !actionId) {
     return res.status(400).json({ error: "Missing executionId or actionId" });
+  }
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(executionId) || !UUID_RE.test(actionId)) {
+    return res.status(400).json({ error: "Invalid executionId or actionId format" });
   }
 
   try {
@@ -866,14 +880,18 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
       customerId = newCust.id;
     }
 
-    // Also link the session to this customer if we have one
-    if (customerId && sessionId) {
-      await db.update(chatSessions).set({ customerId }).where(eq(chatSessions.id, sessionId));
+    // UUID format guard — widget may send a non-UUID context-engine session ID
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuidSession = sessionId && UUID_RE.test(sessionId);
+
+    // Also link the session to this customer if we have a valid UUID session
+    if (customerId && isUuidSession) {
+      await db.update(chatSessions).set({ customerId }).where(and(eq(chatSessions.id, sessionId), eq(chatSessions.projectId, settings.projectId)));
     }
 
     const lead = await processAndSaveLead({
       projectId: settings.projectId,
-      sessionId,
+      sessionId: isUuidSession ? sessionId : undefined,
       sourcePageUrl,
       userMessage: [name, email, phone, company, userIntent].filter(Boolean).join(" "),
     });
@@ -889,7 +907,7 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
       email: email || null,
       phone: phone || null,
       company: company || null,
-      sessionId: sessionId || null,
+      sessionId: isUuidSession ? sessionId : null,
       sourcePageUrl: sourcePageUrl || null,
       userIntent: userIntent || "direct_form",
       status: "NEW",
@@ -898,6 +916,7 @@ router.post("/:widgetToken/leads", async (req: Request, res: Response): Promise<
       createdAt: new Date(),
       updatedAt: new Date(),
     }).returning();
+
 
     return res.json({ success: true, lead: insertedLead, customerId });
   } catch (err: any) {
@@ -943,6 +962,9 @@ router.post("/projects/:projectId/messages/:messageId/feedback", async (req, res
     if (!sessionId || !type) return res.status(400).json({ error: "Missing required fields" });
     if (type !== "LIKE" && type !== "DISLIKE") return res.status(400).json({ error: "Invalid type" });
     
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(sessionId)) return res.status(400).json({ error: "Invalid session ID format" });
+    
     const [session] = await db.select({ customerId: chatSessions.customerId, projectId: chatSessions.projectId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
     if (!session) return res.status(404).json({ error: "Session not found" });
     if (session.projectId !== projectId) return res.status(403).json({ error: "Session does not belong to project" });
@@ -963,7 +985,8 @@ router.post("/projects/:projectId/feedback", async (req, res): Promise<any> => {
     if (!comment) return res.status(400).json({ error: "Comment is required" });
     
     let customerId = undefined;
-    if (sessionId) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (sessionId && UUID_RE.test(sessionId)) {
       const [session] = await db.select({ customerId: chatSessions.customerId, projectId: chatSessions.projectId }).from(chatSessions).where(eq(chatSessions.id, sessionId));
       if (session && session.projectId !== projectId) return res.status(403).json({ error: "Session does not belong to project" });
       if (session && session.customerId) customerId = session.customerId;

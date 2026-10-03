@@ -139,13 +139,16 @@ export async function processAndSaveLead(params: {
     return null; // Do not treat generic questions as leads automatically
   }
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validSessionId = sessionId && UUID_RE.test(sessionId) ? sessionId : undefined;
+
   try {
     // Check if an existing lead matches this session, email, or phone for the same project
     const existingLead = await db.query.widgetLeads.findFirst({
       where: and(
         eq(widgetLeads.projectId, projectId as any),
         or(
-          sessionId ? eq(widgetLeads.sessionId, sessionId as any) : sql`false`,
+          validSessionId ? eq(widgetLeads.sessionId, validSessionId as any) : sql`false`,
           extracted.email ? eq(widgetLeads.email, extracted.email) : sql`false`,
           extracted.phone ? eq(widgetLeads.phone, extracted.phone) : sql`false`
         )
@@ -168,7 +171,7 @@ export async function processAndSaveLead(params: {
           email: extracted.email || existingLead.email,
           phone: extracted.phone || existingLead.phone,
           company: extracted.company || existingLead.company,
-          sessionId: sessionId || existingLead.sessionId,
+          sessionId: validSessionId || existingLead.sessionId,
           sourcePageUrl: sourcePageUrl || existingLead.sourcePageUrl,
           userIntent: extracted.intent !== "general" ? extracted.intent : existingLead.userIntent,
           score: newScore,
@@ -185,7 +188,7 @@ export async function processAndSaveLead(params: {
         .insert(widgetLeads)
         .values({
           projectId: projectId as any,
-          sessionId: sessionId as any,
+          sessionId: (validSessionId as any) || null,
           name: extracted.name || "Anonymous Lead",
           email: extracted.email || null,
           phone: extracted.phone || null,
