@@ -438,6 +438,22 @@
         opacity: 1;
         transform: scale(1.1);
       }
+      .fb-btn.submitted {
+        opacity: 1;
+        cursor: default;
+      }
+      .fb-btn:disabled {
+        cursor: default;
+        opacity: 0.4;
+      }
+      .fb-btn.submitted:disabled {
+        opacity: 1;
+      }
+      .fb-submitted-check {
+        font-size: 10px;
+        color: var(--primary);
+        margin-left: 2px;
+      }
 
       ${config.customCss || ''}
     `;
@@ -986,12 +1002,13 @@
             fbDiv.className = 'feedback-actions';
             fbDiv.style.flexDirection = 'column';
             fbDiv.innerHTML = `
-              <div style="display: flex; gap: 8px;">
-                <button class="fb-btn like-btn" title="Helpful" aria-label="Like response">👍</button>
-                <button class="fb-btn dislike-btn" title="Not helpful" aria-label="Dislike response">👎</button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="fb-btn like-btn" title="Helpful" aria-label="Like response">👍 Like</button>
+                <button class="fb-btn dislike-btn" title="Not helpful" aria-label="Dislike response">👎 Dislike</button>
+                <button class="fb-btn suggestion-btn" title="Send suggestion" aria-label="Send suggestion">💡 Suggestion</button>
               </div>
               <div class="feedback-input-area" style="display: none; margin-top: 8px;">
-                <input type="text" class="feedback-input" placeholder="Optional suggestion or feedback..." style="width: 100%; font-size: 12px; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-dark); color: var(--text-main); margin-bottom: 4px; outline: none;">
+                <input type="text" class="feedback-input" placeholder="Type your suggestion..." style="width: 100%; font-size: 12px; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-dark); color: var(--text-main); margin-bottom: 4px; outline: none;">
                 <button class="feedback-submit" style="font-size: 11px; padding: 4px 8px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">Send</button>
               </div>
             `;
@@ -999,41 +1016,72 @@
             
             const likeBtn = fbDiv.querySelector('.like-btn');
             const dislikeBtn = fbDiv.querySelector('.dislike-btn');
+            const suggestionBtn = fbDiv.querySelector('.suggestion-btn');
             const inputArea = fbDiv.querySelector('.feedback-input-area');
             const fbInput = fbDiv.querySelector('.feedback-input');
             const fbSubmit = fbDiv.querySelector('.feedback-submit');
             
-            let selectedType = null;
+            let feedbackSubmitted = false;
 
-            const handleFbClick = (type) => {
-              selectedType = type;
-              likeBtn.style.opacity = type === 'LIKE' ? '1' : '0.5';
-              dislikeBtn.style.opacity = type === 'DISLIKE' ? '1' : '0.5';
-              inputArea.style.display = 'block';
-              scrollToBottom();
-            };
-
-            likeBtn.addEventListener('click', () => handleFbClick('LIKE'));
-            dislikeBtn.addEventListener('click', () => handleFbClick('DISLIKE'));
-
-            fbSubmit.addEventListener('click', () => {
-              const text = fbInput.value.trim();
-              fbSubmit.disabled = true;
-              fbSubmit.textContent = 'Sent!';
-              likeBtn.disabled = true;
-              dislikeBtn.disabled = true;
-              fbInput.disabled = true;
-              
-              const commentStr = text ? `User Note: ${text} | AI Context: ${botResponse.substring(0, 200)}...` : `AI Context: ${botResponse.substring(0, 200)}...`;
-
+            const submitFeedback = (type, comment) => {
+              const commentStr = comment
+                ? `User Note: ${comment} | AI Context: ${botResponse.substring(0, 200)}...`
+                : `AI Context: ${botResponse.substring(0, 200)}...`;
               fetch(apiBaseUrl + '/api/widget/' + widgetToken + '/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  type: selectedType,
-                  text: commentStr
-                })
-              }).catch(e => console.error(e));
+                body: JSON.stringify({ type: type, text: commentStr })
+              }).catch(e => console.error('Feedback error:', e));
+            };
+
+            const disableAllButtons = () => {
+              likeBtn.disabled = true;
+              dislikeBtn.disabled = true;
+              suggestionBtn.disabled = true;
+            };
+
+            likeBtn.addEventListener('click', () => {
+              if (feedbackSubmitted) return;
+              feedbackSubmitted = true;
+              submitFeedback('LIKE');
+              likeBtn.classList.add('submitted');
+              likeBtn.innerHTML = '👍 Liked ✓';
+              disableAllButtons();
+              inputArea.style.display = 'none';
+            });
+
+            dislikeBtn.addEventListener('click', () => {
+              if (feedbackSubmitted) return;
+              feedbackSubmitted = true;
+              submitFeedback('DISLIKE');
+              dislikeBtn.classList.add('submitted');
+              dislikeBtn.innerHTML = '👎 Disliked ✓';
+              disableAllButtons();
+              inputArea.style.display = 'none';
+            });
+
+            suggestionBtn.addEventListener('click', () => {
+              if (feedbackSubmitted) return;
+              const isVisible = inputArea.style.display !== 'none';
+              inputArea.style.display = isVisible ? 'none' : 'block';
+              if (!isVisible) {
+                fbInput.focus();
+              }
+              scrollToBottom();
+            });
+
+            fbSubmit.addEventListener('click', () => {
+              const text = fbInput.value.trim();
+              if (!text) return;
+              feedbackSubmitted = true;
+              submitFeedback('LIKE', text);
+              fbSubmit.disabled = true;
+              fbSubmit.textContent = 'Sent!';
+              fbInput.disabled = true;
+              disableAllButtons();
+              suggestionBtn.classList.add('submitted');
+              suggestionBtn.innerHTML = '💡 Sent ✓';
+              setTimeout(() => { inputArea.style.display = 'none'; }, 1200);
             });
           }
         } catch (err) {
