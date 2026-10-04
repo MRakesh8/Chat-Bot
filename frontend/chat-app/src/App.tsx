@@ -7,6 +7,7 @@ import { GlobalLoadingScreen } from "@/components/ui/global-loading";
 
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { NovaAiProvider } from "./contexts/NovaAiContext";
 
 // Critical paths loaded synchronously
 import Home from "./pages/home";
@@ -122,7 +123,8 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ThemeProvider defaultTheme="light">
-            <TooltipProvider>
+            <NovaAiProvider>
+              <TooltipProvider>
               <Suspense fallback={<GlobalLoadingScreen />}>
                 <Switch>
                   <Route path="/" component={Home} />
@@ -185,7 +187,8 @@ export default function App() {
               </Suspense>
               <Toaster />
             </TooltipProvider>
-          </ThemeProvider>
+          </NovaAiProvider>
+        </ThemeProvider>
         </AuthProvider>
       </QueryClientProvider>
     </WouterRouter>

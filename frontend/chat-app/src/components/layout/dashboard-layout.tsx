@@ -6,6 +6,8 @@ import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 
+import { NovaAiAssistantFloating } from "@/components/nova-ai/nova-ai-floating";
+
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
@@ -87,6 +89,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* ✨ NOVA AI Floating Internal Assistant */}
+      <NovaAiAssistantFloating />
     </div>
   );
 }
