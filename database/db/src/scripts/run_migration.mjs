@@ -145,6 +145,11 @@ async function run() {
       CREATE INDEX IF NOT EXISTS "messages_session_id_idx" ON "messages"("session_id");
       CREATE INDEX IF NOT EXISTS "payment_logs_payment_id_idx" ON "payment_logs"("payment_id");
 
+      -- Add widget settings missing columns safely
+      ALTER TABLE "project_widget_settings" ADD COLUMN IF NOT EXISTS "input_placeholder" text DEFAULT 'Ask a question...';
+      ALTER TABLE "project_widget_settings" ADD COLUMN IF NOT EXISTS "online_status" text DEFAULT 'Online';
+      ALTER TABLE "project_widget_settings" ADD COLUMN IF NOT EXISTS "appearance" jsonb DEFAULT '{}'::jsonb NOT NULL;
+
       -- pgvector HNSW index
       CREATE INDEX IF NOT EXISTS "knowledge_chunks_hnsw_idx" ON "knowledge_chunks" USING hnsw ("embedding" vector_cosine_ops);
 

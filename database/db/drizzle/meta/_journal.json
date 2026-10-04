@@ -64,6 +64,13 @@
       "when": 1790143340473,
       "tag": "0008_lean_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791100000000,
+      "tag": "0009_add_widget_settings_appearance_and_status",
+      "breakpoints": true
     }
   ]
 }

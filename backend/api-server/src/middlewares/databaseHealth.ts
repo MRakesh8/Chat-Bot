@@ -13,7 +13,8 @@ const REQUIRED_SCHEMA: Record<string, Record<string, string>> = {
   projects: { id: "uuid", name: "text" },
   knowledge_sources: { id: "uuid", title: "text" },
   chat_sessions: { id: "uuid", title: "text" },
-  messages: { id: "uuid", content: "text" }
+  messages: { id: "uuid", content: "text" },
+  project_widget_settings: { project_id: "uuid", input_placeholder: "text", online_status: "text", appearance: "jsonb" }
 };
 
 export async function validateDatabaseSchema() {
