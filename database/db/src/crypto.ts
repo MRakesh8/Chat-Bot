@@ -49,7 +49,7 @@ export function decrypt(encryptedText: string): string {
   } catch (e: any) {
     // Only log if it actually looked like an encrypted string but failed to decrypt
     // (e.g., wrong ENCRYPTION_KEY)
-    console.warn("Warning: Could not decrypt API key (possibly due to changed ENCRYPTION_KEY). Returning raw value.");
-    return encryptedText;
+    console.warn("Warning: Could not decrypt API key (possibly due to changed ENCRYPTION_KEY). Marking as invalid.");
+    return "";
   }
 }

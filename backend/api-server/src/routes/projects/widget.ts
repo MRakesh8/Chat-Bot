@@ -289,7 +289,7 @@ router.post("/api-keys/:keyId/verify", async (req: any, res: Response) => {
     });
     if (!key) return res.status(404).json({ error: "Key not found" });
 
-    const decryptedKey = dbCrypto.decrypt(key.encryptedKey) || key.encryptedKey;
+    const decryptedKey = dbCrypto.decrypt(key.encryptedKey);
     const startTime = Date.now();
 
     const keyObj = {

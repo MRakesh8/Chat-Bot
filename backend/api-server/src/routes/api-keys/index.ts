@@ -414,7 +414,7 @@ router.post("/:id/verify", async (req, res): Promise<any> => {
       return res.status(404).json({ error: "API Key not found" });
     }
 
-    const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+    const decryptedKey = crypto.decrypt(key.encryptedKey);
     const startTime = Date.now();
 
     const keyObj = {
@@ -657,7 +657,7 @@ router.post("/:id/verify", async (req, res): Promise<any> => {
       return res.status(404).json({ error: "API Key not found" });
     }
 
-    const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+    const decryptedKey = crypto.decrypt(key.encryptedKey);
     const verifier = new ProviderVerifier(key.provider, decryptedKey);
     
     const startTime = Date.now();

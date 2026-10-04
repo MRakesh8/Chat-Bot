@@ -76,7 +76,7 @@ export async function runIntelligentHealthCheck() {
   for (const key of uniqueKeys) {
     try {
       console.log(`[Health Monitor] Verifying ${key.type} key: ${key.id} (Provider: ${key.provider})`);
-      const decryptedKey = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+      const decryptedKey = crypto.decrypt(key.encryptedKey);
       
       const startTime = Date.now();
       let result;

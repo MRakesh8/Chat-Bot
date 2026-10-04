@@ -140,7 +140,7 @@ async function runVerification() {
   try {
     const [existingKey] = await db.select().from(projectApiKeys).where(eq(projectApiKeys.provider, "gemini")).limit(1);
     if (existingKey) {
-      const apiKey = crypto.decrypt(existingKey.encryptedKey) || existingKey.encryptedKey;
+      const apiKey = crypto.decrypt(existingKey.encryptedKey);
       const verified = await ProviderVerifier.verifyAndFetchModels(apiKey, "gemini");
 
       const hasRetiredModel = verified.models.includes("gemini-1.5-flash") || verified.models.includes("gemini-2.0-flash-exp");

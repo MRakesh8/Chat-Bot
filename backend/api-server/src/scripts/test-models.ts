@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 
 async function run() {
   const keys = await db.select().from(projectApiKeys);
-  const activeKey = crypto.decrypt(keys[0].encryptedKey) || keys[0].encryptedKey;
+  const activeKey = crypto.decrypt(keys[0].encryptedKey);
   const directClient = new GoogleGenAI({
     apiKey: activeKey,
     httpOptions: { baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || '' }

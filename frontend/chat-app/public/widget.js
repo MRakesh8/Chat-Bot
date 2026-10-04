@@ -469,9 +469,8 @@
         background-color: rgba(255, 255, 255, 0.05);
         outline: none;
       }
-      .fb-btn.submitted { opacity: 1; cursor: default; }
+      .fb-btn.submitted { opacity: 1; cursor: pointer; background-color: rgba(255, 255, 255, 0.12); border-radius: 4px; }
       .fb-btn:disabled { cursor: default; opacity: 0.4; }
-      .fb-btn.submitted:disabled { opacity: 1; }
       .fb-submitted-check {
         font-size: 10px;
         color: var(--primary);
@@ -1046,7 +1045,7 @@
             const fbInput = fbDiv.querySelector('.feedback-input');
             const fbSubmit = fbDiv.querySelector('.feedback-submit');
             
-            let feedbackSubmitted = false;
+            let currentFeedback = null; // 'LIKE' | 'DISLIKE' | null
 
             const submitFeedback = (type, comment) => {
               const commentStr = comment
@@ -1059,34 +1058,50 @@
               }).catch(e => console.error('Feedback error:', e));
             };
 
-            const disableAllButtons = () => {
-              likeBtn.disabled = true;
-              dislikeBtn.disabled = true;
-              suggestionBtn.disabled = true;
+            const renderFeedbackUI = () => {
+              if (currentFeedback === 'LIKE') {
+                likeBtn.classList.add('submitted');
+                likeBtn.innerHTML = '👍 Liked ✓';
+                dislikeBtn.classList.remove('submitted');
+                dislikeBtn.innerHTML = '👎';
+              } else if (currentFeedback === 'DISLIKE') {
+                dislikeBtn.classList.add('submitted');
+                dislikeBtn.innerHTML = '👎 Disliked ✓';
+                likeBtn.classList.remove('submitted');
+                likeBtn.innerHTML = '👍';
+              } else {
+                likeBtn.classList.remove('submitted');
+                likeBtn.innerHTML = '👍';
+                dislikeBtn.classList.remove('submitted');
+                dislikeBtn.innerHTML = '👎';
+              }
             };
 
             likeBtn.addEventListener('click', () => {
-              if (feedbackSubmitted) return;
-              feedbackSubmitted = true;
-              submitFeedback('LIKE');
-              likeBtn.classList.add('submitted');
-              likeBtn.innerHTML = '👍 Liked ✓';
-              disableAllButtons();
+              if (currentFeedback === 'LIKE') {
+                currentFeedback = null;
+                submitFeedback('NONE');
+              } else {
+                currentFeedback = 'LIKE';
+                submitFeedback('LIKE');
+              }
+              renderFeedbackUI();
               inputArea.style.display = 'none';
             });
 
             dislikeBtn.addEventListener('click', () => {
-              if (feedbackSubmitted) return;
-              feedbackSubmitted = true;
-              submitFeedback('DISLIKE');
-              dislikeBtn.classList.add('submitted');
-              dislikeBtn.innerHTML = '👎 Disliked ✓';
-              disableAllButtons();
+              if (currentFeedback === 'DISLIKE') {
+                currentFeedback = null;
+                submitFeedback('NONE');
+              } else {
+                currentFeedback = 'DISLIKE';
+                submitFeedback('DISLIKE');
+              }
+              renderFeedbackUI();
               inputArea.style.display = 'none';
             });
 
             suggestionBtn.addEventListener('click', () => {
-              if (feedbackSubmitted) return;
               const isVisible = inputArea.style.display !== 'none';
               inputArea.style.display = isVisible ? 'none' : 'block';
               if (!isVisible) {
@@ -1098,15 +1113,13 @@
             fbSubmit.addEventListener('click', () => {
               const text = fbInput.value.trim();
               if (!text) return;
-              feedbackSubmitted = true;
               submitFeedback('SUGGESTION', text);
-              fbSubmit.disabled = true;
               fbSubmit.textContent = 'Sent!';
-              fbInput.disabled = true;
-              disableAllButtons();
-              suggestionBtn.classList.add('submitted');
-              suggestionBtn.innerHTML = '💡 Sent ✓';
-              setTimeout(() => { inputArea.style.display = 'none'; }, 1200);
+              setTimeout(() => {
+                fbSubmit.textContent = 'Send';
+                fbInput.value = '';
+                inputArea.style.display = 'none';
+              }, 1200);
             });
           }
         } catch (err) {

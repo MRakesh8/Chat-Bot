@@ -31,7 +31,7 @@ export class PlannerAgent extends BaseAgent {
          return { success: false, error: "No API key found for this project." };
       }
       
-      const activeKey = crypto.decrypt(keyData.encryptedKey) || keyData.encryptedKey;
+      const activeKey = crypto.decrypt(keyData.encryptedKey) || process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
       const httpOptions: any = {};
       if (process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
          httpOptions.baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');

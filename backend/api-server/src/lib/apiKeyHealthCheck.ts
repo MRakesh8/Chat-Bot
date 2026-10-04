@@ -113,7 +113,7 @@ export async function checkAllUnhealthyKeys() {
     
     for (const key of inactiveUserKeys) {
       try {
-        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+        const decrypted = crypto.decrypt(key.encryptedKey);
         if (!decrypted) continue;
         
         const testRes = await testApiKey(decrypted);
@@ -171,7 +171,7 @@ export async function checkAllUnhealthyKeys() {
     
     for (const key of inactiveProjectKeys) {
       try {
-        const decrypted = crypto.decrypt(key.encryptedKey) || key.encryptedKey;
+        const decrypted = crypto.decrypt(key.encryptedKey);
         if (!decrypted) continue;
         
         const testRes = await testApiKey(decrypted);
