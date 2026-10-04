@@ -201,12 +201,14 @@ router.get(["/:widgetToken/config", "/public/:widgetToken/config"], async (req: 
     res.setHeader("Expires", "0");
 
     const projectId = (req as any).projectId;
-    const settings = await db.query.projectWidgetSettings.findFirst({
-      where: eq(projectWidgetSettings.projectId, projectId)
+    const settings = await withBypassRLS(async (tx: any) => {
+      const [s] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.projectId, projectId)).limit(1);
+      return s;
     });
 
-    const contextSettings = await db.query.projectContextSettings.findFirst({
-      where: eq(projectContextSettings.projectId, projectId)
+    const contextSettings = await withBypassRLS(async (tx: any) => {
+      const [cs] = await tx.select().from(projectContextSettings).where(eq(projectContextSettings.projectId, projectId)).limit(1);
+      return cs;
     });
 
     if (!settings) {
@@ -278,8 +280,9 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
     // Get project details to know the owner's userId for key failover/rotation
     let project;
     try {
-      project = await db.query.projects.findFirst({
-        where: eq(projects.id, projectId)
+      project = await withBypassRLS(async (tx: any) => {
+        const [p] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+        return p;
       });
       req.log.info({ projectId: project?.id }, "STEP 4: Loaded project");
     } catch (err: any) {
@@ -463,8 +466,9 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
     // 3. Normal flow with Context Engine & Knowledge Base retrieval
     let contextSettings;
     try {
-      contextSettings = await db.query.projectContextSettings.findFirst({
-        where: eq(projectContextSettings.projectId, projectId)
+      contextSettings = await withBypassRLS(async (tx: any) => {
+        const [cs] = await tx.select().from(projectContextSettings).where(eq(projectContextSettings.projectId, projectId)).limit(1);
+        return cs;
       });
       req.log.info({ found: !!contextSettings }, "Loaded context settings");
     } catch (err: any) {
@@ -553,8 +557,9 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
     let handoffInfo = "";
     try {
-      const widgetSettings = await db.query.projectWidgetSettings.findFirst({
-        where: eq(projectWidgetSettings.projectId, projectId)
+      const widgetSettings = await withBypassRLS(async (tx: any) => {
+        const [ws] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.projectId, projectId)).limit(1);
+        return ws;
       });
       req.log.info({ found: !!widgetSettings }, "STEP 5: Loaded widget settings");
       if (widgetSettings?.humanHandoffLinks) {
