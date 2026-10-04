@@ -1,9 +1,9 @@
-﻿import { Router, Request, Response } from "express";
+import { Router, Request, Response } from "express";
 import { BusinessAgent } from "../../agents/businessAgent";
 import { checkProjectEntitlement } from "../../security/entitlement";
 import { logSecurityEvent } from "../../security/middleware";
 import { logger } from "../../lib/logger";
-import { db, projects } from "@workspace/db";
+import { db, projects, organizationMembers } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
@@ -20,8 +20,16 @@ async function userHasAccessToProject(userId: string, projectId: string, dbUserR
 
   if (p.userId === userId) return true;
 
-  if (p.organizationId && memberships) {
-    return memberships.some((m) => m.organizationId === p.organizationId);
+  if (p.organizationId) {
+    if (memberships && memberships.some((m) => m.organizationId === p.organizationId)) {
+      return true;
+    }
+    const [membership] = await db
+      .select()
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.organizationId, p.organizationId), eq(organizationMembers.userId, userId)))
+      .limit(1);
+    if (membership) return true;
   }
 
   return false;

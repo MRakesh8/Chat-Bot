@@ -112,14 +112,53 @@ export class BusinessAgent extends BaseAgent {
         return { success: false, error: "Project ID is required." };
       }
 
+      // ─── STEP -1: DIRECT CONFIRMATION FAST-PATH ──────────────────────────
+      if (confirmationToken) {
+        const execResult = await executeServerTool({
+          projectId,
+          userId: userId || "public_visitor",
+          sessionId: sessionId || "temp_session",
+          toolId: payload?.actionId,
+          actionName: payload?.actionName,
+          input: payload?.input || {},
+          confirmationToken,
+          customerContext: context.customerContext
+        });
+
+        if (!execResult.success) {
+          return {
+            success: false,
+            data: {
+              intent: "action",
+              status: execResult.status,
+              toolExecuted: execResult.toolExecuted,
+              response: execResult.error || "Action execution blocked or failed.",
+            },
+          };
+        }
+
+        const safeDataStr = JSON.stringify(execResult.data || {});
+        return {
+          success: true,
+          data: {
+            intent: "action",
+            status: "COMPLETED",
+            toolExecuted: execResult.toolExecuted,
+            provider: execResult.provider,
+            result: execResult.data,
+            response: `Successfully executed ${execResult.toolExecuted}. Result: ${safeDataStr}`,
+          },
+        };
+      }
+
       // ─── STEP 0: FAST DETERMINISTIC STANDALONE GENERAL CONVERSATION GUARD ─────────
       // Must match standalone conversational phrases ONLY. If message contains action verbs/inquiries (e.g. "hi, cancel my order"), it MUST NOT match here.
       const cleanLowerMsg = userMessage.trim().toLowerCase().replace(/[^\w\s]/g, "");
-      const isGreeting = /^(hi|hello|hey|greetings|howdy|sup|good morning|good afternoon|good evening|good night|hello there|hi there|hey there)$/.test(cleanLowerMsg);
-      const isThanks = /^(thanks|thank you|thanks a lot|thank you so much|thx|ty)$/.test(cleanLowerMsg);
-      const isFarewell = /^(bye|goodbye|see you|see ya|later|take care|good night)$/.test(cleanLowerMsg);
-      const isSmalltalk = /^(how are you|how are you doing|hows it going|nice to meet you|okay|ok|great|cool|awesome)$/.test(cleanLowerMsg);
-      const isIdentityCap = /^(who are you|what are you|what can you do|what do you do|help|can you help me)$/.test(cleanLowerMsg);
+      const isGreeting = /^(hi|hello|hey|greetings|howdy|sup|good morning|good afternoon|good evening|good night|hello there|hi there|hey there)$/i.test(cleanLowerMsg);
+      const isThanks = /^(thanks|thank you|thanks a lot|thank you so much|thx|ty)$/i.test(cleanLowerMsg);
+      const isFarewell = /^(bye|goodbye|see you|see ya|later|take care|good night)$/i.test(cleanLowerMsg);
+      const isSmalltalk = /^(how are you|how are you doing|hows it going|nice to meet you|okay|ok|great|cool|awesome)$/i.test(cleanLowerMsg);
+      const isIdentityCap = /^(who are you|what are you|what can you do|what do you do|help|can you help me|what can you help me with|how can you help|hello what can you help me with)$/i.test(cleanLowerMsg);
 
       if (isGreeting || isThanks || isFarewell || isSmalltalk || isIdentityCap) {
         let generalReply = "Hello! How can I help you today?";
@@ -200,8 +239,28 @@ DIRECTIVES:
         const jsonStr = aiRes.text?.replace(/```json/g, "").replace(/```/g, "").trim() || "{}";
         llmDecision = JSON.parse(jsonStr);
       } catch (e) {
-        logger.warn({ err: e }, "Fallback to business_information intent due to LLM decision parse error");
-        llmDecision = { intent: "business_information" };
+        logger.warn({ err: e }, "Fallback to intent heuristic due to LLM decision error");
+        // Resilient deterministic fallback
+        const lowerMsg = userMessage.toLowerCase();
+        let matchedTool = capabilities.find(c => lowerMsg.includes(c.name.toLowerCase()));
+        if (!matchedTool) {
+          matchedTool = capabilities.find(c => {
+            const base = c.name.toLowerCase().replace(/^[a-z]+_/, "").replace(/_/g, " ");
+            return lowerMsg.includes(c.providerId.toLowerCase()) && base.split(" ").some(w => lowerMsg.includes(w));
+          });
+        }
+
+        if (matchedTool) {
+          if (matchedTool.status !== "EXECUTABLE") {
+            llmDecision = { intent: "unsupported", selectedTool: matchedTool.name };
+          } else {
+            llmDecision = { intent: "action", selectedTool: matchedTool.name };
+          }
+        } else if (lowerMsg.includes("whatsapp") || lowerMsg.includes("shopify") || lowerMsg.includes("slack")) {
+          llmDecision = { intent: "unsupported" };
+        } else {
+          llmDecision = { intent: "business_information" };
+        }
       }
 
       // ─── STEP 4: INTENT DISPATCH ──────────────────────────────────────────

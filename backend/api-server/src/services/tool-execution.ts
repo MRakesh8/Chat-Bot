@@ -149,16 +149,18 @@ export async function executeServerTool(
           .where(and(eq(organizationMembers.organizationId, effectiveOrgId), eq(organizationMembers.userId, userId)))
           .limit(1);
 
-        if (!membership) {
+        if (membership) {
+          if (membership.role === "owner" || membership.role === "admin" || membership.role === "manager") {
+            isBusinessAdmin = true;
+          }
+        } else if (project.userId === userId) {
+          isBusinessAdmin = true;
+        } else {
           return {
             success: false,
             status: "FORBIDDEN",
             error: "Tenant isolation violation: User is not a member of the project organization."
           };
-        }
-
-        if (membership.role === "owner" || membership.role === "admin" || membership.role === "manager") {
-          isBusinessAdmin = true;
         }
       }
     }

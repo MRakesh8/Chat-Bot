@@ -666,6 +666,113 @@ router.post("/conversations/:id/messages", async (req, res) => {
     });
     req.log.info("[MESSAGE_SAVED] user message saved");
 
+    // --- AGENT CONTROL PIPELINE FOR NORMAL NOVA CHAT (Phase 1 & 2) ---
+    if (primaryProject && !useNormalAi) {
+      try {
+        const { CoordinatorAgent } = require("../../agents/coordinator");
+        const coordinator = new CoordinatorAgent();
+        const confirmationToken = (req.body as any)?.confirmationToken;
+        const actionId = (req.body as any)?.actionId;
+
+        const coordRes = await coordinator.execute({
+          projectId: primaryProject.id,
+          sessionId: conversationId,
+          userId,
+          customerContext: {
+            isBusinessAdmin: true,
+            verified: true,
+          },
+          payload: {
+            message: content,
+            intent: content,
+            confirmationToken,
+            actionId
+          }
+        });
+
+        if (coordRes.success && coordRes.data?.intent) {
+          const bData = coordRes.data;
+
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.setHeader("X-Accel-Buffering", "no");
+
+          if (bData.status === "PENDING_CONFIRMATION") {
+            const confirmMsg = `⚠️ **Action Requires Confirmation**\n\n**Tool:** \`${bData.toolExecuted}\`\n**Risk Level:** \`${bData.riskLevel}\`\n\n${bData.response}\n\n*Please confirm to execute this action.*`;
+
+            res.write(`data: ${JSON.stringify({
+              status: "PENDING_CONFIRMATION",
+              requiresConfirmation: true,
+              confirmationToken: bData.confirmationToken,
+              actionId: bData.actionId,
+              riskLevel: bData.riskLevel,
+              toolExecuted: bData.toolExecuted,
+              content: confirmMsg
+            })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+
+            await db.insert(messages).values({
+              sessionId: conversationId as any,
+              sender: "assistant",
+              content: confirmMsg,
+            });
+            return;
+          }
+
+          if (bData.intent === "action") {
+            const finalMsg = bData.response || (bData.status === "COMPLETED" ? `Successfully executed ${bData.toolExecuted}.` : "Action failed to execute.");
+            res.write(`data: ${JSON.stringify({
+              status: bData.status,
+              toolExecuted: bData.toolExecuted,
+              result: bData.result,
+              content: finalMsg
+            })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+
+            await db.insert(messages).values({
+              sessionId: conversationId as any,
+              sender: "assistant",
+              content: finalMsg,
+            });
+            return;
+          }
+
+          if (bData.intent === "clarification" || bData.intent === "unsupported") {
+            const responseMsg = bData.response || "This capability is currently unavailable.";
+            res.write(`data: ${JSON.stringify({ content: responseMsg })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+
+            await db.insert(messages).values({
+              sessionId: conversationId as any,
+              sender: "assistant",
+              content: responseMsg,
+            });
+            return;
+          }
+
+          if (bData.intent === "business_information" || bData.intent === "general_conversation") {
+            const responseMsg = bData.response || "I am ready to assist with your project.";
+            res.write(`data: ${JSON.stringify({ content: responseMsg })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+
+            await db.insert(messages).values({
+              sessionId: conversationId as any,
+              sender: "assistant",
+              content: responseMsg,
+            });
+            return;
+          }
+        }
+      } catch (agentErr) {
+        req.log.error({ err: agentErr }, "CoordinatorAgent execution error in normal chat, falling back to standard streaming");
+      }
+    }
+
     currentStep = "HISTORY_LOOKUP";
     // Load all previous messages (history before the current one)
     const history = await db

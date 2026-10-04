@@ -101,8 +101,10 @@ export function generateActionConfirmationToken(params: {
   actionId: string;
   actionType: string;
   actionTarget: string;
+  expiresInSeconds?: number;
 }): { token: string; expiresAt: Date } {
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+  const ttl = (params.expiresInSeconds !== undefined ? params.expiresInSeconds : 5 * 60) * 1000;
+  const expiresAt = new Date(Date.now() + ttl);
   const actionHash = crypto
     .createHash("sha256")
     .update(`${params.actionType}:${params.actionTarget}`)

@@ -128,6 +128,84 @@ export class ShopifyProvider implements IntegrationProvider {
           }
         },
         riskLevel: "READ_ONLY",
+      },
+      {
+        actionName: "shopify_create_product",
+        description: "Create a new product in the Shopify catalog.",
+        inputSchema: {
+          type: "object",
+          required: ["title"],
+          properties: {
+            title: { type: "string", description: "Product name or title" },
+            price: { type: "string", description: "Price of the product variant" },
+            body_html: { type: "string", description: "Product description HTML" }
+          }
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            product: { type: "object" }
+          }
+        },
+        riskLevel: "LOW_RISK_WRITE",
+      },
+      {
+        actionName: "shopify_update_product",
+        description: "Update an existing product's details or price in Shopify.",
+        inputSchema: {
+          type: "object",
+          required: ["productId"],
+          properties: {
+            productId: { type: "string", description: "ID of the product to update" },
+            title: { type: "string", description: "Updated title" },
+            price: { type: "string", description: "Updated price" }
+          }
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            product: { type: "object" }
+          }
+        },
+        riskLevel: "LOW_RISK_WRITE",
+      },
+      {
+        actionName: "shopify_delete_product",
+        description: "Permanently delete a product from the Shopify catalog. This action cannot be undone.",
+        inputSchema: {
+          type: "object",
+          required: ["productId"],
+          properties: {
+            productId: { type: "string", description: "ID of the product to delete" }
+          }
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            deleted: { type: "boolean" },
+            productId: { type: "string" }
+          }
+        },
+        riskLevel: "HIGH_RISK_WRITE",
+      },
+      {
+        actionName: "shopify_cancel_order",
+        description: "Cancel an active Shopify order.",
+        inputSchema: {
+          type: "object",
+          required: ["orderId"],
+          properties: {
+            orderId: { type: "string", description: "ID of the order to cancel" },
+            reason: { type: "string", description: "Reason for cancellation" }
+          }
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            order: { type: "object" }
+          }
+        },
+        riskLevel: "HIGH_RISK_WRITE",
       }
     ];
   }
@@ -146,6 +224,79 @@ export class ShopifyProvider implements IntegrationProvider {
           "X-Shopify-Access-Token": accessToken,
           "Content-Type": "application/json",
         }
+      });
+      if (!response.ok) throw new Error(`Shopify API error: ${response.statusText}`);
+      return await response.json();
+    }
+
+    if (actionName === "shopify_create_product") {
+      if (!input.title) {
+        throw new Error("Missing required parameter: title");
+      }
+      const productPayload: any = {
+        title: input.title,
+        body_html: input.body_html || "",
+      };
+      if (input.price) {
+        productPayload.variants = [{ price: String(input.price) }];
+      }
+      const response = await this.safeFetch(`https://${shop}/admin/api/2024-01/products.json`, {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ product: productPayload })
+      });
+      if (!response.ok) throw new Error(`Shopify API error: ${response.statusText}`);
+      return await response.json();
+    }
+
+    if (actionName === "shopify_update_product") {
+      if (!input.productId) {
+        throw new Error("Missing required parameter: productId");
+      }
+      const productPayload: any = {};
+      if (input.title) productPayload.title = input.title;
+      if (input.price) productPayload.variants = [{ price: String(input.price) }];
+      const response = await this.safeFetch(`https://${shop}/admin/api/2024-01/products/${input.productId}.json`, {
+        method: "PUT",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ product: productPayload })
+      });
+      if (!response.ok) throw new Error(`Shopify API error: ${response.statusText}`);
+      return await response.json();
+    }
+
+    if (actionName === "shopify_delete_product") {
+      if (!input.productId) {
+        throw new Error("Missing required parameter: productId");
+      }
+      const response = await this.safeFetch(`https://${shop}/admin/api/2024-01/products/${input.productId}.json`, {
+        method: "DELETE",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        }
+      });
+      if (!response.ok) throw new Error(`Shopify API error: ${response.statusText}`);
+      return { deleted: true, productId: input.productId };
+    }
+
+    if (actionName === "shopify_cancel_order") {
+      if (!input.orderId) {
+        throw new Error("Missing required parameter: orderId");
+      }
+      const response = await this.safeFetch(`https://${shop}/admin/api/2024-01/orders/${input.orderId}/cancel.json`, {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reason: input.reason || "customer" })
       });
       if (!response.ok) throw new Error(`Shopify API error: ${response.statusText}`);
       return await response.json();
