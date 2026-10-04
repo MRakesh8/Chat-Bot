@@ -193,6 +193,26 @@ async function main() {
     }).returning();
     toolGetProductsId = t1.id;
 
+    await tx.insert(integrationTools).values({
+      projectId: testProjAId,
+      integrationId: integAId,
+      actionName: "shopify_create_product",
+      description: "Create a new product in the Shopify catalog",
+      status: "EXECUTABLE",
+      isEnabled: true,
+      riskLevel: "LOW_RISK_WRITE"
+    });
+
+    await tx.insert(integrationTools).values({
+      projectId: testProjAId,
+      integrationId: integAId,
+      actionName: "shopify_update_product",
+      description: "Update an existing product in the Shopify catalog",
+      status: "EXECUTABLE",
+      isEnabled: true,
+      riskLevel: "LOW_RISK_WRITE"
+    });
+
     const [t2] = await tx.insert(integrationTools).values({
       projectId: testProjAId,
       integrationId: integAId,
@@ -318,6 +338,119 @@ async function main() {
   console.log("  ✅ TEST O PASSED: Cross-project token rejected safely.");
 
   // -------------------------------------------------------------
+  // TEST P: Modified Action / Modified Target Token Tampering
+  // -------------------------------------------------------------
+  console.log("\n[TEST P] Tampered action type / target confirmation token rejection...");
+  const tamperedActionToken = generateActionConfirmationToken({
+    userId: testUserAId,
+    projectId: testProjAId,
+    sessionId: "sess_l",
+    actionId: toolDeleteProductId,
+    actionType: "shopify_get_products", // Signed for get_products but attempted on delete_product
+    actionTarget: "shopify"
+  });
+  const resP = await executeServerTool({
+    projectId: testProjAId,
+    userId: testUserAId,
+    sessionId: "sess_l",
+    actionName: "shopify_delete_product",
+    input: { productId: "prod_123" },
+    confirmationToken: tamperedActionToken.token
+  });
+  assert(resP.status === "INVALID_CONFIRMATION_TOKEN", "Tampered action token rejected");
+  console.log("  ✅ TEST P PASSED: Tampered confirmation token rejected safely.");
+
+  // -------------------------------------------------------------
+  // TEST Q: Token Replay / Duplicate Execution Prevention
+  // -------------------------------------------------------------
+  console.log("\n[TEST Q] Replayed confirmation token rejection (Anti-replay / Nonce check)...");
+  const replayToken = generateActionConfirmationToken({
+    userId: testUserAId,
+    projectId: testProjAId,
+    sessionId: "sess_replay",
+    actionId: toolDeleteProductId,
+    actionType: "shopify_delete_product",
+    actionTarget: "shopify"
+  });
+
+  // First execution consumes the token
+  const resQ1 = await executeServerTool({
+    projectId: testProjAId,
+    userId: testUserAId,
+    sessionId: "sess_replay",
+    actionName: "shopify_delete_product",
+    input: { productId: "prod_123" },
+    confirmationToken: replayToken.token
+  });
+  console.log(`  -> First attempt status: ${resQ1.status}`);
+
+  // Second execution MUST be rejected because nonce was already consumed
+  const resQ2 = await executeServerTool({
+    projectId: testProjAId,
+    userId: testUserAId,
+    sessionId: "sess_replay",
+    actionName: "shopify_delete_product",
+    input: { productId: "prod_123" },
+    confirmationToken: replayToken.token
+  });
+  console.log(`  -> Replayed token attempt status: ${resQ2.status}`);
+  assert(resQ2.status === "INVALID_CONFIRMATION_TOKEN", "Replayed confirmation token must be rejected");
+  console.log("  ✅ TEST Q PASSED: Replayed confirmation token blocked by atomic nonce consumption.");
+
+  // -------------------------------------------------------------
+  // TEST R: Controlled Failure / Recovery Test (Phase 6)
+  // -------------------------------------------------------------
+  console.log("\n[TEST R] Controlled failure handling & truthful error response...");
+  const resR = await executeServerTool({
+    projectId: testProjAId,
+    userId: testUserAId,
+    sessionId: "sess_fail",
+    actionName: "shopify_delete_product",
+    input: { productId: "invalid_nonexistent_id" }
+  });
+  // Since delete requires confirmation first, verify confirmation response
+  assert(resR.status === "PENDING_CONFIRMATION", "Requires confirmation before failure");
+  const failConfirmToken = generateActionConfirmationToken({
+    userId: testUserAId,
+    projectId: testProjAId,
+    sessionId: "sess_fail",
+    actionId: toolDeleteProductId,
+    actionType: "shopify_delete_product",
+    actionTarget: "shopify"
+  });
+  const resRConfirmed = await executeServerTool({
+    projectId: testProjAId,
+    userId: testUserAId,
+    sessionId: "sess_fail",
+    actionName: "shopify_delete_product",
+    input: { productId: "invalid_nonexistent_id" },
+    confirmationToken: failConfirmToken.token
+  });
+  // Must safely fail closed
+  assert(resRConfirmed.status === "EXECUTION_FAILED", "Failed action returned EXECUTION_FAILED");
+  assert(!resRConfirmed.error?.includes("shpat_test_token_123"), "Error never leaks credentials");
+  console.log(`  ✅ TEST R PASSED: Controlled failure safely returned: "${resRConfirmed.error}" (No secrets leaked)`);
+
+  // -------------------------------------------------------------
+  // TEST V: Verification Failure Test (Phase 7)
+  // -------------------------------------------------------------
+  console.log("\n[TEST V] Verification Agent Failure Gate (Provider says success but state not confirmed)...");
+  const verificationAgent = new VerificationAgent();
+  const unverifiedRes = await verificationAgent.execute({
+    projectId: testProjAId,
+    sessionId: "sess_v",
+    payload: {
+      result: {
+        status: "success",
+        toolExecuted: "shopify_create_product",
+        data: { unexpected: "response_without_product_id" }
+      }
+    }
+  });
+  assert(unverifiedRes.data?.verified === false, "Verification agent failed invalid output state");
+  console.log(`  ✅ TEST V PASSED: Verification failure caught: "${unverifiedRes.data?.reason}"`);
+
+  // -------------------------------------------------------------
   // TEST T & U: Cross-Project & Cross-Organization IDOR
   // -------------------------------------------------------------
   console.log("\n[TEST T & U] Cross-Organization / Project IDOR rejection...");
@@ -364,29 +497,85 @@ async function main() {
   console.log("  ✅ TEST Y PASSED: Website visitor strictly blocked from administrative agent execution.");
 
   // -------------------------------------------------------------
-  // TEST S: Valid Confirmation Token Execution & Verification
+  // TEST S: Real External Staging/Dev Store Execution Gate (Phase 1-5)
   // -------------------------------------------------------------
-  console.log("\n[TEST S] Valid confirmation token execution...");
-  const validToken = generateActionConfirmationToken({
-    userId: testUserAId,
-    projectId: testProjAId,
-    sessionId: "sess_s",
-    actionId: toolDeleteProductId,
-    actionType: "shopify_delete_product",
-    actionTarget: "shopify"
-  });
+  console.log("\n[TEST S] Real External Integration Availability & Execution Gate...");
+  const realShopifyStore = process.env.SHOPIFY_TEST_STORE;
+  const realShopifyToken = process.env.SHOPIFY_TEST_ACCESS_TOKEN;
 
-  const resS = await executeServerTool({
-    projectId: testProjAId,
-    userId: testUserAId,
-    sessionId: "sess_s",
-    actionName: "shopify_delete_product",
-    input: { productId: "prod_123" },
-    confirmationToken: validToken.token
-  });
-  console.log(`  -> Valid confirmation execution status: ${resS.status}`);
-  assert(resS.status === "COMPLETED" || resS.status === "EXECUTION_FAILED", "Confirmed action reached execution stage");
-  console.log("  ✅ TEST S PASSED: Confirmed action executed through server-side tool pipeline.");
+  let realExecutionStatus = "YELLOW";
+  if (realShopifyStore && realShopifyToken) {
+    console.log(`  -> Real Shopify Test Store detected: ${realShopifyStore}`);
+    // Register real credentials for test project
+    await withBypassRLS(async (tx: any) => {
+      await tx.update(projectIntegrations).set({
+        encryptedCredentials: crypto.encrypt(JSON.stringify({ shop: realShopifyStore, accessToken: realShopifyToken }))
+      }).where(eq(projectIntegrations.id, integAId));
+    });
+
+    // 1. Real Read Test
+    console.log("  -> Executing real Shopify read (shopify_get_products)...");
+    const realReadRes = await executeServerTool({
+      projectId: testProjAId,
+      userId: testUserAId,
+      sessionId: "sess_real_read",
+      actionName: "shopify_get_products",
+      input: { limit: 5 }
+    });
+    console.log(`  -> Real read status: ${realReadRes.status}`);
+    assert(realReadRes.status === "COMPLETED", "Real Shopify read succeeded");
+
+    // 2. Real Create Test
+    const testProductName = `NOVA Agent Control Test Product ${Date.now()}`;
+    console.log(`  -> Executing real Shopify write (shopify_create_product: "${testProductName}")...`);
+    const realCreateRes = await executeServerTool({
+      projectId: testProjAId,
+      userId: testUserAId,
+      sessionId: "sess_real_create",
+      actionName: "shopify_create_product",
+      input: { title: testProductName, price: "10.00" }
+    });
+    console.log(`  -> Real create status: ${realCreateRes.status}`);
+    assert(realCreateRes.status === "COMPLETED", "Real Shopify create succeeded");
+    const createdProductId = realCreateRes.data?.product?.id;
+    assert(Boolean(createdProductId), "Created product has valid Shopify ID");
+
+    // 3. Real Update Test
+    console.log(`  -> Executing real Shopify update (shopify_update_product ID: ${createdProductId})...`);
+    const realUpdateRes = await executeServerTool({
+      projectId: testProjAId,
+      userId: testUserAId,
+      sessionId: "sess_real_update",
+      actionName: "shopify_update_product",
+      input: { productId: String(createdProductId), price: "11.00" }
+    });
+    assert(realUpdateRes.status === "COMPLETED", "Real Shopify update succeeded");
+
+    // 4. Real Delete Test
+    console.log(`  -> Executing real Shopify delete (shopify_delete_product ID: ${createdProductId})...`);
+    const deleteToken = generateActionConfirmationToken({
+      userId: testUserAId,
+      projectId: testProjAId,
+      sessionId: "sess_real_delete",
+      actionId: toolDeleteProductId,
+      actionType: "shopify_delete_product",
+      actionTarget: "shopify"
+    });
+    const realDeleteRes = await executeServerTool({
+      projectId: testProjAId,
+      userId: testUserAId,
+      sessionId: "sess_real_delete",
+      actionName: "shopify_delete_product",
+      input: { productId: String(createdProductId) },
+      confirmationToken: deleteToken.token
+    });
+    assert(realDeleteRes.status === "COMPLETED", "Real Shopify delete succeeded");
+    realExecutionStatus = "GREEN";
+    console.log("  ✅ Real external lifecycle (Read -> Create -> Update -> Delete -> Verification) verified on live Shopify store!");
+  } else {
+    console.log("  ⚠️  No live authorized Shopify credentials (SHOPIFY_TEST_STORE / SHOPIFY_TEST_ACCESS_TOKEN) present in environment.");
+    console.log("  ⚠️  Status: YELLOW — real external execution cannot be proven because a safe authorized test integration is unavailable.");
+  }
 
   // -------------------------------------------------------------
   // TEST Z: Observability & Enterprise Audit Logging

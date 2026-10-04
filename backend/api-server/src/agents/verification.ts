@@ -46,6 +46,9 @@ export class VerificationAgent extends BaseAgent {
             } else if (result.toolExecuted === "shopify_create_product" && !data.product?.id) {
                verified = false;
                reason = "Product creation could not be verified in store response.";
+            } else if (result.toolExecuted === "shopify_update_product" && !data.product?.id) {
+               verified = false;
+               reason = "Product update could not be verified in store response.";
             } else if (result.toolExecuted === "shopify_delete_product" && !data.deleted) {
                verified = false;
                reason = "Product deletion could not be verified in store response.";
