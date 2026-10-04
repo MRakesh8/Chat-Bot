@@ -7,6 +7,7 @@ import {
 } from "@workspace/db/schema";
 import { withTenantContext } from "@workspace/db";
 import { isDemoProjectId, getDemoNotifications } from "../../services/demo-project";
+import { resolveAuthorizedProjectOrg } from "../../security";
 
 const router = Router({ mergeParams: true });
 
@@ -15,21 +16,20 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
   if (isDemoProjectId(projectId)) {
     return res.json(getDemoNotifications());
   }
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  
-  if (!orgId || Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
-  
-  const auth = req.auth;
-  if (!auth) return res.status(401).json({ error: "Unauthorized" });
-  const isSuperAdmin = auth.dbUser?.role === "super_admin";
-  const membership = auth.memberships?.find((m: any) => m.organizationId === orgId);
-  if (!isSuperAdmin && !membership) return res.status(403).json({ error: "Forbidden" });
+
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   try {
-    const data = await withTenantContext(orgId as string, async (tx: any) => {
-      const [project] = await tx.select().from(projects).where(eq(projects.id, projectId));
-      if (!project) throw new Error("Project not found");
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      if (!req.auth) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
 
+    const { authoritativeOrgId } = resolved;
+
+    const data = await withTenantContext(authoritativeOrgId, async (tx: any) => {
       const notifs = await tx.select()
         .from(notifications)
         .where(eq(notifications.projectId, projectId))
@@ -42,50 +42,53 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
     });
     return res.json(data);
   } catch (err: any) {
-    if (err.message === "Project not found") return res.status(404).json({ error: "Project not found" });
-    return res.status(500).json({ error: "Failed to fetch notifications" });
+    req.log.error({ err, projectId }, "Failed to fetch notifications");
+    return res.status(500).json({ error: "Unable to fetch notifications. Please try again." });
   }
 });
 
 router.patch("/:notificationId/read", async (req: any, res: Response): Promise<any> => {
   const { projectId, notificationId } = req.params;
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  
-  if (!orgId || Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
-  
-  const auth = req.auth;
-  if (!auth) return res.status(401).json({ error: "Unauthorized" });
-  const isSuperAdmin = auth.dbUser?.role === "super_admin";
-  const membership = auth.memberships?.find((m: any) => m.organizationId === orgId);
-  if (!isSuperAdmin && !membership) return res.status(403).json({ error: "Forbidden" });
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   try {
-    await withTenantContext(orgId as string, async (tx: any) => {
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      if (!req.auth) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
+    const { authoritativeOrgId } = resolved;
+
+    await withTenantContext(authoritativeOrgId, async (tx: any) => {
       await tx.update(notifications)
         .set({ readAt: new Date() })
         .where(and(eq(notifications.id, notificationId), eq(notifications.projectId, projectId)));
     });
     return res.json({ success: true });
   } catch (err: any) {
-    return res.status(500).json({ error: "Failed to mark as read" });
+    req.log.error({ err, projectId, notificationId }, "Failed to mark notification as read");
+    return res.status(500).json({ error: "Failed to mark notification as read." });
   }
 });
 
 router.post("/settings", async (req: any, res: Response): Promise<any> => {
   const { projectId } = req.params;
   const { notifyOnDislikes, notifyOnLikes, enabled } = req.body;
-  const orgId = req.headers["x-organization-id"] || req.query.organizationId;
-  
-  if (!orgId || Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });
-  
-  const auth = req.auth;
-  if (!auth) return res.status(401).json({ error: "Unauthorized" });
-  const isSuperAdmin = auth.dbUser?.role === "super_admin";
-  const membership = auth.memberships?.find((m: any) => m.organizationId === orgId);
-  if (!isSuperAdmin && !membership) return res.status(403).json({ error: "Forbidden" });
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
   try {
-    await withTenantContext(orgId as string, async (tx: any) => {
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      if (!req.auth) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
+    const { authoritativeOrgId } = resolved;
+
+    await withTenantContext(authoritativeOrgId, async (tx: any) => {
       const [existing] = await tx.select().from(notificationSettings).where(eq(notificationSettings.projectId, projectId));
       if (existing) {
         await tx.update(notificationSettings)
@@ -97,7 +100,8 @@ router.post("/settings", async (req: any, res: Response): Promise<any> => {
     });
     return res.json({ success: true });
   } catch (err: any) {
-    return res.status(500).json({ error: "Failed to update settings" });
+    req.log.error({ err, projectId }, "Failed to update notification settings");
+    return res.status(500).json({ error: "Failed to update notification settings." });
   }
 });
 

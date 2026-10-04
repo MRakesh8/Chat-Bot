@@ -8,3 +8,4 @@ export * from "./rateLimiter";
 export * from "./errorResponse";
 export * from "./middleware";
 export * from "./quota";
+export * from "./org-resolution";

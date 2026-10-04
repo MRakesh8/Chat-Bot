@@ -8,23 +8,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Bell, CheckCircle, AlertCircle, Info, RefreshCw, Check, Lightbulb, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
+
 export function Notifications({ projectId, onSelectTab }: { projectId: string; onSelectTab?: (tab: string) => void }) {
   const { session } = useAuth();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const authFetch = async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    return fetch(url, {
-      ...options,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers ?? {}),
-      },
-    });
-  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["project-notifications", projectId],

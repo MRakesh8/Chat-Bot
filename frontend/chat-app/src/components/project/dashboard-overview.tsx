@@ -40,22 +40,13 @@ import {
   Tooltip,
 } from "recharts";
 
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
+
 export function DashboardOverview({ projectId }: { projectId: string }) {
   const { session } = useAuth();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
   const [isReAnalyzing, setIsReAnalyzing] = React.useState(false);
-
-  const authFetch = async (url: string, options: RequestInit = {}) => {
-    const token = session?.access_token;
-    return fetch(url, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
-    });
-  };
 
   const { data: dashboardData, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["admin-dashboard", projectId],
