@@ -13,6 +13,13 @@ const ROLE_WEIGHTS: Record<string, number> = {
 export const authorizeMembership = (requiredRole: "owner" | "admin" | "manager" | "agent" | "viewer") => {
   return async (req: Request, res: Response, next: NextFunction): Promise<any> => {
     try {
+      const projectId = req.params.projectId || req.params.id || req.query.projectId || req.body.projectId;
+      if (projectId === "demo" || projectId === "00000000-0000-4000-8000-000000000000") {
+        (req as any).organizationId = "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9";
+        (req as any).membershipRole = "viewer";
+        return next();
+      }
+
       const auth = (req as any).auth;
       if (!auth) {
         return res.status(401).json({ error: "Unauthorized: Missing authentication context" });
@@ -24,14 +31,6 @@ export const authorizeMembership = (requiredRole: "owner" | "admin" | "manager" 
       }
 
       let organizationId = req.params.organizationId || req.query.organizationId || req.body.organizationId;
-
-      // If project-scoped route, resolve organizationId from projectId
-      const projectId = req.params.projectId || req.query.projectId || req.body.projectId;
-      if (projectId === "demo" || projectId === "00000000-0000-4000-8000-000000000000") {
-        (req as any).organizationId = "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9";
-        (req as any).membershipRole = "viewer";
-        return next();
-      }
       if (!organizationId && projectId) {
         const project = await withBypassRLS(async (tx: any) => {
           return await tx.query.projects.findFirst({
