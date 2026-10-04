@@ -145,8 +145,13 @@ export function IntegrationsList({ projectId }: IntegrationsListProps) {
                       {integration.status}
                     </Badge>
                   </CardTitle>
-                  <CardDescription className="mt-1">
-                    {integration.config?.shop || "Connected Account"}
+                  <CardDescription className="mt-1 flex items-center gap-2">
+                    <span>{integration.config?.shop || "Connected Account"}</span>
+                    {integration.config?.environment === "test" ? (
+                      <Badge variant="outline" className="text-amber-500 border-amber-500/30 bg-amber-500/10 text-xs">Sandbox / Test</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 text-xs">Production</Badge>
+                    )}
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
