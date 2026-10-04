@@ -337,7 +337,8 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
     if (keys.length === 0) {
       req.log.error("EARLY RETURN: No AI API keys configured");
-      res.write(`data: ${JSON.stringify({ content: "Sorry, no AI API keys are configured for this chatbot. Please configure an API key in your dashboard." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: "I'm temporarily having trouble connecting right now. Please try again in a few moments." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       return res;
     }
@@ -756,7 +757,8 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
       }
     } catch (err: any) {
       req.log.error({ err }, "executeLlmWithFailover threw an error");
-      res.write(`data: ${JSON.stringify({ content: "I'm sorry, I'm having trouble connecting to my backend systems right now. Please try again later." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ content: "Hi! 👋 I'm temporarily having trouble processing messages right now. Please try again later." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       return res;
     }
@@ -766,7 +768,8 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
   } catch (error: any) {
     req.log.error({ err: error }, "Widget chat general error");
-    res.write(`data: ${JSON.stringify({ content: "Internal server error occurred." })}\n\n`);
+    res.write(`data: ${JSON.stringify({ content: "Hi! 👋 I'm temporarily having trouble processing messages right now. Please try again later." })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
     return res;
   }
