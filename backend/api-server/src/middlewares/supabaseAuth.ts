@@ -18,9 +18,10 @@ export const supabaseAuthMiddleware = async (
   res: Response,
   next: NextFunction,
 ) => {
-  // Public share routes and webhooks do not require Supabase authentication
+  // Public share routes, demo project, and webhooks do not require Supabase authentication
   if (
     req.path.startsWith("/api/projects/share/") ||
+    req.path.includes("/projects/demo") ||
     req.path === "/api/payments/razorpay/webhook"
   ) {
     return next();
