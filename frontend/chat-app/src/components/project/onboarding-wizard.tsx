@@ -1,62 +1,78 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiUrl } from "@/lib/api-url";
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { Deployment } from "./deployment";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Sparkles,
   Globe,
+  Laptop,
   Loader2,
   CheckCircle2,
   ArrowRight,
   Activity,
-  ArrowLeft,
   AlertCircle,
-  RefreshCw,
-  Search,
-  Check
+  Copy,
+  Check,
+  Rocket,
+  Settings,
+  ShieldCheck,
+  ShieldAlert,
+  ArrowLeft,
+  ExternalLink,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-
-const STEPS = [
-  { id: 1, label: "Connect", icon: Globe },
-  { id: 2, label: "Analysis", icon: Activity },
-  { id: 3, label: "Intelligence", icon: Search },
-  { id: 4, label: "Install Agent", icon: Sparkles },
-];
-
-import { useAuthFetch } from "@/hooks/use-auth-fetch";
-
 
 interface OnboardingWizardProps {
   onProjectCreated?: (projectId: string, shareToken: string) => void;
+  initialEnv?: "live" | "local" | null;
 }
 
-export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
+export function OnboardingWizard({ onProjectCreated, initialEnv = null }: OnboardingWizardProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const authFetch = useAuthFetch();
 
-  const [step, setStep] = useState(1);
+  // Onboarding Step State:
+  // step 0: Environment Choice
+  // step 1: Step 1 (Form)
+  // step 2: Step 2 (Analysis - Live only)
+  // step 3: Step 3 (Installation Code - Live only)
+  // step 4: Step 4 (Verify & Launch OR See More Settings - Live only)
+  const [step, setStep] = useState<number>(initialEnv ? 1 : 0);
+  const [envChoice, setEnvChoice] = useState<"live" | "local" | null>(initialEnv);
+
   const [businessName, setBusinessName] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Verification & Go Live States
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    success: boolean;
+    message: string;
+    isLive?: boolean;
+    checks?: any[];
+  } | null>(null);
 
   // 1. Create Project Mutation
   const createProjectMutation = useMutation({
-    mutationFn: async () => {
-      // Create a minimal safe default for API compatibility
-      const systemPrompt = `You are an AI assistant for ${businessName}.`;
-      
+    mutationFn: async (data: { name: string; url: string; env: "live" | "local" }) => {
+      const systemPrompt = `You are an AI assistant for ${data.name}.`;
       const res = await authFetch(apiUrl("/api/projects"), {
         method: "POST",
-        body: JSON.stringify({ name: businessName, systemPrompt }),
+        body: JSON.stringify({
+          name: data.name,
+          systemPrompt,
+          websiteUrl: data.env === "live" ? data.url : undefined,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -64,370 +80,613 @@ export function OnboardingWizard({ onProjectCreated }: OnboardingWizardProps) {
       }
       return res.json();
     },
-    onSuccess: (data) => {
-      setCreatedProjectId(data.id);
-      onProjectCreated?.(data.id, data.shareToken);
+    onSuccess: async (project, variables) => {
+      setCreatedProjectId(project.id);
+      onProjectCreated?.(project.id, project.shareToken);
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["admin-projects"] });
-      // Immediately start discovery
-      startDiscoveryMutation.mutate(data.id);
-    },
-    onError: (err: any) => {
-      toast({ title: "Project Error", description: err.message, variant: "destructive" });
-    }
-  });
 
-  // 2. Start Discovery Mutation
-  const startDiscoveryMutation = useMutation({
-    mutationFn: async (projectId: string) => {
-      const res = await authFetch(apiUrl(`/api/projects/${projectId}/discovery/start`), {
-        method: "POST",
-        body: JSON.stringify({ url: websiteUrl }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error || "Failed to analyze website");
+      if (variables.env === "live") {
+        // Start website discovery
+        try {
+          await authFetch(apiUrl(`/api/projects/${project.id}/discovery/start`), {
+            method: "POST",
+            body: JSON.stringify({ url: variables.url }),
+          });
+        } catch (e) {
+          // Non-blocking log
+        }
+        setStep(2);
+      } else {
+        // Localhost Development Connection
+        try {
+          await authFetch(apiUrl(`/api/projects/${project.id}/local-dev/connect`), {
+            method: "POST",
+            body: JSON.stringify({ localUrl: variables.url }),
+          });
+        } catch (e) {
+          // Ignore, session will be auto created
+        }
+        toast({
+          title: "Local Project Created! 🎉",
+          description: `Connected to ${variables.url}. Opening project workspace...`,
+        });
+        setLocation(`/projects/${project.id}/edit`);
       }
-      return res.json();
-    },
-    onSuccess: () => {
-      setStep(2);
-      toast({ title: "Analysis started", description: "NOVA AI is crawling the website..." });
     },
     onError: (err: any) => {
-      toast({ title: "Analysis Error", description: err.message, variant: "destructive" });
-    }
+      toast({ title: "Project Creation Failed", description: err.message, variant: "destructive" });
+    },
   });
 
-  // 3. Polling Discovery Status
-  const { data: discoveryData, error: discoveryError, refetch: refetchDiscovery } = useQuery({
+  // Polling Website Discovery Status (Live Website Step 2)
+  const { data: discoveryData } = useQuery({
     queryKey: ["discovery-status", createdProjectId],
     queryFn: async () => {
       const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}/discovery/status`));
       if (!res.ok) throw new Error("Failed to fetch discovery status");
       return res.json();
     },
-    enabled: !!createdProjectId && (step === 2 || step === 3),
+    enabled: !!createdProjectId && step === 2 && envChoice === "live",
     refetchInterval: (query) => {
       const status = query.state.data?.discoveryStatus;
       if (status === "READY" || status === "FAILED") return false;
-      return 2000;
+      return 2500;
     },
   });
 
-  // Derived state for status
+  // Fetch Widget Settings for Installation Code (Live Website Step 3)
+  const { data: widgetSettings } = useQuery({
+    queryKey: ["widget-settings", createdProjectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}/widget/settings`));
+      if (!res.ok) throw new Error("Failed to load widget settings");
+      return res.json();
+    },
+    enabled: !!createdProjectId && (step === 3 || step === 4),
+  });
+
   const discoveryStatus = discoveryData?.discoveryStatus;
-  const isReady = discoveryStatus === "READY";
-  const isFailed = discoveryStatus === "FAILED";
-  const isAnalyzing = discoveryStatus === "ANALYZING" || discoveryStatus === "PENDING";
+  const isAnalysisComplete = discoveryStatus === "READY";
+  const isAnalysisFailed = discoveryStatus === "FAILED";
+  const isAnalyzing = discoveryStatus === "ANALYZING" || discoveryStatus === "PENDING" || !discoveryStatus;
 
-  // 4. Intelligence & Capabilities Queries
-  const { data: capabilitiesData } = useQuery({
-    queryKey: ["capabilities", createdProjectId],
-    queryFn: async () => {
-      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}/capabilities`));
-      if (!res.ok) throw new Error("Failed to load capabilities");
-      return res.json();
-    },
-    enabled: !!createdProjectId && isReady && step >= 2,
-  });
+  // Generate Installation Code Snippet
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : "https://chatbot-rakesh.vercel.app";
+  const widgetUrl = `${currentOrigin}/widget.js`;
+  const backendUrl = apiUrl("").replace(/\/+$/, "");
+  const widgetToken = widgetSettings?.widgetToken || "YOUR_WIDGET_TOKEN";
 
-  const { data: projectData } = useQuery({
-    queryKey: ["admin-project", createdProjectId],
-    queryFn: async () => {
-      const res = await authFetch(apiUrl(`/api/projects/${createdProjectId}`));
-      if (!res.ok) throw new Error("Failed to load intelligence");
-      return res.json();
-    },
-    enabled: !!createdProjectId && isReady && step >= 2,
-  });
+  const installationCode = `<script
+  src="${widgetUrl}"
+  data-widget-token="${widgetToken}"
+  data-api-url="${backendUrl}">
+</script>`;
 
-  const intelligence = projectData?.intelligence || {};
-  const capabilities = capabilitiesData?.capabilities || {};
-
-  const handleConnect = () => {
-    if (!businessName.trim() || !websiteUrl.trim()) {
-      toast({ title: "Required", description: "Please enter both Business Name and URL.", variant: "destructive" });
-      return;
-    }
-    
-    // Basic frontend URL validation (backend is the true source of SSRF protection)
-    if (!websiteUrl.startsWith("http://") && !websiteUrl.startsWith("https://")) {
-      toast({ title: "Invalid URL", description: "URL must start with http:// or https://", variant: "destructive" });
-      return;
-    }
-
-    createProjectMutation.mutate();
+  const copyInstallationCode = () => {
+    navigator.clipboard.writeText(installationCode);
+    setCopiedCode(true);
+    toast({ title: "Copied!", description: "Installation script copied to clipboard." });
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const handleReanalyze = () => {
+  // Step 1 Submission
+  const handleStep1Submit = () => {
+    if (!businessName.trim()) {
+      toast({ title: "Required", description: "Please enter your Business Name.", variant: "destructive" });
+      return;
+    }
+
+    if (envChoice === "live") {
+      if (!websiteUrl.trim()) {
+        toast({ title: "Required", description: "Please enter your Live Website URL.", variant: "destructive" });
+        return;
+      }
+      let formattedUrl = websiteUrl.trim();
+      if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
+        formattedUrl = `https://${formattedUrl}`;
+      }
+      setWebsiteUrl(formattedUrl);
+      createProjectMutation.mutate({ name: businessName.trim(), url: formattedUrl, env: "live" });
+    } else {
+      let localUrl = websiteUrl.trim() || "http://localhost:3000";
+      if (!localUrl.startsWith("http://") && !localUrl.startsWith("https://")) {
+        localUrl = `http://${localUrl}`;
+      }
+      setWebsiteUrl(localUrl);
+      createProjectMutation.mutate({ name: businessName.trim(), url: localUrl, env: "local" });
+    }
+  };
+
+  // Step 4: Verify & Launch Action
+  const handleVerifyAndLaunch = async () => {
     if (!createdProjectId) return;
-    startDiscoveryMutation.mutate(createdProjectId);
-  };
+    setIsVerifying(true);
+    setVerificationResult(null);
 
-  const goToEditor = () => {
-    if (createdProjectId) {
-      setLocation(`/projects/${createdProjectId}/edit`);
+    try {
+      // 1. Run readiness check
+      const readinessRes = await authFetch(apiUrl(`/api/projects/${createdProjectId}/go-live/readiness`));
+      const readiness = await readinessRes.json().catch(() => ({}));
+
+      // 2. Attempt Go Live
+      const goLiveRes = await authFetch(apiUrl(`/api/projects/${createdProjectId}/go-live`), {
+        method: "POST",
+        body: JSON.stringify({ productionUrl: websiteUrl }),
+      });
+
+      const goLiveJson = await goLiveRes.json().catch(() => ({}));
+
+      if (goLiveRes.ok) {
+        setVerificationResult({
+          success: true,
+          isLive: true,
+          message: "🎉 You're live! Your NOVA assistant is active on your website.",
+        });
+        toast({ title: "🎉 You're Live!", description: "Project has been successfully verified & launched." });
+      } else {
+        // Safe, clean explanation
+        setVerificationResult({
+          success: false,
+          isLive: false,
+          message: goLiveJson.error || goLiveJson.message || "Verification incomplete. Ensure website is accessible and widget token is configured.",
+          checks: readiness.checks || [],
+        });
+        toast({ title: "Launch Verification Alert", description: goLiveJson.error || "Some readiness steps require attention.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      setVerificationResult({
+        success: false,
+        isLive: false,
+        message: "Network or reachability issue during verification. Please check your connection or inspect workspace settings.",
+      });
+    } finally {
+      setIsVerifying(false);
     }
   };
-
-  const progressValue = (step / STEPS.length) * 100;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-background">
-      <div className="w-full max-w-2xl">
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-sm font-medium px-4 py-2 rounded-full mb-4">
-            <Sparkles className="w-4 h-4" />
-            AI Business Agent Setup
-          </div>
-          <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-foreground to-foreground/70 tracking-tight mb-3">
-            {step === 1 && "Connect your website"}
-            {step === 2 && "NOVA AI analyzes your website"}
-            {step === 3 && "Business Intelligence"}
-            {step === 4 && "Install your AI Agent"}
-          </h1>
-          <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            {step === 1 && "Enter your website URL and we'll automatically understand your business and discover capabilities."}
-            {step === 2 && "We are scanning the website structure to prepare the agent."}
-            {step === 3 && "Here is what we discovered. Business integrations can be connected later."}
-            {step === 4 && "Add this code to your website to deploy the agent."}
-          </p>
-        </div>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-background text-foreground relative">
+      {/* Background Blur Orbs */}
+      <div className="absolute top-[10%] left-[20%] w-[30vw] h-[30vw] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[10%] right-[20%] w-[30vw] h-[30vw] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-        {/* Step indicators */}
-        <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mb-8">
-          {STEPS.map((s, i) => {
-            const Icon = s.icon;
-            const isDone = step > s.id;
-            const isActive = step === s.id;
-            return (
-              <div key={s.id} className="flex items-center gap-2">
-                <div
-                  className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-medium transition-all duration-300 ${
-                    isDone
-                      ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
-                      : isActive
-                      ? "bg-primary/20 text-primary border border-primary/30"
-                      : "bg-foreground/5 text-muted-foreground border border-foreground/10"
-                  }`}
-                >
-                  {isDone ? <CheckCircle2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Icon className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-                  <span className="hidden sm:inline">{s.label}</span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div className={`w-4 md:w-8 h-px ${step > s.id ? "bg-emerald-500/50" : "bg-foreground/10"}`} />
-                )}
+      <div className="w-full max-w-2xl relative z-10">
+
+        {/* STEP 0: ENVIRONMENT CHOICE */}
+        {step === 0 && (
+          <div className="space-y-8 animate-in fade-in zoom-in-95 duration-300">
+            <div className="text-center space-y-3">
+              <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-xs font-semibold px-4 py-1.5 rounded-full">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>NOVA Business AI Setup</span>
               </div>
-            );
-          })}
-        </div>
-
-        <Progress value={progressValue} className="h-1 mb-8 bg-foreground/10" />
-
-        {/* --- STEP 1: Connect --- */}
-        {step === 1 && (
-          <div className="bg-card border border-border rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Business Name</label>
-              <Input
-                placeholder="e.g. Acme Corp"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                className="h-12 rounded-xl bg-background border-border focus:border-primary/50"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Website URL</label>
-              <Input
-                placeholder="https://example.com"
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-                className="h-12 rounded-xl bg-background border-border focus:border-primary/50"
-              />
-            </div>
-            <Button
-              onClick={handleConnect}
-              disabled={createProjectMutation.isPending || !businessName.trim() || !websiteUrl.trim()}
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground gap-2 font-medium"
-            >
-              {createProjectMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</>
-              ) : (
-                <>Analyze Website <ArrowRight className="w-4 h-4" /></>
-              )}
-            </Button>
-          </div>
-        )}
-
-        {/* --- STEP 2: Analysis Polling --- */}
-        {step === 2 && (
-          <div className="bg-card border border-border rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
-                <div className="flex items-center gap-3">
-                  <Globe className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium text-sm">Website reachable</span>
-                </div>
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
-                <div className="flex items-center gap-3">
-                  <Activity className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium text-sm">Analyzing website</span>
-                </div>
-                {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
-                <div className="flex items-center gap-3">
-                  <Search className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium text-sm">Discovering capabilities</span>
-                </div>
-                {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-              </div>
-              
-              <div className="flex items-center justify-between p-4 bg-background border border-border rounded-xl">
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-muted-foreground" />
-                  <span className="font-medium text-sm">Intelligence ready</span>
-                </div>
-                {isAnalyzing ? <span className="text-xs text-muted-foreground">Pending</span> : <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-              </div>
-            </div>
-
-            {isFailed && (
-              <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-lg text-sm flex gap-2">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <div>
-                  <p className="font-semibold">Website analysis failed.</p>
-                  <p className="text-xs mt-1 opacity-90">We couldn't reach the website or it returned an error. You can try again.</p>
-                  <Button variant="outline" size="sm" onClick={handleReanalyze} className="mt-3 text-xs border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10">
-                    <RefreshCw className="w-3 h-3 mr-2" /> Try Again
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <Button
-              onClick={() => setStep(3)}
-              disabled={!isReady}
-              className="w-full h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground gap-2 font-medium"
-            >
-              {!isReady ? (
-                <>Analyzing... <Loader2 className="w-4 h-4 animate-spin" /></>
-              ) : (
-                <>View Intelligence <ArrowRight className="w-4 h-4" /></>
-              )}
-            </Button>
-          </div>
-        )}
-
-        {/* --- STEP 3: Intelligence & Capabilities --- */}
-        {step === 3 && (
-          <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-            
-            <div className="p-6 md:p-8 border-b border-border bg-background">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Website Knowledge Connected</h3>
-                  <p className="text-sm text-muted-foreground mt-1">We have analyzed the website structure.</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={handleReanalyze} disabled={startDiscoveryMutation.isPending} className="h-8 text-xs shrink-0">
-                  {startDiscoveryMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />} 
-                  Analyze Again
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mt-6">
-                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Business Type</p>
-                  <p className="font-medium text-sm truncate" title={intelligence?.businessType || "Unknown"}>{intelligence?.businessType || "Unknown"}</p>
-                </div>
-                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Platform</p>
-                  <p className="font-medium text-sm truncate" title={intelligence?.platform || "Custom"}>{intelligence?.platform || "Custom"}</p>
-                </div>
-                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Pages Found</p>
-                  <p className="font-medium text-sm">{intelligence?.crawledPages?.length || 0}</p>
-                </div>
-                <div className="bg-foreground/[0.02] border border-border p-3 rounded-lg">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Knowledge</p>
-                  <div className="flex items-center gap-1 text-sm font-medium text-emerald-500">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Connected
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 md:p-8 space-y-4">
-              <h4 className="text-sm font-semibold text-foreground">Discovered Capabilities</h4>
-              <p className="text-xs text-muted-foreground mb-4">The following features were detected on your website. Execution is not configured yet.</p>
-              
-              <div className="space-y-3">
-                {Object.keys(capabilities).length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground border border-dashed border-border rounded-xl text-sm">
-                    No specific interactive capabilities were detected on the crawled pages.
-                  </div>
-                ) : (
-                  Object.entries(capabilities).map(([key, cap]: [string, any]) => (
-                    <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-foreground/[0.02] border border-border rounded-xl gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-sm capitalize text-foreground">{key.replace(/_/g, ' ')}</span>
-                          <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20 font-medium h-5">Detected</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">Detected on your website</p>
-                      </div>
-                      <div className="text-left sm:text-right flex flex-row sm:flex-col items-center sm:items-end gap-2 sm:gap-0">
-                        <span className="text-[11px] text-muted-foreground bg-foreground/5 border border-border px-2 py-0.5 rounded font-medium whitespace-nowrap">Execution not configured</span>
-                        {cap.riskLevel && cap.riskLevel !== "LOW" && (
-                          <span className="text-[10px] text-amber-500 sm:mt-1.5 font-medium whitespace-nowrap">Risk: {cap.riskLevel}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="p-6 md:p-8 border-t border-border bg-background flex flex-col sm:flex-row gap-3">
-              <Button variant="outline" onClick={goToEditor} className="sm:w-auto h-12 rounded-xl border-border text-foreground font-medium">
-                Customize Instructions
-              </Button>
-              <Button onClick={() => setStep(4)} className="flex-1 h-12 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground gap-2 font-medium">
-                Continue to Installation <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* --- STEP 4: Installation --- */}
-        {step === 4 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="text-center bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-6 md:p-8">
-              <h3 className="font-semibold text-foreground mb-2 text-lg">Installation code ready! 🎉</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Add this code to your website to deploy the AI agent. You can customize its appearance in the Widget Studio afterwards.
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">
+                Where is your website?
+              </h1>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                Select your website environment to customize your setup experience.
               </p>
             </div>
 
-            {createdProjectId && (
-              <div className="bg-card border border-border rounded-2xl p-6 md:p-8 shadow-sm">
-                <Deployment projectId={createdProjectId} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Option 1: Live Website */}
+              <Card
+                className={`group cursor-pointer transition-all duration-300 border-2 hover:border-primary/60 hover:shadow-xl bg-card/60 backdrop-blur-xl ${
+                  envChoice === "live" ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border"
+                }`}
+                onClick={() => {
+                  setEnvChoice("live");
+                  setWebsiteUrl("https://");
+                  setStep(1);
+                }}
+              >
+                <CardContent className="p-8 space-y-5 flex flex-col justify-between h-full">
+                  <div className="space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center transition-transform group-hover:scale-110">
+                      <Globe className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors">
+                        🌐 Live Website
+                      </h3>
+                      <p className="text-muted-foreground text-sm mt-2 leading-relaxed">
+                        Your website is hosted and accessible online.
+                      </p>
+                    </div>
+                  </div>
+                  <Button className="w-full mt-6 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl gap-2 shadow-md">
+                    Select Live Website <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Option 2: Local Development */}
+              <Card
+                className={`group cursor-pointer transition-all duration-300 border-2 hover:border-purple-500/60 hover:shadow-xl bg-card/60 backdrop-blur-xl ${
+                  envChoice === "local" ? "border-purple-500 bg-purple-500/5 ring-2 ring-purple-500/20" : "border-border"
+                }`}
+                onClick={() => {
+                  setEnvChoice("local");
+                  setWebsiteUrl("http://localhost:3000");
+                  setStep(1);
+                }}
+              >
+                <CardContent className="p-8 space-y-5 flex flex-col justify-between h-full">
+                  <div className="space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-purple-500/10 text-purple-500 border border-purple-500/20 flex items-center justify-center transition-transform group-hover:scale-110">
+                      <Laptop className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground group-hover:text-purple-400 transition-colors">
+                        🖥 Local Development
+                      </h3>
+                      <p className="text-muted-foreground text-sm mt-2 leading-relaxed">
+                        You're building/testing your website locally.
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full mt-6 border-purple-500/30 hover:bg-purple-500/10 text-purple-400 font-semibold rounded-xl gap-2">
+                    Select Local Dev <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 1: CREATE PROJECT (LIVE OR LOCAL) */}
+        {step === 1 && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <button
+              onClick={() => setStep(0)}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to environment choice
+            </button>
+
+            <div className="text-center space-y-2">
+              <Badge variant="outline" className="text-xs px-3 py-1 font-mono">
+                {envChoice === "live" ? "🌐 Live Website Project" : "🖥 Local Development Project"}
+              </Badge>
+              <h1 className="text-3xl font-bold text-foreground tracking-tight pt-2">
+                Create your project
+              </h1>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                {envChoice === "live"
+                  ? "Enter your business name and live website URL."
+                  : "Enter your business name and local development URL."}
+              </p>
+            </div>
+
+            <div className="bg-card border border-border rounded-3xl p-8 space-y-6 shadow-xl backdrop-blur-xl">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Business Name</label>
+                <Input
+                  placeholder="e.g. Apex Dynamics"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  className="h-12 rounded-xl bg-background border-border focus:border-primary/50 text-base"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  {envChoice === "live" ? "Live Website URL" : "Local Website"}
+                </label>
+                <Input
+                  placeholder={envChoice === "live" ? "https://example.com" : "http://localhost:3000"}
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleStep1Submit()}
+                  className="h-12 rounded-xl bg-background border-border focus:border-primary/50 text-base font-mono"
+                />
+              </div>
+
+              <Button
+                onClick={handleStep1Submit}
+                disabled={createProjectMutation.isPending || !businessName.trim() || !websiteUrl.trim()}
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base gap-2 shadow-lg"
+              >
+                {createProjectMutation.isPending ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Creating Project...</>
+                ) : envChoice === "live" ? (
+                  <>Continue <ArrowRight className="w-5 h-5" /></>
+                ) : (
+                  <>Connect Local Website <ArrowRight className="w-5 h-5" /></>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: AUTOMATIC WEBSITE ANALYSIS (LIVE WEBSITE) */}
+        {step === 2 && envChoice === "live" && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-6 h-6 animate-pulse" />
+              </div>
+              <h1 className="text-3xl font-bold text-foreground tracking-tight">
+                ✨ NOVA is analyzing your website
+              </h1>
+              <p className="text-sm font-mono text-primary bg-primary/5 px-4 py-1.5 rounded-full border border-primary/20 inline-block mt-2">
+                {websiteUrl}
+              </p>
+            </div>
+
+            <div className="bg-card border border-border rounded-3xl p-8 space-y-4 shadow-xl backdrop-blur-xl">
+              <div className="space-y-3">
+                {/* Check 1 */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <Globe className="w-5 h-5 text-blue-400" />
+                    <span className="font-medium text-sm">Website connected</span>
+                  </div>
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                </div>
+
+                {/* Check 2 */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <Activity className="w-5 h-5 text-indigo-400" />
+                    <span className="font-medium text-sm">Business information detected</span>
+                  </div>
+                  {isAnalyzing && !discoveryData?.businessType ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  ) : (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  )}
+                </div>
+
+                {/* Check 3 */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-purple-400" />
+                    <span className="font-medium text-sm">Pages discovered</span>
+                  </div>
+                  {isAnalyzing && (!discoveryData?.crawledPages || discoveryData.crawledPages.length === 0) ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
+                        {discoveryData?.crawledPages?.length || 1} pages
+                      </span>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Stage 4 */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2.5 h-2.5 rounded-full ${isAnalysisComplete ? "bg-emerald-500" : "bg-primary animate-ping"}`} />
+                    <span className="font-medium text-sm">Understanding your products & services</span>
+                  </div>
+                  {isAnalysisComplete ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground font-mono">Analyzing...</span>
+                  )}
+                </div>
+
+                {/* Stage 5 */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2.5 h-2.5 rounded-full ${isAnalysisComplete ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                    <span className="font-medium text-sm">Building AI knowledge</span>
+                  </div>
+                  {isAnalysisComplete ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Pending</span>
+                  )}
+                </div>
+
+                {/* Stage 6 */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-background border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2.5 h-2.5 rounded-full ${isAnalysisComplete ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                    <span className="font-medium text-sm">Preparing your assistant</span>
+                  </div>
+                  {isAnalysisComplete ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Pending</span>
+                  )}
+                </div>
+              </div>
+
+              {isAnalysisFailed && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-semibold text-sm">
+                    <AlertCircle className="w-4 h-4 text-red-400" /> Analysis Alert
+                  </div>
+                  <p>
+                    The website discovery task took longer than expected or was partially limited by CORS/robot rules. NOVA AI has prepared default knowledge for your business.
+                  </p>
+                </div>
+              )}
+
+              <Button
+                onClick={() => setStep(3)}
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base gap-2 mt-4"
+              >
+                {isAnalysisComplete ? (
+                  <>Continue to Installation <ArrowRight className="w-5 h-5" /></>
+                ) : (
+                  <>Continue Anyway <ArrowRight className="w-5 h-5" /></>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: INSTALLATION CODE */}
+        {step === 3 && envChoice === "live" && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="text-center space-y-2">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-2">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Knowledge Ready</span>
+              </div>
+              <h1 className="text-3xl font-bold text-foreground tracking-tight">
+                🎉 Your AI assistant is ready
+              </h1>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                Add NOVA to your website. Copy the installation code below and add it to your website HTML.
+              </p>
+            </div>
+
+            <div className="bg-card border border-border rounded-3xl p-8 space-y-6 shadow-xl backdrop-blur-xl">
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Installation Code
+                </label>
+                <div className="relative">
+                  <pre className="p-5 rounded-2xl bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-mono overflow-x-auto leading-relaxed">
+                    {installationCode}
+                  </pre>
+                  <Button
+                    size="sm"
+                    className="absolute top-3 right-3 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium gap-1.5 rounded-xl shadow-sm"
+                    onClick={copyInstallationCode}
+                  >
+                    {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedCode ? "Copied!" : "Copy Installation Code"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground flex items-start gap-3">
+                <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-foreground">Widget Token Active:</strong> This public token securely authenticates requests from your website domain without exposing any private credentials or API keys.
+                </div>
+              </div>
+
+              <Button
+                onClick={() => setStep(4)}
+                className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base gap-2 shadow-lg"
+              >
+                Next Step <ArrowRight className="w-5 h-5" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: TWO OPTIONS — VERIFY & LAUNCH OR SEE MORE SETTINGS */}
+        {step === 4 && envChoice === "live" && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="text-center space-y-2">
+              <h1 className="text-3xl font-bold text-foreground tracking-tight">
+                You're almost ready 🎉
+              </h1>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                Your NOVA assistant has been prepared. Choose how you want to proceed.
+              </p>
+            </div>
+
+            {verificationResult && (
+              <div
+                className={`p-6 rounded-3xl border shadow-xl ${
+                  verificationResult.success
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                }`}
+              >
+                <div className="flex items-center gap-3 font-bold text-lg mb-2">
+                  {verificationResult.success ? (
+                    <ShieldCheck className="w-6 h-6 text-emerald-400" />
+                  ) : (
+                    <ShieldAlert className="w-6 h-6 text-amber-400" />
+                  )}
+                  <span>{verificationResult.message}</span>
+                </div>
+
+                {verificationResult.success ? (
+                  <div className="pt-4 flex flex-col sm:flex-row gap-3">
+                    <Button
+                      onClick={() => window.open(websiteUrl, "_blank")}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold gap-2 rounded-xl"
+                    >
+                      <ExternalLink className="w-4 h-4" /> ↗ Visit Site
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setLocation(`/projects/${createdProjectId}/edit`)}
+                      className="border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-300 rounded-xl"
+                    >
+                      Open Project Workspace
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    You can launch anytime from the Project Command Center.
+                  </p>
+                )}
               </div>
             )}
 
-            <div className="flex justify-center pt-2">
-              <Button onClick={goToEditor} variant="outline" className="gap-2 rounded-xl px-8 h-12 border-primary/30 hover:bg-primary/5 text-primary font-medium">
-                Customize AI Agent <ArrowRight className="w-4 h-4" />
-              </Button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Option 1: Verify & Launch */}
+              <Card className="border-2 border-primary/40 bg-card/60 backdrop-blur-xl hover:border-primary transition-all duration-300 shadow-xl">
+                <CardContent className="p-8 space-y-5 flex flex-col justify-between h-full">
+                  <div className="space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                      <Rocket className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground">
+                        ✓ Verify & Launch
+                      </h3>
+                      <p className="text-muted-foreground text-sm mt-2 leading-relaxed">
+                        Verify website reachability, widget setup, domain security, and activate Go Live immediately.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleVerifyAndLaunch}
+                    disabled={isVerifying}
+                    className="w-full mt-6 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-base h-12 rounded-xl gap-2 shadow-lg"
+                  >
+                    {isVerifying ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> Verifying...</>
+                    ) : (
+                      <>Verify & Launch <Rocket className="w-5 h-5" /></>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Option 2: See More Settings */}
+              <Card className="border border-border bg-card/60 backdrop-blur-xl hover:border-foreground/30 transition-all duration-300 shadow-xl">
+                <CardContent className="p-8 space-y-5 flex flex-col justify-between h-full">
+                  <div className="space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-foreground/5 text-muted-foreground border border-foreground/10 flex items-center justify-center">
+                      <Settings className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground">
+                        ⚙ See More Settings
+                      </h3>
+                      <p className="text-muted-foreground text-sm mt-2 leading-relaxed">
+                        Explore the full Project Command Center: Knowledge Base, Widget Studio, Tools & Integrations, Agent Control, Analytics.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation(`/projects/${createdProjectId}/edit`)}
+                    className="w-full mt-6 border-foreground/20 hover:bg-foreground/5 text-foreground font-semibold text-base h-12 rounded-xl gap-2"
+                  >
+                    Open Workspace <Settings className="w-5 h-5" />
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           </div>
         )}

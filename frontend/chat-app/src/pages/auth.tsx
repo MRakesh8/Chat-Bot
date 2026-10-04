@@ -38,7 +38,7 @@ export default function AuthPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: `${window.location.origin}/projects`,
         },
       });
 
@@ -263,7 +263,7 @@ export default function AuthPage() {
                     type="button"
                     onClick={() => {
                       loginAsDemo();
-                      setLocation("/chat");
+                      setLocation("/projects");
                     }}
                     className="w-full py-3 px-4 text-xs font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
                   >

@@ -34,7 +34,7 @@ export default function Home() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}${basePath}/chat`,
+          redirectTo: `${window.location.origin}${basePath}/projects`,
         },
       });
       if (error) throw error;
@@ -50,7 +50,7 @@ export default function Home() {
 
   return (
     <>
-      {user && <Redirect to="/chat" />}
+      {user && <Redirect to="/projects" />}
       <div className="min-h-screen bg-background flex flex-col relative overflow-hidden text-foreground">
         {/* Animated Gradient Background */}
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -100,9 +100,9 @@ export default function Home() {
                 <Button
                   variant="ghost"
                   className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setLocation("/chat")}
+                  onClick={() => setLocation("/projects")}
                 >
-                  Chat
+                  Workspace
                 </Button>
                 <Button
                   variant="ghost"
@@ -193,7 +193,7 @@ export default function Home() {
               </Button>
             ) : (
               <Button 
-                onClick={() => setLocation("/chat")}
+                onClick={() => setLocation("/projects")}
                 size="lg" 
                 className="w-full sm:w-auto text-lg h-14 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border-0 shadow-[0_0_30px_-5px_rgba(124,58,237,0.4)]"
               >

@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, User } from "lucide-react";
+import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, User } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -347,7 +347,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       {/* Brand Header */}
       <div className="p-4 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <Link href="/chat" onClick={() => onClose?.()} className="flex items-center gap-2.5 px-1 group cursor-pointer">
+          <Link href="/projects" onClick={() => onClose?.()} className="flex items-center gap-2.5 px-1 group cursor-pointer">
             <div className="bg-primary/10 p-1.5 rounded-xl border border-primary/20 shadow-xs flex items-center justify-center transition-transform group-hover:scale-105">
                <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-5 h-5" />
             </div>
@@ -376,31 +376,31 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       {/* Primary Navigation Section */}
       <div className="px-3 py-2 space-y-0.5 border-b border-border/40">
         <Link
-          href="/chat"
-          onClick={() => onClose?.()}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
-            location === "/" || location.startsWith("/chat")
-              ? "bg-primary/15 text-primary shadow-2xs"
-              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
-          )}
-        >
-          <MessageSquare className="w-4 h-4 text-primary" />
-          <span>Chat</span>
-        </Link>
-
-        <Link
           href="/projects"
           onClick={() => onClose?.()}
           className={cn(
             "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
-            location.startsWith("/projects")
-              ? "bg-primary/15 text-primary shadow-2xs"
+            location === "/projects" || location === "/"
+              ? "bg-primary/15 text-primary shadow-2xs font-bold"
               : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
           )}
         >
-          <FolderKanban className="w-4 h-4 text-blue-400" />
-          <span>Projects</span>
+          <Home className="w-4 h-4 text-primary" />
+          <span>Home</span>
+        </Link>
+
+        <Link
+          href="/chat"
+          onClick={() => onClose?.()}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            location.startsWith("/chat")
+              ? "bg-primary/15 text-primary shadow-2xs font-bold"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
+          )}
+        >
+          <MessageSquare className="w-4 h-4 text-indigo-400" />
+          <span>NOVA Chat</span>
         </Link>
 
         <Link

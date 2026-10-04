@@ -12,7 +12,6 @@ import {
   Pencil,
   Trash2,
   Loader2,
-  FolderOpen,
   Search,
   MoreVertical,
   ExternalLink,
@@ -20,16 +19,14 @@ import {
   Power,
   Sparkles,
   ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
   Globe,
-  Database,
-  MessageSquare,
-  Shield,
+  Laptop,
+  CheckCircle2,
+  Activity,
   Layers,
   LayoutDashboard,
-  Settings as SettingsIcon,
-  AlertTriangle,
+  ShieldCheck,
+  Compass,
 } from "lucide-react";
 import {
   Dialog,
@@ -64,6 +61,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api-url";
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
+import { getProjectsFilterState, saveProjectsFilterState } from "@/lib/workspace-continuity";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -75,15 +74,13 @@ type Project = {
   userId: string;
   shareToken: string;
   isActive: boolean;
-  tags: string[];
+  websiteUrl?: string | null;
+  status?: string;
+  tags?: string[];
   knowledgeCount?: number;
   createdAt: string;
   updatedAt: string;
 };
-
-import { useAuthFetch } from "@/hooks/use-auth-fetch";
-
-import { getProjectsFilterState, saveProjectsFilterState } from "@/lib/workspace-continuity";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -93,7 +90,7 @@ export default function ProjectsPage() {
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isExploreOpen, setIsExploreOpen] = useState(false);
-  
+
   const savedFilters = getProjectsFilterState();
   const [searchQuery, setSearchQuery] = useState(savedFilters.searchQuery);
   const [sortBy, setSortBy] = useState(savedFilters.sortBy);
@@ -114,7 +111,7 @@ export default function ProjectsPage() {
     setCurrentPage(page);
     saveProjectsFilterState({ searchQuery, sortBy, currentPage: page });
   };
-  
+
   const authFetch = useAuthFetch();
   const { dbUser, activeOrganizationId } = useAuth();
 
@@ -202,15 +199,15 @@ export default function ProjectsPage() {
 
   const filteredAndSortedProjects = useMemo(() => {
     if (!projectList) return [];
-    
+
     let filtered = projectList.filter(p => {
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       const matchesName = p.name.toLowerCase().includes(q);
       const matchesDesc = p.description?.toLowerCase().includes(q) ?? false;
       const matchesPrompt = p.systemPrompt.toLowerCase().includes(q);
-      const matchesTags = p.tags?.some(t => t.toLowerCase().includes(q)) ?? false;
-      return matchesName || matchesDesc || matchesPrompt || matchesTags;
+      const matchesUrl = p.websiteUrl?.toLowerCase().includes(q) ?? false;
+      return matchesName || matchesDesc || matchesPrompt || matchesUrl;
     });
 
     filtered.sort((a, b) => {
@@ -237,406 +234,446 @@ export default function ProjectsPage() {
     currentPage * ITEMS_PER_PAGE
   );
 
+  // Helper to determine real setup % and environment status
+  const getProjectState = (project: Project) => {
+    const isLiveUrl = !!project.websiteUrl && !project.websiteUrl.includes("localhost") && !project.websiteUrl.includes("127.0.0.1");
+    const isLive = isLiveUrl && (project.isActive || project.status === "active" || project.status === "live");
+
+    // Calculate real setup progress
+    let percent = 25; // Base project creation
+    if (project.websiteUrl) percent += 25;
+    if ((project.knowledgeCount || 0) > 0) percent += 25;
+    if (project.isActive || isLive) percent += 25;
+
+    return {
+      isLive,
+      isLiveUrl,
+      displayUrl: project.websiteUrl || "http://localhost:3000",
+      setupPercent: percent,
+    };
+  };
+
   return (
     <>
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-          <div className="flex items-start gap-4">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">Projects</h1>
-              <div className="text-sm text-muted-foreground mt-2 flex gap-3 font-medium">
-                <span className="bg-foreground/5 px-3 py-1 rounded-full border border-foreground/10">Total: {projectList?.length || 0}</span>
-                <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20">
-                  Active: {projectList?.filter(p => p.isActive).length || 0}
-                  <span className="relative flex h-2 w-2 ml-1">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() => setIsExploreOpen(true)}
-              className="border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 text-primary gap-2 shrink-0 h-11 px-5 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] font-medium shadow-sm"
-            >
-              <Sparkles className="w-4 h-4 text-primary" />
-              ✨ Explore NOVA
-            </Button>
-            <Button
-              onClick={() => setLocation("/projects/new")}
-              disabled={!canCreate}
-              title={!canCreate ? "Contact support to enable project creation" : ""}
-              className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 gap-2 shrink-0 h-11 px-6 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-4 h-4" />
-              New Project
-            </Button>
-          </div>
-        </div>
-
-        {/* Toolbar: Search & Sort */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <Input 
-              placeholder="Search projects by name, description, tags..." 
-              className="pl-11 h-11 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:bg-foreground/[0.05] focus:border-primary/50 text-foreground transition-all duration-300"
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-            />
-          </div>
-          <div className="w-full sm:w-[220px]">
-            <Select value={sortBy} onValueChange={handleSortChange}>
-              <SelectTrigger className="h-11 rounded-xl bg-foreground/[0.02] border-foreground/10 focus:ring-primary/50 text-foreground">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent className="bg-popover border border-border text-popover-foreground rounded-xl shadow-xl">
-                <SelectItem value="newest" className="rounded-lg my-0.5 hover:bg-foreground/10">Newest First</SelectItem>
-                <SelectItem value="oldest" className="rounded-lg my-0.5 hover:bg-foreground/10">Oldest First</SelectItem>
-                <SelectItem value="alpha" className="rounded-lg my-0.5 hover:bg-foreground/10">Alphabetical</SelectItem>
-                <SelectItem value="updated" className="rounded-lg my-0.5 hover:bg-foreground/10">Most Recently Updated</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Content */}
+      <div className="max-w-6xl mx-auto px-6 py-10 text-foreground">
+        
+        {/* Loading State */}
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <CardSkeleton key={i} />
-            ))}
+          <div className="space-y-8">
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-48 bg-card/60 animate-pulse rounded-xl" />
+              <div className="h-10 w-32 bg-card/60 animate-pulse rounded-xl" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <CardSkeleton key={i} />
+              ))}
+            </div>
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-red-500/20 rounded-xl bg-red-500/5">
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-red-500/20 rounded-3xl bg-red-500/5">
             <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-              <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
+              <AlertCircle className="w-8 h-8 text-red-400" />
             </div>
             <div>
-              <p className="text-foreground font-medium mb-1">Failed to load projects</p>
+              <p className="text-foreground font-semibold mb-1">Failed to load projects</p>
               <p className="text-muted-foreground text-sm max-w-sm">
-                {(error as Error)?.message || "Could not connect to the server. Please check your connection and try again."}
+                {(error as Error)?.message || "Could not connect to the server."}
               </p>
             </div>
             <Button
               variant="outline"
               onClick={() => refetch()}
               disabled={isFetching}
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-2"
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
             >
               <Loader2 className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
-              {isFetching ? "Retrying..." : "Retry"}
+              Retry
             </Button>
           </div>
-        ) : isFetching && !projectList?.length ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
-            <div className="w-16 h-16 rounded-2xl bg-card/40 border border-foreground/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            </div>
-            <div>
-              <p className="text-foreground font-medium mb-1">Connecting to server...</p>
-              <p className="text-muted-foreground text-sm">
-                The server is waking up. Your data will load automatically in a few seconds.
+        ) : !projectList || projectList.length === 0 ? (
+
+          /* ============================================================ */
+          /* 2. NEW DEFAULT LANDING SCREEN — ZERO PROJECTS (FIRST-TIME)   */
+          /* ============================================================ */
+          <div className="flex flex-col items-center justify-center min-h-[70vh] text-center max-w-3xl mx-auto py-12 px-4 space-y-12">
+            
+            {/* Header Hero */}
+            <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+              <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-xs font-semibold px-4 py-1.5 rounded-full shadow-xs">
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                <span>✨ Welcome to NOVA AI</span>
+              </div>
+
+              <h1 className="text-4xl md:text-6xl font-extrabold text-foreground tracking-tight leading-[1.15]">
+                Build. Understand. Launch.
+              </h1>
+
+              <p className="text-xl md:text-2xl text-muted-foreground max-w-xl mx-auto font-normal leading-relaxed">
+                Turn your business website into an intelligent AI assistant.
               </p>
+
+              <div className="pt-4">
+                <Button
+                  size="lg"
+                  onClick={() => setLocation("/projects/new")}
+                  disabled={!canCreate}
+                  className="h-14 px-10 text-lg font-bold bg-gradient-to-r from-primary via-indigo-600 to-purple-600 hover:from-primary/90 hover:to-purple-500 text-primary-foreground border-0 shadow-[0_0_40px_-5px_rgba(99,102,241,0.5)] rounded-2xl gap-3 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98]"
+                >
+                  <Plus className="w-6 h-6" />
+                  + Create Your First Project
+                </Button>
+              </div>
             </div>
+
+            {/* Simple Visual Journey Flow */}
+            <div className="w-full pt-8 border-t border-border/60">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-8">
+                Visual Journey
+              </p>
+
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 max-w-4xl mx-auto">
+                
+                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Globe className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-sm text-foreground">Website</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Live URL or Localhost</p>
+                </div>
+
+                <div className="text-muted-foreground md:rotate-0 rotate-90">
+                  <ArrowRight className="w-5 h-5 text-primary/70" />
+                </div>
+
+                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-sm text-foreground">AI understands</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Automatic Business Discovery</p>
+                </div>
+
+                <div className="text-muted-foreground md:rotate-0 rotate-90">
+                  <ArrowRight className="w-5 h-5 text-primary/70" />
+                </div>
+
+                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-sm text-foreground">Knowledge + AI Assistant</h4>
+                  <p className="text-xs text-muted-foreground mt-1">RAG & Business Context</p>
+                </div>
+
+                <div className="text-muted-foreground md:rotate-0 rotate-90">
+                  <ArrowRight className="w-5 h-5 text-primary/70" />
+                </div>
+
+                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Copy className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-sm text-foreground">Install</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Copy Script Snippet</p>
+                </div>
+
+                <div className="text-muted-foreground md:rotate-0 rotate-90">
+                  <ArrowRight className="w-5 h-5 text-primary/70" />
+                </div>
+
+                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-sm text-foreground">Launch</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Live Business Assistant</p>
+                </div>
+
+              </div>
+            </div>
+
           </div>
 
-        ) : !projectList?.length ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-border rounded-xl bg-card/30">
-            <div className="w-16 h-16 rounded-2xl bg-card/40 border border-foreground/5 backdrop-blur-sm flex items-center justify-center shadow-sm">
-              <FolderOpen className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-foreground font-medium mb-1">No Projects Yet</p>
-              <p className="text-muted-foreground text-sm">
-                Create your first AI assistant.
-              </p>
-            </div>
-            <Button 
-              onClick={() => setLocation("/projects/new")}
-              disabled={!canCreate}
-              title={!canCreate ? "Contact support to enable project creation" : ""}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-primary-foreground border-0 gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-4 h-4" />
-              Create Project
-            </Button>
-          </div>
-        ) : filteredAndSortedProjects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-border rounded-xl bg-card/30">
-            <Search className="w-8 h-8 text-muted-foreground mb-4 opacity-50" />
-            <p className="text-foreground font-medium mb-1">No projects found</p>
-            <p className="text-muted-foreground text-sm">
-              No projects match your search query.
-            </p>
-          </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            {paginatedProjects.map((project) => (
-              <div
-                key={project.id}
-                className="group flex flex-col md:flex-row md:items-center rounded-3xl bg-card border border-border shadow-xs hover:shadow-md transition-all duration-300 p-6 gap-5 relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                
-                {/* Left: Info */}
-                <div className="flex-1 min-w-0 relative z-10">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-foreground font-bold text-xl truncate tracking-tight" title={project.name}>{project.name}</h3>
-                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${project.isActive ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-foreground/5 border-foreground/10 text-muted-foreground"} shrink-0`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${project.isActive ? "bg-emerald-400" : "bg-muted-foreground"}`} />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">
-                        {project.isActive ? "Active" : "Inactive"}
-                      </span>
+
+          /* ============================================================ */
+          /* 3. EXISTING USER — USEFUL PROJECT HOME                       */
+          /* ============================================================ */
+          <div className="space-y-8 animate-in fade-in duration-300">
+            
+            {/* Greeting Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
+                  Good morning 👋
+                </h1>
+                <p className="text-muted-foreground text-lg mt-1 font-medium">
+                  Welcome back to NOVA AI
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsExploreOpen(true)}
+                  className="border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 text-primary gap-2 h-12 px-5 rounded-2xl font-semibold shadow-xs"
+                >
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  ✨ Explore Demo
+                </Button>
+                <Button
+                  onClick={() => setLocation("/projects/new")}
+                  disabled={!canCreate}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 px-6 rounded-2xl gap-2 shadow-lg"
+                >
+                  <Plus className="w-5 h-5" />
+                  + New Project
+                </Button>
+              </div>
+            </div>
+
+            {/* Toolbar: Search & Sort */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1 group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <Input
+                  placeholder="Search projects by name, URL..."
+                  className="pl-11 h-12 rounded-2xl bg-card border-border text-foreground transition-all duration-300"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                />
+              </div>
+              <div className="w-full sm:w-[220px]">
+                <Select value={sortBy} onValueChange={handleSortChange}>
+                  <SelectTrigger className="h-12 rounded-2xl bg-card border-border text-foreground">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border border-border text-popover-foreground rounded-2xl shadow-xl">
+                    <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="oldest">Oldest First</SelectItem>
+                    <SelectItem value="alpha">Alphabetical</SelectItem>
+                    <SelectItem value="updated">Recently Updated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Projects Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {paginatedProjects.map((project) => {
+                const state = getProjectState(project);
+                return (
+                  <div
+                    key={project.id}
+                    className="group flex flex-col justify-between rounded-3xl bg-card border border-border hover:border-primary/40 shadow-xs hover:shadow-xl transition-all duration-300 p-7 relative overflow-hidden"
+                  >
+                    <div className="space-y-4 relative z-10">
+                      
+                      {/* Top Badges */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          {state.isLive ? (
+                            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold px-3 py-1 gap-1.5 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                              ● Live
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/30 font-bold px-3 py-1 gap-1.5 rounded-full">
+                              <Laptop className="w-3.5 h-3.5" />
+                              ● Local Development
+                            </Badge>
+                          )}
+
+                          {state.isLive && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 font-semibold px-2.5 py-0.5 text-xs">
+                              AI Ready
+                            </Badge>
+                          )}
+                        </div>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-foreground/10">
+                              <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48 bg-popover border border-border text-popover-foreground rounded-2xl shadow-xl">
+                            <DropdownMenuItem className="rounded-xl my-0.5 cursor-pointer" onClick={() => setLocation(`/projects/${project.id}/edit`)}>
+                              <Pencil className="w-4 h-4 mr-2" /> Edit Project
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="rounded-xl my-0.5 cursor-pointer" onClick={() => copyShareLink(project.shareToken)}>
+                              <Copy className="w-4 h-4 mr-2" /> Copy Preview Link
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="rounded-xl my-0.5 cursor-pointer"
+                              onClick={() => toggleMutation.mutate({ id: project.id, isActive: !project.isActive })}
+                            >
+                              {project.isActive ? (
+                                <><PowerOff className="w-4 h-4 mr-2 text-muted-foreground" /> Deactivate</>
+                              ) : (
+                                <><Power className="w-4 h-4 mr-2 text-emerald-400" /> Activate</>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-400 hover:bg-red-500/10 rounded-xl my-0.5 cursor-pointer"
+                              onClick={() => setDeletingId(project.id)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {/* Title & URL */}
+                      <div>
+                        <h3 className="text-2xl font-bold text-foreground tracking-tight truncate group-hover:text-primary transition-colors">
+                          {project.name}
+                        </h3>
+                        <p className="text-xs font-mono text-muted-foreground mt-1 truncate">
+                          {state.displayUrl}
+                        </p>
+                      </div>
+
+                      {/* Description or Knowledge Sources */}
+                      <p className="text-muted-foreground text-sm line-clamp-2 leading-relaxed">
+                        {project.description || project.systemPrompt}
+                      </p>
+                    </div>
+
+                    {/* Footer / CTA */}
+                    <div className="pt-6 mt-6 border-t border-border/60 flex items-center justify-between gap-4 relative z-10">
+                      {!state.isLive && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-medium">Progress:</span>
+                          <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
+                            Setup {state.setupPercent}%
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 ml-auto">
+                        {state.isLive ? (
+                          <Button
+                            onClick={() => setLocation(`/projects/${project.id}/edit`)}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-2xl gap-2 h-10 px-6 shadow-md"
+                          >
+                            Open Project <ArrowRight className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => setLocation(`/projects/${project.id}/edit`)}
+                            variant="outline"
+                            className="border-primary/40 text-primary hover:bg-primary/10 font-bold rounded-2xl gap-2 h-10 px-6"
+                          >
+                            Continue <ArrowRight className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  
-                  <p className="text-foreground/70 text-sm line-clamp-2 mb-4 leading-relaxed">
-                    {project.description || project.systemPrompt}
-                  </p>
-                  
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-muted-foreground/80">
-                    <span title="Created Date" className="flex items-center gap-1">
-                      Created {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </span>
-                    <span className="w-1 h-1 rounded-full bg-foreground/20"></span>
-                    <span title="Knowledge Sources" className="flex items-center gap-1">
-                      {project.knowledgeCount || 0} Knowledge Sources
-                    </span>
-                    {project.updatedAt && (
-                      <>
-                        <span className="w-1 h-1 rounded-full bg-foreground/20"></span>
-                        <span title="Last Updated" className="flex items-center gap-1">
-                          Updated {new Date(project.updatedAt).toLocaleDateString()}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right: Actions */}
-                <div className="flex items-center gap-2 md:shrink-0 mt-2 md:mt-0 pt-4 md:pt-0 border-t md:border-0 border-foreground/5 relative z-10">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-9 gap-2 rounded-xl border-foreground/10 bg-foreground/5 hover:bg-foreground/10 hover:text-foreground transition-all"
-                    onClick={() => setLocation(`/projects/${project.id}/edit`)}
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                    Open
-                  </Button>
-                  
-                  <Button
-                    size="sm"
-                    className="h-9 gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground border-0 shadow-lg"
-                    onClick={() => window.open(`${basePath}/p/${project.shareToken}`, "_blank")}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Preview
-                  </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-9 w-9 ml-1 rounded-xl hover:bg-foreground/10">
-                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-popover border border-border text-popover-foreground rounded-xl shadow-xl">
-                      <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-foreground/10" onClick={() => setLocation(`/projects/${project.id}/edit`)}>
-                        <Pencil className="w-4 h-4 mr-2" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="rounded-lg my-0.5 hover:bg-foreground/10" onClick={() => copyShareLink(project.shareToken)}>
-                        <Copy className="w-4 h-4 mr-2" /> Copy Link
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-foreground/10" />
-                      <DropdownMenuItem 
-                        className="rounded-lg my-0.5 hover:bg-foreground/10"
-                        onClick={() => toggleMutation.mutate({ id: project.id, isActive: !project.isActive })}
-                      >
-                        {project.isActive ? (
-                          <><PowerOff className="w-4 h-4 mr-2 text-muted-foreground" /> Deactivate</>
-                        ) : (
-                          <><Power className="w-4 h-4 mr-2 text-emerald-400" /> Activate</>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-foreground/10" />
-                      
-                      <DropdownMenuItem 
-                        className="text-red-400 hover:bg-red-500/10 hover:text-red-300 focus:bg-red-500/10 focus:text-red-300 rounded-lg my-0.5"
-                        onClick={() => setDeletingId(project.id)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" /> Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center justify-between pt-4">
                 <p className="text-sm text-muted-foreground">
                   Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedProjects.length)} of {filteredAndSortedProjects.length} projects
                 </p>
                 <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     disabled={currentPage === 1}
                     onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                    className="rounded-xl"
                   >
                     Previous
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     disabled={currentPage === totalPages}
                     onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                    className="rounded-xl"
                   >
                     Next
                   </Button>
                 </div>
               </div>
             )}
+
           </div>
         )}
+
       </div>
 
-      {/* Shared Delete Dialog */}
+      {/* Delete Dialog */}
       <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
         <AlertDialogContent className="bg-card border border-border">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-foreground">Delete project?</AlertDialogTitle>
             <AlertDialogDescription className="text-muted-foreground">
-              This will permanently delete this project and all its conversations. This cannot be undone.
+              This will permanently delete this project and all associated configurations.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground">
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel className="border-border">Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground border-0"
               onClick={() => {
                 if (deletingId) deleteMutation.mutate(deletingId);
               }}
             >
-              {deleteMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                "Delete"
-              )}
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Explore NOVA Demo Project Dialog */}
+      {/* Interactive Demo Dialog */}
       <Dialog open={isExploreOpen} onOpenChange={setIsExploreOpen}>
-        <DialogContent className="max-w-2xl bg-card/95 backdrop-blur-xl border border-border text-foreground p-6 sm:p-8 rounded-3xl shadow-2xl">
+        <DialogContent className="max-w-2xl bg-card border border-border text-foreground p-8 rounded-3xl shadow-2xl">
           <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2 text-primary font-semibold text-sm">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span>Interactive Demo Experience</span>
-            </div>
-            <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            <DialogTitle className="text-2xl font-bold tracking-tight">
               Explore NOVA Business AI
             </DialogTitle>
-            <DialogDescription className="text-muted-foreground text-sm leading-relaxed">
-              See what a complete NOVA project looks like and test real features before connecting your own website.
+            <DialogDescription className="text-muted-foreground text-sm">
+              See what a complete NOVA project looks like before connecting your own website.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 p-5 rounded-2xl bg-foreground/[0.02] border border-foreground/10 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-foreground/5 pb-3">
+          <div className="mt-4 p-5 rounded-2xl bg-foreground/[0.02] border border-border space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-lg text-foreground">Apex Dynamics — Demo</span>
-                  <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs px-2.5 py-0.5">
-                    🧪 Demo Mode
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Industry: Enterprise Business & Technology Consulting
-                </p>
+                <span className="font-bold text-lg">Apex Dynamics — Demo</span>
+                <p className="text-xs text-muted-foreground">Enterprise Business Consulting</p>
               </div>
-              <span className="text-xs font-mono text-muted-foreground/80 bg-foreground/5 px-2.5 py-1 rounded-lg">
-                5 Knowledge Sources • 2 Integrations
-              </span>
+              <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs">
+                🧪 Demo Mode
+              </Badge>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
-                <LayoutDashboard className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Project Dashboard & Metrics</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
-                <Globe className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Website Intelligence & Capabilities</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
-                <Database className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Curated Knowledge Base & RAG</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
-                <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Interactive AI Chatbot Testing</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
-                <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Agent Control & Confirmation Flow</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
-                <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Connected Services & Sandbox</span>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
-              <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-              <p>
-                <strong className="text-foreground font-medium">Safe Demo Environment:</strong> This demo operates using fictional business data. Real business actions and external API executions are safely disabled.
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Explore business intelligence, RAG knowledge sources, live widget customization, and agent control in a safe sandbox.
+            </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+            <Button variant="ghost" onClick={() => setIsExploreOpen(false)}>Close</Button>
             <Button
-              variant="ghost"
-              onClick={() => setIsExploreOpen(false)}
-              className="w-full sm:w-auto text-muted-foreground hover:text-foreground order-3 sm:order-1 text-sm"
+              onClick={() => {
+                setIsExploreOpen(false);
+                setLocation("/projects/00000000-0000-4000-8000-000000000000/edit");
+              }}
+              className="bg-primary text-primary-foreground font-semibold gap-2"
             >
-              Close
+              Open Demo Project <ArrowRight className="w-4 h-4" />
             </Button>
-            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto order-1 sm:order-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsExploreOpen(false);
-                  setLocation("/projects/new");
-                }}
-                className="w-full sm:w-auto border-foreground/20 hover:bg-foreground/5 text-xs sm:text-sm"
-              >
-                Connect My Website
-              </Button>
-              <Button
-                onClick={() => {
-                  setIsExploreOpen(false);
-                  setLocation("/projects/00000000-0000-4000-8000-000000000000/edit");
-                }}
-                className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-primary-foreground font-medium shadow-md gap-2 text-xs sm:text-sm"
-              >
-                Open Demo Project
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>

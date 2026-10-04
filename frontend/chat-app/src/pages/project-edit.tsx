@@ -149,6 +149,26 @@ export default function ProjectEditPage() {
     }
   }, [project]);
 
+  const { data: readinessData } = useQuery({
+    queryKey: ["project-readiness", projectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/go-live/readiness`));
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!projectId && !isNew,
+  });
+
+  const { data: discoveryData } = useQuery({
+    queryKey: ["discovery-status", projectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/discovery/status`));
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!projectId && !isNew,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string; systemPrompt: string }) => {
       const res = await authFetch(apiUrl("/api/projects"), {
@@ -351,121 +371,195 @@ export default function ProjectEditPage() {
           </div>
         )}
 
-        <div className="flex items-center gap-6 mb-12">
-          <div>
-            <div className="flex items-center gap-3">
-              {isEditingName ? (
-                <Input
-                  autoFocus
-                  value={tempName}
-                  onChange={(e) => setTempName(e.target.value)}
-                  onBlur={() => {
-                    setIsEditingName(false);
-                    if (tempName.trim() && tempName.trim() !== project?.name) {
-                      updateMutation.mutate({ name: tempName.trim() });
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      e.currentTarget.blur();
-                    } else if (e.key === "Escape") {
-                      setTempName(project?.name || name);
-                      setIsEditingName(false);
-                    }
-                  }}
-                  className="text-4xl font-bold h-14 bg-transparent border-white/20 focus:border-primary px-2"
-                />
-              ) : (
-                <div 
-                  className="flex items-center gap-3 group cursor-pointer" 
-                  onClick={() => {
-                    if (isDemo) {
-                      toast({
-                        title: "Demo Mode",
-                        description: "Project renaming is disabled in demo mode. Connect your own website to customize your project.",
-                      });
-                      return;
-                    }
-                    setTempName(project?.name || name);
-                    setIsEditingName(true);
-                  }}
-                >
-                  <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
-                    {project?.name || "Loading..."}
-                  </h1>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="opacity-100 transition-opacity h-8 w-8 rounded-full hover:bg-white/10" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (isDemo) {
-                        toast({
-                          title: "Demo Mode",
-                          description: "Project renaming is disabled in demo mode. Connect your own website to customize your project.",
-                        });
-                        return;
-                      }
-                      setTempName(project?.name || name);
-                      setIsEditingName(true);
-                    }}
-                  >
-                    <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            
-            <p className="text-muted-foreground mt-2 font-medium">
-              Update your project settings and knowledge base
-            </p>
+        {/* Project Command Center Header */}
+        {(() => {
+          const storedUrl = project?.websiteUrl || readinessData?.productionWebsiteUrl || null;
+          const isLocalDev = !storedUrl || storedUrl.includes("localhost") || storedUrl.includes("127.0.0.1");
+          const isLive = !!storedUrl && !isLocalDev && (project?.isActive || project?.status === "active" || readinessData?.environment === "PRODUCTION");
+          
+          let setupPercent = 25;
+          if (storedUrl) setupPercent += 25;
+          if (discoveryData?.discoveryStatus === "READY") setupPercent += 25;
+          if (isLive || project?.isActive) setupPercent += 25;
 
-            {project?.entitlement && (
-              <div className="mt-3">
-                {project.entitlement.status === "SUBSCRIPTION_ACTIVE" && (
-                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 gap-1.5 px-3 py-1 text-xs">
-                    <ShieldCheck className="w-4 h-4" /> Active Pro Plan
-                  </Badge>
-                )}
-                {project.entitlement.status === "TRIAL_ACTIVE" && (
-                  <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1.5 px-3 py-1 text-xs">
-                    <Sparkles className="w-4 h-4" /> Free Trial Active
-                    {project.entitlement.expiresAt && (
-                      <span className="text-muted-foreground/80 font-normal">
-                        • Ends {new Date(project.entitlement.expiresAt).toLocaleDateString()}
-                      </span>
-                    )}
-                  </Badge>
-                )}
-                {project.entitlement.status === "TRIAL_EXPIRED" && (
-                  <div className="mt-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h4 className="font-bold text-rose-500 flex items-center gap-2 text-sm">
-                        <ShieldAlert className="w-4 h-4" /> Free Trial Expired
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Your chatbot AI generation is currently paused on your website. Upgrade your plan to keep your widget active.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 shadow-md flex-none"
-                      onClick={() => setLocation("/billing")}
-                    >
-                      <CreditCard className="w-3.5 h-3.5" /> Upgrade Plan
-                    </Button>
+          const isAnalyzing = discoveryData?.discoveryStatus === "ANALYZING" || discoveryData?.discoveryStatus === "PENDING";
+
+          return (
+            <div className="space-y-6 mb-8">
+              {/* Top Banner Row: Project Name, URL, Status & Actions */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 p-6 rounded-3xl bg-card border border-border shadow-md">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+                      {project?.name || name || "Project"}
+                    </h1>
+                    <Badge variant="outline" className="text-xs font-bold px-3 py-1 bg-primary/10 text-primary border-primary/20">
+                      Setup {setupPercent}%
+                    </Badge>
                   </div>
-                )}
-                {project.entitlement.status === "SUSPENDED" && (
-                  <Badge variant="destructive" className="gap-1.5 px-3 py-1 text-xs">
-                    <ShieldAlert className="w-4 h-4" /> Project Access Suspended
-                  </Badge>
-                )}
+
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Your AI Business Assistant
+                  </p>
+
+                  <div className="pt-1 flex items-center gap-3 font-mono text-sm">
+                    {isLocalDev ? (
+                      <span className="flex items-center gap-2 text-purple-400 bg-purple-500/10 px-3 py-1 rounded-xl border border-purple-500/20 font-sans text-xs font-semibold">
+                        🖥 Local Development <span className="font-mono opacity-80">{storedUrl || "localhost:3000"}</span>
+                      </span>
+                    ) : (
+                      <a
+                        href={storedUrl!}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-blue-400 hover:underline font-semibold"
+                      >
+                        🌐 {storedUrl}
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Action: Launch Site vs Visit Site vs Local Dev */}
+                <div className="flex items-center gap-3 shrink-0">
+                  {isLive ? (
+                    <div className="flex items-center gap-3">
+                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold px-3 py-1.5 text-xs gap-1.5 rounded-xl">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        ● Live
+                      </Badge>
+                      {storedUrl && (
+                        <Button
+                          onClick={() => window.open(storedUrl, "_blank")}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs h-10 px-5 rounded-xl gap-2 shadow-md"
+                        >
+                          <ExternalLink className="w-4 h-4" /> ↗ Visit Site
+                        </Button>
+                      )}
+                    </div>
+                  ) : !isLocalDev && storedUrl ? (
+                    <Button
+                      onClick={() => handleTabChange("deployment")}
+                      className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-slate-950 font-bold text-xs h-10 px-6 rounded-xl gap-2 shadow-md"
+                    >
+                      <Rocket className="w-4 h-4" /> ↗ Launch Site
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => handleTabChange("deployment")}
+                      className="border-purple-500/30 hover:bg-purple-500/10 text-purple-400 font-semibold text-xs h-10 px-5 rounded-xl gap-2"
+                    >
+                      <Laptop className="w-4 h-4" /> Local Testing Controls
+                    </Button>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        </div>
+
+              {/* YOUR NOVA JOURNEY Stepper */}
+              <div className="p-6 rounded-3xl bg-card/60 border border-border shadow-xs backdrop-blur-xl">
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">
+                  YOUR NOVA JOURNEY
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs font-semibold">
+                  <div className="flex items-center gap-2 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>✓ Website Connected</span>
+                  </div>
+
+                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
+                    discoveryData?.discoveryStatus === "READY"
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                      : isAnalyzing
+                      ? "bg-primary/10 border-primary/20 text-primary"
+                      : "bg-muted/40 border-border text-muted-foreground"
+                  }`}>
+                    {discoveryData?.discoveryStatus === "READY" ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : isAnalyzing ? (
+                      <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+                    ) : (
+                      <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground" />
+                    )}
+                    <span>{discoveryData?.discoveryStatus === "READY" ? "✓ AI Analysis" : isAnalyzing ? "● AI Analyzing" : "○ AI Analysis"}</span>
+                  </div>
+
+                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
+                    project ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-muted/40 border-border text-muted-foreground"
+                  }`}>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>✓ Knowledge Ready</span>
+                  </div>
+
+                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
+                    activeTab === "deployment" || activeTab === "widget-studio"
+                      ? "bg-primary/15 border-primary/30 text-primary"
+                      : "bg-muted/40 border-border text-muted-foreground"
+                  }`}>
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                    <span>● Widget Installation</span>
+                  </div>
+
+                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
+                    isLive
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                      : "bg-muted/40 border-border text-muted-foreground"
+                  }`}>
+                    {isLive ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground" />}
+                    <span>{isLive ? "✓ Launch" : "○ Launch"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* NEXT BEST ACTION Banner */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-primary/10 via-indigo-500/10 to-purple-500/10 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary block">
+                      NEXT BEST ACTION
+                    </span>
+                    <p className="text-sm font-bold text-foreground mt-0.5">
+                      {isAnalyzing
+                        ? "● NOVA is analyzing your website"
+                        : isLive
+                        ? "🎉 Your AI assistant is live"
+                        : readinessData?.isReady
+                        ? "✓ Installation detected & ready to launch"
+                        : "🚀 Your assistant is ready to install"}
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (isLive && storedUrl) {
+                      window.open(storedUrl, "_blank");
+                    } else if (isAnalyzing) {
+                      handleTabChange("guide");
+                    } else {
+                      handleTabChange("deployment");
+                    }
+                  }}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs rounded-xl h-10 px-5 shrink-0 gap-1.5"
+                >
+                  {isAnalyzing
+                    ? "View Analysis"
+                    : isLive
+                    ? "↗ Visit Site"
+                    : readinessData?.isReady
+                    ? "Verify & Launch"
+                    : "Get Installation Code"}
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="mb-8 bg-muted/60 border border-border p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
