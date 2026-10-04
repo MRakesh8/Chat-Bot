@@ -325,15 +325,40 @@ export function getDemoFeedback() {
 export function getDemoWidgetSettings() {
   return {
     projectId: DEMO_PROJECT_ID,
-    widgetToken: "tok_demo_apex_dynamics",
-    isEnabled: true,
+    botName: "Apex AI Assistant",
+    botAvatar: null,
+    welcomeMessage: "Hello 👋 Welcome to Apex Dynamics Consulting. Ask us anything about our corporate strategy and digital transformation services.",
     themeColor: "#2563eb",
     position: "bottom-right",
+    displayMode: "floating",
     launcherTitle: "Chat with Apex AI",
     welcomeHeading: "Apex Dynamics Consulting",
     welcomeSubtitle: "Ask us anything about our corporate strategy and digital transformation services.",
     placeholderText: "Ask a question about our services...",
-    allowedDomains: ["apex-dynamics-demo.example.com", "localhost"]
+    inputPlaceholder: "Ask a question about our services...",
+    onlineStatus: "Online",
+    allowedDomains: ["apex-dynamics-demo.example.com", "localhost"],
+    isEnabled: true,
+    widgetToken: "tok_demo_apex_dynamics",
+    appearance: {
+      themeMode: "all",
+      widgetBg: "#18181b",
+      headerBg: "#2563eb",
+      headerText: "#ffffff",
+      aiMsgBg: "#18181b",
+      aiMsgText: "#f4f4f5",
+      userMsgBg: "#2563eb",
+      userMsgText: "#ffffff",
+      inputBg: "#09090b",
+      inputText: "#f4f4f5",
+      placeholderText: "#a1a1aa",
+      sendBtnBg: "#2563eb",
+      sendBtnIcon: "#ffffff",
+      launcherBg: "#2563eb",
+      launcherIcon: "#ffffff",
+      borderColor: "#27272a",
+      statusColor: "#10b981"
+    }
   };
 }
 

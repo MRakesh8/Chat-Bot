@@ -24,11 +24,17 @@ router.get("/settings", async (req: any, res: Response) => {
   }
   const defaultSettings = {
     projectId,
-    botName: "RAGHUB",
-    welcomeMessage: "Hello ðŸ‘‹",
-    themeColor: "#7C3AED",
+    botName: "AI Assistant",
+    welcomeMessage: "Hello 👋",
+    themeColor: "#8B5CF6",
     position: "bottom-right",
     displayMode: "floating",
+    inputPlaceholder: "Ask a question...",
+    onlineStatus: "Online",
+    appearance: {
+      themeMode: "all",
+      themeColor: "#8B5CF6"
+    },
     allowedDomains: [],
     leadsEnabled: false,
     isEnabled: true,
@@ -84,6 +90,9 @@ router.put("/settings", async (req: any, res: Response) => {
       customContainerId: updates.customContainerId,
       allowedDomains: updates.allowedDomains,
       customCss: updates.customCss,
+      inputPlaceholder: updates.inputPlaceholder,
+      onlineStatus: updates.onlineStatus,
+      appearance: updates.appearance,
       leadsEnabled: updates.leadsEnabled,
       humanHandoffLinks: updates.humanHandoffLinks,
       isEnabled: updates.isEnabled,

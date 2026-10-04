@@ -157,9 +157,45 @@
 
   function getBaseStyles() {
     const themeColor = config.themeColor || "#8B5CF6";
+    const app = config.appearance || {};
+    const isCustom = app.themeMode === "custom";
+
+    const widgetBg = (isCustom && app.widgetBg) ? app.widgetBg : "#18181b";
+    const headerBg = (isCustom && app.headerBg) ? app.headerBg : themeColor;
+    const headerText = (isCustom && app.headerText) ? app.headerText : "#ffffff";
+    const aiMsgBg = (isCustom && app.aiMsgBg) ? app.aiMsgBg : "#18181b";
+    const aiMsgText = (isCustom && app.aiMsgText) ? app.aiMsgText : "#f4f4f5";
+    const userMsgBg = (isCustom && app.userMsgBg) ? app.userMsgBg : themeColor;
+    const userMsgText = (isCustom && app.userMsgText) ? app.userMsgText : "#ffffff";
+    const inputBg = (isCustom && app.inputBg) ? app.inputBg : "#09090b";
+    const inputText = (isCustom && app.inputText) ? app.inputText : "#f4f4f5";
+    const placeholderText = (isCustom && app.placeholderText) ? app.placeholderText : "#a1a1aa";
+    const sendBtnBg = (isCustom && app.sendBtnBg) ? app.sendBtnBg : themeColor;
+    const sendBtnIcon = (isCustom && app.sendBtnIcon) ? app.sendBtnIcon : "#ffffff";
+    const launcherBg = (isCustom && app.launcherBg) ? app.launcherBg : themeColor;
+    const launcherIcon = (isCustom && app.launcherIcon) ? app.launcherIcon : "#ffffff";
+    const borderColor = (isCustom && app.borderColor) ? app.borderColor : "#27272a";
+    const statusColor = (isCustom && app.statusColor) ? app.statusColor : "#10b981";
+
     return `
       :host {
         --primary: ${themeColor};
+        --widget-bg: ${widgetBg};
+        --header-bg: ${headerBg};
+        --header-text: ${headerText};
+        --ai-msg-bg: ${aiMsgBg};
+        --ai-msg-text: ${aiMsgText};
+        --user-msg-bg: ${userMsgBg};
+        --user-msg-text: ${userMsgText};
+        --input-bg: ${inputBg};
+        --input-text: ${inputText};
+        --placeholder-text: ${placeholderText};
+        --send-btn-bg: ${sendBtnBg};
+        --send-btn-icon: ${sendBtnIcon};
+        --launcher-bg: ${launcherBg};
+        --launcher-icon: ${launcherIcon};
+        --border-color: ${borderColor};
+        --status-color: ${statusColor};
         --bg-dark: #09090b;
         --bg-panel: #18181b;
         --border: #27272a;
@@ -187,35 +223,33 @@
         pointer-events: none !important;
         width: 56px;
         height: 56px;
-        /* Default: bottom-right corner — top/left will be set via JS */
         bottom: 24px;
         right: 24px;
       }
 
-      /* JS will override with top/left after first layout */
       .widget-wrapper.draggable-ready {
         bottom: auto !important;
         right: auto !important;
       }
 
-      /* Floating Button */
+      /* Floating Button Launcher */
       .floating-button {
         width: 100%;
         height: 100%;
         border-radius: 50%;
-        background-color: var(--primary);
-        color: white;
+        background-color: var(--launcher-bg);
+        color: var(--launcher-icon);
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
         cursor: pointer;
         border: none;
         outline: none;
         transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         pointer-events: auto !important;
       }
-      .floating-button:hover { transform: scale(1.05); }
+      .floating-button:hover { transform: scale(1.08); }
       .floating-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
 
       /* Chat Panel */
@@ -226,8 +260,8 @@
         width: 380px;
         height: 600px;
         max-height: calc(100vh - 100px);
-        background-color: var(--bg-panel);
-        border: 1px solid var(--border);
+        background-color: var(--widget-bg);
+        border: 1px solid var(--border-color);
         border-radius: 16px;
         overflow: hidden;
         display: flex;
@@ -240,7 +274,6 @@
         transform-origin: bottom right;
       }
 
-      /* Dynamic Alignments */
       .widget-wrapper.align-top .chat-panel {
         bottom: auto;
         top: calc(100% + 24px);
@@ -265,7 +298,6 @@
         pointer-events: auto !important;
       }
 
-      /* Mobile Full Screen */
       @media (max-width: 768px) {
         .chat-panel {
           position: fixed !important;
@@ -278,9 +310,9 @@
       }
 
       .header {
-        background-color: var(--primary);
+        background-color: var(--header-bg);
         padding: 16px;
-        color: white;
+        color: var(--header-text);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -290,13 +322,15 @@
       .avatar { 
         width: 32px; height: 32px; border-radius: 50%; 
         background: rgba(255,255,255,0.2); 
+        color: var(--header-text);
         display: flex; align-items: center; justify-content: center; font-weight: bold;
       }
-      .title { font-weight: 600; font-size: 16px; margin: 0; line-height: 1.2; }
-      .subtitle { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+      .title { font-weight: 600; font-size: 16px; margin: 0; line-height: 1.2; color: var(--header-text); }
+      .subtitle { font-size: 11px; opacity: 0.9; margin-top: 2px; color: var(--header-text); display: flex; align-items: center; gap: 4px; }
+      .status-dot { width: 7px; height: 7px; border-radius: 50%; background-color: var(--status-color); display: inline-block; }
       
       .close-btn { 
-        background: none; border: none; color: white; cursor: pointer; padding: 4px; opacity: 0.8;
+        background: none; border: none; color: var(--header-text); cursor: pointer; padding: 4px; opacity: 0.8;
       }
       .close-btn:hover { opacity: 1; }
       
@@ -304,39 +338,21 @@
         flex: 1;
         padding: 16px;
         overflow-y: auto;
-        background-color: var(--bg-dark);
+        background-color: var(--widget-bg);
         display: flex;
         flex-direction: column;
         gap: 16px;
       }
 
-      /* Global Scrollbar for everything inside Shadow DOM */
       * {
         scrollbar-width: thin;
         scrollbar-color: #52525b transparent;
       }
 
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-
-      ::-webkit-scrollbar-thumb {
-        background: #52525b;
-        border-radius: 9999px;
-      }
-
-      ::-webkit-scrollbar-thumb:hover {
-        background: #71717a;
-      }
-
-      ::-webkit-scrollbar-corner {
-        background: transparent;
-      }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #52525b; border-radius: 9999px; }
+      ::-webkit-scrollbar-thumb:hover { background: #71717a; }
 
       .message {
         max-width: 85%;
@@ -349,81 +365,93 @@
 
       .message.bot {
         align-self: flex-start;
-        background-color: var(--bg-panel);
-        color: var(--text-main);
-        border: 1px solid var(--border);
+        background-color: var(--ai-msg-bg);
+        color: var(--ai-msg-text);
+        border: 1px solid var(--border-color);
         border-bottom-left-radius: 4px;
       }
 
       .message.user {
         align-self: flex-end;
-        background-color: var(--primary);
-        color: white;
+        background-color: var(--user-msg-bg);
+        color: var(--user-msg-text);
         border-bottom-right-radius: 4px;
       }
 
       .input-area {
-        padding: 16px;
-        background-color: var(--bg-panel);
-        border-top: 1px solid var(--border);
+        padding: 14px 16px;
+        background-color: var(--widget-bg);
+        border-top: 1px solid var(--border-color);
       }
 
       .input-wrapper {
         display: flex;
-        background: var(--bg-dark);
-        border: 1px solid var(--border);
-        border-radius: 24px;
-        padding: 4px;
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 9999px;
+        padding: 4px 6px 4px 16px;
         align-items: center;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .input-wrapper:focus-within {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
       }
 
       .input-wrapper input {
         flex: 1;
         background: none;
         border: none;
-        color: var(--text-main);
-        padding: 8px 16px;
+        color: var(--input-text);
+        padding: 8px 0;
         font-size: 14px;
         outline: none;
       }
+      .input-wrapper input::placeholder {
+        color: var(--placeholder-text);
+        opacity: 0.8;
+      }
 
       .send-btn {
-        background: var(--primary);
-        color: white;
+        background: var(--send-btn-bg);
+        color: var(--send-btn-icon);
         border: none;
         width: 32px; height: 32px;
         border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         cursor: pointer;
-        margin-right: 2px;
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        flex-shrink: 0;
       }
+      .send-btn:hover:not(:disabled) { transform: scale(1.05); }
       .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .send-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+      .send-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; }
 
       .typing-indicator {
         display: none;
         align-items: center;
         gap: 4px;
         padding: 12px 16px;
-        background-color: var(--bg-panel);
-        border: 1px solid var(--border);
+        background-color: var(--ai-msg-bg);
+        border: 1px solid var(--border-color);
         border-radius: 16px;
         border-bottom-left-radius: 4px;
         align-self: flex-start;
         width: fit-content;
       }
       .typing-indicator.visible { display: flex; }
-      .typing-dot { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: typing 1.4s infinite ease-in-out both; }
+      .typing-dot { width: 6px; height: 6px; background: var(--placeholder-text); border-radius: 50%; animation: typing 1.4s infinite ease-in-out both; }
       .typing-dot:nth-child(1) { animation-delay: -0.32s; }
       .typing-dot:nth-child(2) { animation-delay: -0.16s; }
       @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
 
       .feedback-actions {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         margin-top: 8px;
-        border-top: 1px solid var(--border);
-        padding-top: 8px;
+        border-top: 1px solid var(--border-color);
+        padding-top: 6px;
       }
       .fb-btn {
         background: none;
@@ -431,24 +459,19 @@
         cursor: pointer;
         opacity: 0.7;
         font-size: 14px;
-        padding: 4px;
-        transition: opacity 0.2s, transform 0.2s;
+        padding: 4px 6px;
+        border-radius: 4px;
+        transition: opacity 0.2s, transform 0.2s, background-color 0.2s;
       }
-      .fb-btn:hover:not(:disabled) {
+      .fb-btn:hover:not(:disabled), .fb-btn:focus-visible:not(:disabled) {
         opacity: 1;
-        transform: scale(1.1);
+        transform: scale(1.15);
+        background-color: rgba(255, 255, 255, 0.05);
+        outline: none;
       }
-      .fb-btn.submitted {
-        opacity: 1;
-        cursor: default;
-      }
-      .fb-btn:disabled {
-        cursor: default;
-        opacity: 0.4;
-      }
-      .fb-btn.submitted:disabled {
-        opacity: 1;
-      }
+      .fb-btn.submitted { opacity: 1; cursor: default; }
+      .fb-btn:disabled { cursor: default; opacity: 0.4; }
+      .fb-btn.submitted:disabled { opacity: 1; }
       .fb-submitted-check {
         font-size: 10px;
         color: var(--primary);
@@ -544,10 +567,10 @@
         <div class="chat-panel ${isOpen ? 'open' : ''}">
           <div class="header">
             <div class="header-info">
-              <div class="avatar">${config.botName.charAt(0)}</div>
+              <div class="avatar">${(config.botName || "A").charAt(0)}</div>
               <div>
-                <div class="title">${config.botName}</div>
-                <div class="subtitle">Online</div>
+                <div class="title">${config.botName || "AI Assistant"}</div>
+                <div class="subtitle"><span class="status-dot"></span>${config.onlineStatus || "Online"}</div>
               </div>
             </div>
             <button class="close-btn" aria-label="Close chat">
@@ -569,8 +592,8 @@
               </div>
             ` : `
               <form id="chat-form" class="input-wrapper">
-                <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
-                <button type="submit" class="send-btn">
+                <input type="text" id="chat-input" placeholder="${config.inputPlaceholder || "Ask a question..."}" autocomplete="off" aria-label="${config.inputPlaceholder || "Type a message"}">
+                <button type="submit" class="send-btn" aria-label="Send message">
                    <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
                 </button>
               </form>
@@ -583,11 +606,13 @@
         ` : `
           <!-- Custom Container Mode is just the panel always open -->
           <div class="chat-panel open" style="position:relative; bottom:0; right:0; width:100%; height:100%; transform:none;">
-            <!-- Same interior... -->
             <div class="header">
               <div class="header-info">
-                <div class="avatar">${config.botName.charAt(0)}</div>
-                <div><div class="title">${config.botName}</div></div>
+                <div class="avatar">${(config.botName || "A").charAt(0)}</div>
+                <div>
+                  <div class="title">${config.botName || "AI Assistant"}</div>
+                  <div class="subtitle"><span class="status-dot"></span>${config.onlineStatus || "Online"}</div>
+                </div>
               </div>
             </div>
             <div class="messages" id="messages-container"></div>
@@ -605,8 +630,8 @@
                  </div>
                ` : `
                  <form id="chat-form" class="input-wrapper">
-                   <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off">
-                   <button type="submit" class="send-btn">
+                   <input type="text" id="chat-input" placeholder="${config.inputPlaceholder || "Ask a question..."}" autocomplete="off" aria-label="${config.inputPlaceholder || "Type a message"}">
+                   <button type="submit" class="send-btn" aria-label="Send message">
                       <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
                    </button>
                  </form>
@@ -1002,10 +1027,10 @@
             fbDiv.className = 'feedback-actions';
             fbDiv.style.flexDirection = 'column';
             fbDiv.innerHTML = `
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <button class="fb-btn like-btn" title="Helpful" aria-label="Like response">👍 Like</button>
-                <button class="fb-btn dislike-btn" title="Not helpful" aria-label="Dislike response">👎 Dislike</button>
-                <button class="fb-btn suggestion-btn" title="Send suggestion" aria-label="Send suggestion">💡 Suggestion</button>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button class="fb-btn like-btn" title="Like" aria-label="Like">👍</button>
+                <button class="fb-btn dislike-btn" title="Dislike" aria-label="Dislike">👎</button>
+                <button class="fb-btn suggestion-btn" title="Suggestion" aria-label="Suggestion">💡</button>
               </div>
               <div class="feedback-input-area" style="display: none; margin-top: 8px;">
                 <input type="text" class="feedback-input" placeholder="Type your suggestion..." style="width: 100%; font-size: 12px; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-dark); color: var(--text-main); margin-bottom: 4px; outline: none;">
