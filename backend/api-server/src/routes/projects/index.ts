@@ -2,7 +2,7 @@
  * @file index.ts (projects route)
  * @description Defines routes for project creation, management, settings configuration, analytics reporting, and handling custom system prompts for each project.
  */
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { and, eq, desc, inArray, isNotNull, sql } from "drizzle-orm";
 import crypto, { randomUUID } from "crypto";
 import fs from "fs";

@@ -212,6 +212,8 @@ export class BusinessAgent extends BaseAgent {
       
       // Verification
       const verRes = await this.verificationAgent.execute({
+        projectId: context.projectId || "00000000-0000-4000-8000-000000000000",
+        sessionId: context.sessionId || "00000000-0000-4000-8000-000000000000",
         payload: { result: { action: { type: "navigate", route: targetRoute } } }
       });
 
@@ -325,6 +327,7 @@ export class BusinessAgent extends BaseAgent {
     // Security & Verification Gate
     const secRes = await this.securityAgent.execute({
       projectId: targetProjectId,
+      sessionId: context.sessionId || "00000000-0000-4000-8000-000000000000",
       userId,
       payload: { proposedAction: { type: "navigate", route: targetRoute, targetFeature: matchedFeature.label } }
     });
@@ -341,6 +344,8 @@ export class BusinessAgent extends BaseAgent {
     }
 
     const verRes = await this.verificationAgent.execute({
+      projectId: targetProjectId,
+      sessionId: context.sessionId || "00000000-0000-4000-8000-000000000000",
       payload: { result: { action: { type: "navigate", route: targetRoute } } }
     });
 

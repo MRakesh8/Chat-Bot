@@ -162,6 +162,8 @@ async function runNavigationMatrixTests() {
   // --------------------------------------------------------------------------------
   console.log("\n[TEST 5] Security & Route Verification Gate...");
   const verCheck = await verificationAgent.execute({
+    projectId: mockCrmProjectId,
+    sessionId: "test-session",
     payload: {
       result: {
         action: {
