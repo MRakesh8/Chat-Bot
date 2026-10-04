@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Copy, CheckCircle2, XCircle, Code, Server, Shield, Activity } from "lucide-react";
+import { Loader2, Copy, CheckCircle2, XCircle, Code, Server, Shield, Activity, Laptop } from "lucide-react";
+import { LocalDevConnection } from "./local-dev-connection";
 
 export function Deployment({ projectId }: { projectId: string }) {
   const { session } = useAuth();
   const { toast } = useToast();
+
 
   const authFetch = async (url: string, options: RequestInit = {}) => {
     const token = session?.access_token;
@@ -125,6 +127,9 @@ export function Deployment({ projectId }: { projectId: string }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Website Connection: Local Development Testing vs Production */}
+      <LocalDevConnection projectId={projectId} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Installation Wizard */}

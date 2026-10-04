@@ -45,10 +45,15 @@ export class WebsiteDiscoveryService {
     /^[fF][eE][89aAbB]/
   ];
 
-  public static async validateUrlSafe(inputUrl: string): Promise<URL> {
+  public static async validateUrlSafe(inputUrl: string, isLocalDevProxy = false): Promise<URL> {
     const parsed = new URL(inputUrl);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error("Invalid protocol. Only HTTP and HTTPS are allowed.");
+    }
+
+    // If this is an internal local development proxy URL, allow it
+    if (isLocalDevProxy || parsed.pathname.includes("/api/local-dev/tunnel-proxy/")) {
+      return parsed;
     }
 
     if (parsed.hostname === "localhost") {
@@ -72,8 +77,12 @@ export class WebsiteDiscoveryService {
     return parsed;
   }
 
-  public static async fetchWithRedirectProtection(urlStr: string, redirectsLeft = MAX_REDIRECTS): Promise<{ html: string, finalUrl: URL }> {
-    let currentUrl = await this.validateUrlSafe(urlStr);
+  public static async fetchWithRedirectProtection(
+    urlStr: string, 
+    redirectsLeft = MAX_REDIRECTS,
+    isLocalDev = false
+  ): Promise<{ html: string, finalUrl: URL }> {
+    let currentUrl = await this.validateUrlSafe(urlStr, isLocalDev);
 
     while (redirectsLeft >= 0) {
       const controller = new AbortController();
@@ -97,7 +106,7 @@ export class WebsiteDiscoveryService {
           
           const nextUrl = new URL(location, currentUrl);
           // Recursively validate the redirect destination
-          currentUrl = await this.validateUrlSafe(nextUrl.toString()); 
+          currentUrl = await this.validateUrlSafe(nextUrl.toString(), isLocalDev); 
           redirectsLeft--;
           continue;
         }
@@ -442,10 +451,16 @@ export class WebsiteDiscoveryService {
     }
   }
 
-  public static async runDiscovery(projectId: string, rawUrl: string, orgId: string): Promise<void> {
+  public static async runDiscovery(
+    projectId: string, 
+    rawUrl: string, 
+    orgId: string, 
+    options?: { isLocalDev?: boolean; sessionId?: string }
+  ): Promise<void> {
+    const isLocalDev = Boolean(options?.isLocalDev || rawUrl.includes("/api/local-dev/tunnel-proxy/"));
     const jobStartTime = Date.now();
     try {
-      logger.info({ projectId, rawUrl }, "[DISCOVERY] Starting bounded multi-page discovery process (Website Intelligence 2.0)");
+      logger.info({ projectId, rawUrl, isLocalDev }, "[DISCOVERY] Starting bounded multi-page discovery process (Website Intelligence 2.0)");
       
       await db.update(projects).set({ discoveryStatus: "ANALYZING" } as any).where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
 
@@ -488,7 +503,11 @@ export class WebsiteDiscoveryService {
           visitedUrls.add(item.url);
 
           try {
-            const { html, finalUrl } = await this.fetchWithRedirectProtection(item.url);
+            const { html, finalUrl } = await this.fetchWithRedirectProtection(item.url, MAX_REDIRECTS, isLocalDev);
+            if (!homepageHtml) {
+              homepageHtml = html;
+              homepageUrl = finalUrl;
+            }
             
             const pageAnalysis = this.analyzeHtml(html, finalUrl.toString());
             const classification = this.classifyPageUrl(finalUrl.toString(), pageAnalysis.intelligence?.title || "");
@@ -607,15 +626,29 @@ export class WebsiteDiscoveryService {
       }
 
       // Save complete snapshot into project database
-      await db.update(projects)
-        .set({
-           platform: platform as any,
-           businessType: businessType as any,
-           intelligence: intelligenceSnapshot,
-           discoveryStatus: "READY",
-           websiteUrl: (homepageUrl as any).toString(),
-        } as any)
-        .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
+      if (isLocalDev) {
+        // LOCAL DEVELOPMENT PRE-PRODUCTION: Preserve projects.websiteUrl untouched!
+        await db.update(projects)
+          .set({
+             platform: platform as any,
+             businessType: businessType as any,
+             intelligence: intelligenceSnapshot,
+             discoveryStatus: "READY",
+             // websiteUrl is intentionally omitted to maintain strict production isolation
+          } as any)
+          .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
+      } else {
+        // PRODUCTION: Update websiteUrl
+        await db.update(projects)
+          .set({
+             platform: platform as any,
+             businessType: businessType as any,
+             intelligence: intelligenceSnapshot,
+             discoveryStatus: "READY",
+             websiteUrl: (homepageUrl as any).toString(),
+          } as any)
+          .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)));
+      }
       
       logger.info({ projectId, pagesCrawled: visitedUrls.size, sourcesIndexed: sourceIdsToProcess.length }, "[DISCOVERY] Website Intelligence 2.0 process completed successfully");
 

@@ -1,9 +1,9 @@
 import { submitMessageFeedback, submitProjectFeedback } from '../services/feedback';
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
-import { db, crypto } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads, chatSessions, customers, workflowExecutions, executionSteps } from "@workspace/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { db, crypto, withBypassRLS } from "@workspace/db";
+import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads, chatSessions, customers, workflowExecutions, executionSteps, projectLocalSessions } from "@workspace/db/schema";
+import { eq, and, isNull, or, desc } from "drizzle-orm";
 import { UniversalProviderAdapter } from "../services/llm-provider";
 import { minuteCache, llmResponseCache } from "../services/cache-provider";
 import nodeCrypto from "crypto";
@@ -27,6 +27,7 @@ import {
   getRequestId,
   checkAndIncrementUsage,
   verifyActionConfirmationToken,
+  isLocalhostOrigin,
 } from "../security";
 import { processAndSaveLead } from "../services/lead-detection";
 import { trackUserQuestion } from "../services/question-normalization";
@@ -70,13 +71,15 @@ async function executeLlmWithFailover(
 
   if (method === 'generateContent') {
     const res = await UniversalRouterService.executeChat(req, chatMessages, options.config?.temperature);
-    return { result: { text: () => res.content, text_value: res.content }, keyUsed: {} };
+    const content = res.content || '';
+    return { result: { text: content, getText: () => content }, keyUsed: {} };
   } else {
     const stream = await UniversalRouterService.executeStream(req, chatMessages, options.config?.temperature);
     return { 
       result: (async function*() {
         for await (const chunk of stream) {
-          yield { text: () => chunk.text, text_value: chunk.text };
+          const text = chunk.text || '';
+          yield { text, getText: () => text };
         }
       })(), 
       keyUsed: {} 
@@ -91,7 +94,7 @@ const router = Router();
 router.use(async (req: Request, res: Response, next): Promise<any> => {
   // Extract token from URL path robustly, ignoring any empty segments caused by double slashes
   const pathSegments = req.path.split('/').filter(Boolean);
-  const pathToken = pathSegments[0]; 
+  const pathToken = pathSegments[0] === "public" ? pathSegments[1] : pathSegments[0]; 
   const widgetToken = req.params?.widgetToken || req.body?.widgetToken || req.query?.widgetToken || pathToken;
   
   if (!widgetToken) {
@@ -99,8 +102,9 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
   }
 
   try {
-    const settings = await db.query.projectWidgetSettings.findFirst({
-      where: eq(projectWidgetSettings.widgetToken, widgetToken as string)
+    const settings = await withBypassRLS(async (tx: any) => {
+      const [s] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.widgetToken, widgetToken as string)).limit(1);
+      return s;
     });
 
     if (!settings || !settings.isEnabled) {
@@ -108,7 +112,44 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
     }
 
     // 1. Domain Authorization Check
-    const originCheck = validateWidgetOrigin(req, settings.allowedDomains || []);
+    let originCheck = validateWidgetOrigin(req, settings.allowedDomains || []);
+    if (!originCheck.valid) {
+      // If blocked by strict production allowedDomains, check if active local dev session exists for localhost testing
+      const rawOrigin = (req.headers.origin || req.headers.referer || "") as string;
+      if (isLocalhostOrigin(rawOrigin)) {
+        try {
+          const activeLocalSession = await withBypassRLS(async (tx: any) => {
+            const [session] = await tx
+              .select()
+              .from(projectLocalSessions)
+              .where(
+                and(
+                  eq(projectLocalSessions.projectId, settings.projectId),
+                  or(
+                    eq(projectLocalSessions.status, "CONNECTED"),
+                    eq(projectLocalSessions.status, "READY"),
+                    eq(projectLocalSessions.status, "TESTING")
+                  ),
+                  isNull(projectLocalSessions.revokedAt)
+                )
+              )
+              .orderBy(desc(projectLocalSessions.createdAt))
+              .limit(1);
+            return session;
+          });
+
+          if (activeLocalSession) {
+            const isNotExpired = !activeLocalSession.expiresAt || new Date(activeLocalSession.expiresAt).getTime() > Date.now();
+            if (isNotExpired) {
+              originCheck = { valid: true, domain: "localhost" };
+            }
+          }
+        } catch (sessionCheckErr) {
+          req.log.warn({ err: sessionCheckErr }, "Could not check project_local_sessions for widget origin");
+        }
+      }
+    }
+
     if (!originCheck.valid) {
       req.log.warn({ domain: originCheck.domain, reason: originCheck.reason }, "Domain not authorized for widget token");
       return sendSafeError(
@@ -120,6 +161,7 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
         { domain: originCheck.domain }
       );
     }
+
 
     // 2. Server-side Entitlement Check (with lazy trial activation)
     const entitlement = await checkProjectEntitlement(settings.projectId);
@@ -151,7 +193,7 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
   }
 });
 
-router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<any> => {
+router.get(["/:widgetToken/config", "/public/:widgetToken/config"], async (req: Request, res: Response): Promise<any> => {
   try {
     // Prevent caching of the configuration so CSS/theme updates reflect instantly in production
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -203,7 +245,7 @@ router.get("/:widgetToken/config", async (req: Request, res: Response): Promise<
   }
 });
 
-router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<any> => {
+router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Request, res: Response): Promise<any> => {
   const { messages, websiteContext, sessionId } = req.body;
   if (!messages || !Array.isArray(messages)) {
     req.log.error("EARLY RETURN: Invalid messages format", req.body);
@@ -575,7 +617,9 @@ router.post("/:widgetToken/chat", async (req: Request, res: Response): Promise<a
         });
         
         try {
-          const parsed = JSON.parse(intentRes.text || "{}");
+          const raw = (intentRes.text || "").trim();
+          const cleanText = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+          const parsed = JSON.parse(cleanText || "{}");
           if (parsed.intent) {
             intentType = parsed.intent;
             await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL

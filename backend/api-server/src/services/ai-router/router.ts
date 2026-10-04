@@ -6,26 +6,36 @@ import { getRedisClient } from "../../lib/redis";
 
 export class UniversalRouterService {
   /**
-   * Resolves the authoritative credential based on Routing Hierarchy: Project -> User -> System.
+   * Resolves the authoritative credential based on Routing Hierarchy: Project -> User -> System -> Env Fallback.
    * Enforces enabled state, quotas, and health constraints.
    */
   static async resolveCredential(req: RoutingRequirement): Promise<ResolvedModel> {
     const { projectId, userId, preferredProvider, preferredModel } = req;
     
+    const isValidKey = (key: string | null | undefined): boolean => {
+      if (!key || typeof key !== "string" || !key.trim()) return false;
+      if (key.split(":").length === 3 && /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/i.test(key)) {
+        return false;
+      }
+      return true;
+    };
+
     // Attempt 1: Project API Key
     if (projectId) {
       const pKeys = await db.select().from(projectApiKeys).where(
         and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
       );
       if (pKeys.length > 0) {
-        // Find best match (simplified matching)
-        const match = preferredProvider ? pKeys.find(k => k.provider === preferredProvider) : pKeys.find(k => k.isPrimary) || pKeys[0];
-        if (match) {
-          return {
-            provider: match.provider,
-            modelId: preferredModel || match.model || "default",
-            credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "project" }
-          };
+        const sorted = preferredProvider ? pKeys.filter(k => k.provider === preferredProvider) : [...pKeys].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+        for (const match of sorted) {
+          const decrypted = crypto.decrypt(match.encryptedKey);
+          if (isValidKey(decrypted)) {
+            return {
+              provider: match.provider,
+              modelId: preferredModel || match.model || "default",
+              credential: { id: match.id, apiKey: decrypted, type: "project" }
+            };
+          }
         }
       }
     }
@@ -36,19 +46,21 @@ export class UniversalRouterService {
         and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
       );
       if (uKeys.length > 0) {
-        const match = preferredProvider ? uKeys.find(k => k.provider === preferredProvider) : uKeys.find(k => k.isPrimary) || uKeys[0];
-        if (match) {
-          return {
-            provider: match.provider,
-            modelId: preferredModel || "default",
-            credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "user" }
-          };
+        const sorted = preferredProvider ? uKeys.filter(k => k.provider === preferredProvider) : [...uKeys].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+        for (const match of sorted) {
+          const decrypted = crypto.decrypt(match.encryptedKey);
+          if (isValidKey(decrypted)) {
+            return {
+              provider: match.provider,
+              modelId: preferredModel || "default",
+              credential: { id: match.id, apiKey: decrypted, type: "user" }
+            };
+          }
         }
       }
     }
 
-    // Attempt 3: Global System Config Fallback
-    // Attempt 3: Global System Config Fallback
+    // Attempt 3: Global System Config Fallback from DB
     const { isNull } = await import("drizzle-orm");
     const systemKeys = await db.select().from(userApiKeys).where(
       and(
@@ -57,14 +69,36 @@ export class UniversalRouterService {
       )
     );
     if (systemKeys.length > 0) {
-      const match = preferredProvider ? systemKeys.find(k => k.provider === preferredProvider) : systemKeys.find(k => k.isPrimary) || systemKeys[0];
-      if (match) {
-        return {
-          provider: match.provider,
-          modelId: preferredModel || "default",
-          credential: { id: match.id, apiKey: crypto.decrypt(match.encryptedKey) || match.encryptedKey, type: "system" }
-        };
+      const sorted = preferredProvider ? systemKeys.filter(k => k.provider === preferredProvider) : [...systemKeys].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+      for (const match of sorted) {
+        const decrypted = crypto.decrypt(match.encryptedKey);
+        if (isValidKey(decrypted)) {
+          return {
+            provider: match.provider,
+            modelId: preferredModel || "default",
+            credential: { id: match.id, apiKey: decrypted, type: "system" }
+          };
+        }
       }
+    }
+
+    // Attempt 4: Environment Variable Fallback
+    const envGeminiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    if (envGeminiKey && (!preferredProvider || preferredProvider === "gemini")) {
+      return {
+        provider: "gemini",
+        modelId: preferredModel || "default",
+        credential: { id: "env_gemini_key", apiKey: envGeminiKey, type: "system" }
+      };
+    }
+
+    const envOpenaiKey = process.env.OPENAI_API_KEY || process.env.openapi || process.env.OPENAPI;
+    if (envOpenaiKey && preferredProvider === "openai") {
+      return {
+        provider: "openai",
+        modelId: preferredModel || "default",
+        credential: { id: "env_openai_key", apiKey: envOpenaiKey, type: "system" }
+      };
     }
 
     throw new Error("No valid AI provider credential found for this request.");
@@ -158,7 +192,7 @@ export class UniversalRouterService {
     
     let attempt = 0;
     let wasRepaired = resolved.modelId !== originalModelId;
-    while (attempt < 2) {
+    while (attempt < 3) {
       attempt++;
       const startTime = Date.now();
       try {
@@ -194,7 +228,7 @@ export class UniversalRouterService {
           error: e.message
         }).catch((e2: any) => console.error(e2));
 
-        if (status === "MODEL_NOT_FOUND" && attempt === 1) {
+        if ((status === "MODEL_NOT_FOUND" || status === "RATE_LIMITED") && attempt < 3) {
            if (resolved.modelId) excludeModels.add(resolved.modelId);
            const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
            const redis = getRedisClient();
@@ -222,7 +256,7 @@ export class UniversalRouterService {
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
-    while (attempt < 2) {
+    while (attempt < 3) {
       attempt++;
       const startTime = Date.now();
       try {
@@ -256,7 +290,7 @@ export class UniversalRouterService {
           error: e.message
         }).catch((e2: any) => console.error(e2));
 
-        if (status === "MODEL_NOT_FOUND" && attempt === 1) {
+        if ((status === "MODEL_NOT_FOUND" || status === "RATE_LIMITED") && attempt < 3) {
            if (resolved.modelId) excludeModels.add(resolved.modelId);
            const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
            const redis = getRedisClient();

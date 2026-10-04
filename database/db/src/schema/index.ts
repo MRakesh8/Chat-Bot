@@ -1101,3 +1101,31 @@ export const notificationSettings = pgTable("notification_settings", {
   enabled: boolean("enabled").default(true).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
+
+// --- Phase 2 Localhost & Pre-Production Testing Schema ---
+export const projectLocalSessions = pgTable("project_local_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  localUrl: varchar("local_url", { length: 2048 }).notNull(),
+  developmentUrl: varchar("development_url", { length: 2048 }),
+  connectorToken: varchar("connector_token", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("READY").notNull(), // NOT_STARTED, READY, CONNECTED, TESTING, EXPIRED, REVOKED, STOPPED, ERROR
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("project_local_sessions_project_id_idx").on(table.projectId),
+  orgIdIdx: index("project_local_sessions_org_id_idx").on(table.organizationId),
+  userIdIdx: index("project_local_sessions_user_id_idx").on(table.userId),
+  connectorTokenIdx: index("project_local_sessions_conn_token_idx").on(table.connectorToken),
+}));
+
+export const projectLocalSessionsRelations = relations(projectLocalSessions, ({ one }) => ({
+  project: one(projects, { fields: [projectLocalSessions.projectId], references: [projects.id] }),
+  organization: one(organizations, { fields: [projectLocalSessions.organizationId], references: [organizations.id] }),
+  user: one(users, { fields: [projectLocalSessions.userId], references: [users.id] }),
+}));
+

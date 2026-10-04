@@ -9,7 +9,7 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 import { startQueueWorker } from "./lib/queue";
 
-const rawPort = process.env["PORT"];
+const rawPort = process.env["PORT"] || process.env["BACKEND_PORT"] || "5000";
 
 
 const port = Number(rawPort);

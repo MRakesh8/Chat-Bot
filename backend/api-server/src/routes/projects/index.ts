@@ -1210,7 +1210,13 @@ router.use('/:projectId/dashboard', dashboardRouter);
 
 import feedbackRouter from './feedback';
 import notificationsRouter from './notifications';
+import localDevRouter from './local-dev';
+import goLiveRouter from './go-live';
+
 router.use('/:projectId/feedback', feedbackRouter);
 router.use('/:projectId/notifications', notificationsRouter);
+router.use('/:projectId/local-dev', localDevRouter);
+router.use('/:projectId/go-live', goLiveRouter);
 
 export default router;
+

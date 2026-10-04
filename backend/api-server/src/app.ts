@@ -5,6 +5,7 @@ import compression from "compression";
 import router from "./routes";
 import healthRouter from "./routes/health";
 import widgetPublicRouter from "./routes/widget-public";
+import localDevPublicRouter from "./routes/local-dev-public";
 import { logger } from "./lib/logger";
 import { supabaseAuthMiddleware } from "./middlewares/supabaseAuth";
 import helmet from "helmet";
@@ -207,6 +208,7 @@ app.use("/api", (req, res, next) => {
 app.use("/api/widget", widgetPublicRouter);
 
 app.use("/api", healthRouter);
+app.use("/api/local-dev", localDevPublicRouter);
 
 app.use(supabaseAuthMiddleware);
 

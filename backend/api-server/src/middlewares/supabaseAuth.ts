@@ -88,6 +88,63 @@ export const supabaseAuthMiddleware = async (
 
   const token = authHeader.split(" ")[1];
 
+  if (
+    (process.env.LOCAL_DEMO_MODE === "true" || process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") &&
+    (token === "local-demo-token" || token === "test-token")
+  ) {
+    try {
+      await withBypassRLS(async (tx: any) => {
+        await tx
+          .insert(users)
+          .values({ id: LOCAL_DEMO_USER_ID, email: "local-demo@example.com" })
+          .onConflictDoNothing();
+      });
+
+      let memberships = await withBypassRLS(async (tx: any) => {
+        return await tx.select()
+          .from(organizationMembers)
+          .where(eq(organizationMembers.userId, LOCAL_DEMO_USER_ID));
+      });
+
+      if (memberships.length === 0) {
+        const [newOrg] = await withBypassRLS(async (tx: any) => {
+          return await tx.insert(organizations).values({
+            name: "Demo Workspace",
+            planId: "00000000-0000-0000-0000-000000000001",
+            subscriptionStatus: "active"
+          }).returning();
+        });
+
+        await withBypassRLS(async (tx: any) => {
+          await tx.insert(organizationMembers).values({
+            organizationId: newOrg.id,
+            userId: LOCAL_DEMO_USER_ID,
+            role: "owner"
+          });
+        });
+
+        memberships.push({
+          organizationId: newOrg.id,
+          userId: LOCAL_DEMO_USER_ID,
+          role: "owner"
+        } as any);
+      }
+
+      (req as any).auth = { 
+        userId: LOCAL_DEMO_USER_ID,
+        memberships: memberships.map((m: any) => ({
+          organizationId: m.organizationId,
+          role: m.role
+        }))
+      };
+      return next();
+    } catch (err) {
+      logger.error(err, "Failed to initialize demo user");
+      res.status(500).json({ error: "Failed to initialize demo user session" });
+      return;
+    }
+  }
+
   const { data, error } = await supabase.auth.getUser(token);
 
   if (error || !data.user) {

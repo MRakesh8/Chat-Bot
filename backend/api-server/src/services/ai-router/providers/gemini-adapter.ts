@@ -26,11 +26,13 @@ export class GeminiAdapter extends BaseProviderAdapter {
     }
     const data = await response.json() as any;
     
-    return data.models
+    const filtered = data.models
       .filter((m: any) => {
         const supportsChat = m.supportedGenerationMethods?.includes("generateContent");
         const name = (m.name || "").toLowerCase();
-        return supportsChat && !name.includes("tts") && !name.includes("audio");
+        // Exclude TTS, audio-only, specialized robotics/lyria/research models
+        const isSpecialized = name.includes("tts") || name.includes("audio") || name.includes("lyria") || name.includes("robotics") || name.includes("deep-research") || name.includes("gemma");
+        return supportsChat && !isSpecialized;
       })
       .map((m: any) => {
         const modelId = m.name.replace("models/", "");
@@ -52,6 +54,18 @@ export class GeminiAdapter extends BaseProviderAdapter {
           maxOutput: m.outputTokenLimit || 8192
         } as NormalizedModel;
       });
+
+    // Sort models by reliability and speed preference: flash-lite > flash > pro
+    const getPriority = (id: string) => {
+      if (id === "gemini-2.5-flash-lite" || id === "gemini-flash-lite-latest") return 100;
+      if (id === "gemini-2.5-flash" || id === "gemini-flash-latest") return 90;
+      if (id === "gemini-2.5-pro" || id === "gemini-pro-latest") return 80;
+      if (id.includes("flash-lite")) return 70;
+      if (id.includes("flash")) return 60;
+      return 10;
+    };
+
+    return filtered.sort((a: NormalizedModel, b: NormalizedModel) => getPriority(b.modelId) - getPriority(a.modelId));
   }
 
   async generateChat(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
@@ -131,7 +145,7 @@ export class GeminiAdapter extends BaseProviderAdapter {
     if (status === 401 || status === 403 || (status === 400 && (msg.includes("api key") || msg.includes("apikey") || msg.includes("invalid key")))) {
       return "INVALID_CREDENTIAL";
     }
-    if (status === 429 || msg.includes("quota") || msg.includes("rate limit")) {
+    if (status === 429 || msg.includes("quota") || msg.includes("rate limit") || msg.includes("rate_limited")) {
       return "RATE_LIMITED";
     }
     if (status === 404 || msg.includes("not found") || msg.includes("is not found") || msg.includes("unsupported for generatecontent")) {

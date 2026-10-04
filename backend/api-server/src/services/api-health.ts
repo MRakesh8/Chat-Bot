@@ -113,16 +113,19 @@ export async function updateKeyStats(params: UpdateKeyStatsParams) {
   }
 
   try {
-    if (key.type === 'project') {
-      await db.update(projectApiKeys).set(updateData).where(eq(projectApiKeys.id, key.id!));
-    } else {
-      await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, key.id!));
+    const isUuid = key.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key.id);
+    if (isUuid) {
+      if (key.type === 'project') {
+        await db.update(projectApiKeys).set(updateData).where(eq(projectApiKeys.id, key.id!));
+      } else {
+        await db.update(userApiKeys).set(updateData).where(eq(userApiKeys.id, key.id!));
+      }
     }
 
     const { enqueueApiLog } = await import("../lib/queue");
     // Insert Log asynchronously
     await enqueueApiLog({
-      keyId: key.id,
+      keyId: isUuid ? key.id : null,
       userId: key.type === 'user' ? key.rawDbKey?.userId : null,
       projectId: key.type === 'project' ? key.rawDbKey?.projectId : null,
       provider: key.provider,

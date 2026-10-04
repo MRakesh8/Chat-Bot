@@ -11,7 +11,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import dotenv from "dotenv";
 import path from "path";
-import * as schema from "./schema";
+import * as schema from "./schema/index";
 
 dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -62,6 +62,7 @@ export async function withTenantContext<T>(
   }
   const cleanOrgId = orgId.trim();
   return await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.bypass_rls', 'false', true)`);
     await tx.execute(sql`SELECT set_config('app.current_organization_id', ${cleanOrgId}, true)`);
     return await cb(tx);
   });
@@ -76,5 +77,5 @@ export async function withBypassRLS<T>(
   });
 }
 
-export * from "./schema";
+export * from "./schema/index";
 export * as crypto from "./crypto";
