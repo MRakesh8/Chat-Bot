@@ -21,7 +21,7 @@ export class UniversalRouterService {
     };
 
     // Attempt 1: Project API Key
-    if (projectId) {
+    if (projectId && projectId !== "demo" && projectId !== "00000000-0000-4000-8000-000000000000") {
       const pKeys = await db.select().from(projectApiKeys).where(
         and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
       );
