@@ -14,7 +14,9 @@ import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { searchProjectKnowledge } from "../../services/knowledge";
 import { llmResponseCache } from "../../services/cache-provider";
 import { checkProjectEntitlement, logAdminBypassIfNecessary } from "../../security";
-import { isDemoProjectId, isDemoShareToken, getDemoProjectMeta, getDemoKnowledgeSources, getDemoKnowledgeChunks, getDemoDashboardData } from "../../services/demo-project";
+import { isDemoProjectId, isDemoShareToken, getDemoProjectMeta, getDemoKnowledgeSources, getDemoKnowledgeChunks, getDemoDashboardData, getDemoWidgetSettings } from "../../services/demo-project";
+import { authorizeMembership } from "../../middlewares/authorizeMembership";
+import { UniversalRouterService } from "../../services/ai-router";
 import { z } from "zod";
 
 const createProjectSchema = z.object({
@@ -434,6 +436,65 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
   } catch (err: any) {
     req.log.error({ err: err.message || err }, "Error adding knowledge from chat");
     res.status(500).json({ success: false, error: "Internal server error", errorId: req.id });
+  }
+});
+
+// POST /projects/:id/guide/ask — Ask NOVA guide explanation
+router.post("/:id/guide/ask", authorizeMembership("viewer"), async (req: any, res: Response) => {
+  const { id: projectId } = req.params;
+  const { question, stage } = req.body;
+
+  if (!question || typeof question !== "string") {
+    res.status(400).json({ error: "Question is required" });
+    return;
+  }
+
+  try {
+    const isDemo = isDemoProjectId(projectId);
+    let projectMeta: any = null;
+
+    if (isDemo) {
+      projectMeta = getDemoProjectMeta();
+    } else {
+      const [p] = await db.select().from(projects).where(eq(projects.id, projectId));
+      projectMeta = p;
+    }
+
+    const stageContextInfo = stage ? `User is asking about the stage/topic: "${stage}".` : "";
+    const systemPrompt = `You are NOVA AI, an enterprise business AI explaining how this project architecture works.
+Project Name: ${projectMeta?.name || "NOVA Business AI"}
+Project Description: ${projectMeta?.description || "Business Chatbot Platform"}
+
+${stageContextInfo}
+
+Provide a helpful, clear, professional answer explaining how NOVA Business AI works for this project.
+Rules:
+- Explain clearly for business owners, developers, and non-technical users.
+- Focus on how NOVA connects website analysis, Knowledge Base RAG, Context Engine DOM, AI Router, Agent Control (9-step pipeline), and Readiness Check.
+- NEVER reveal internal API keys, database connection strings, access tokens, or raw secrets.
+- Format responses cleanly in markdown.`;
+
+    const chatReq = {
+      capabilities: { textGeneration: true },
+      projectId,
+      userId: req.auth?.userId,
+      operation: 'chat' as const
+    };
+
+    const chatMessages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question }
+    ];
+
+    const result = await UniversalRouterService.executeChat(chatReq, chatMessages);
+    res.json({ answer: result.content || "NOVA Business AI connects website discovery, Knowledge Base RAG chunks, and Context Engine DOM context to provide grounded AI answers." });
+    return;
+  } catch (err: any) {
+    req.log.error(err, "Ask NOVA guide error");
+    res.json({
+      answer: `NOVA Business AI connects website analysis, Knowledge Base documents, and Context Engine DOM data to deliver grounded responses. Business write actions are processed through the 9-Step Agent Control pipeline.`
+    });
+    return;
   }
 });
 
