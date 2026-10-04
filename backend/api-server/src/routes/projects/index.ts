@@ -440,12 +440,18 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
 });
 
 // POST /projects/:id/guide/ask — Ask NOVA guide explanation
-router.post("/:id/guide/ask", authorizeMembership("viewer"), async (req: any, res: Response) => {
+router.post("/:id/guide/ask", async (req: any, res: Response) => {
   const { id: projectId } = req.params;
   const { question, stage } = req.body;
 
   if (!question || typeof question !== "string") {
     res.status(400).json({ error: "Question is required" });
+    return;
+  }
+
+  const isDemo = isDemoProjectId(projectId);
+  if (!isDemo && !req.auth?.userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
