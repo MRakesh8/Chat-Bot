@@ -496,7 +496,7 @@ Rules:
     res.json({ answer: result.content || "NOVA Business AI connects website discovery, Knowledge Base RAG chunks, and Context Engine DOM context to provide grounded AI answers." });
     return;
   } catch (err: any) {
-    req.log.error(err, "Ask NOVA guide error");
+    logger.error({ err }, "Ask NOVA guide error");
     res.json({
       answer: `NOVA Business AI connects website analysis, Knowledge Base documents, and Context Engine DOM data to deliver grounded responses. Business write actions are processed through the 9-Step Agent Control pipeline.`
     });
