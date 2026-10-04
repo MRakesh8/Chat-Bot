@@ -21,6 +21,7 @@ import { logger, logSystemError } from "../../lib/logger";
 import { detectPromptInjection } from "../../middlewares/prompt-firewall";
 import { llmResponseCache } from "../../services/cache-provider";
 import { checkProjectEntitlement } from "../../security/entitlement";
+import { classifyProviderError } from "../../security/errorResponse";
 import {
   CreateGeminiConversationBody,
   UpdateGeminiConversationBody,
@@ -1272,15 +1273,21 @@ ${liveContext}`;
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err: any) {
-    req.log.error({ err, currentStep }, `Error in streaming message at step: ${currentStep}`);
-    logSystemError("chatbot", err, { currentStep, conversationId: req.params.id, text: (req.body as any)?.content || "unknown" });
-    
-    const isQuotaError = err?.type === "quota_exceeded" || err?.code === "QUOTA_EXCEEDED" || err?.code === "NO_HEALTHY_KEYS" || err?.status === 429 || err?.message?.includes("429");
-    const status = err?.status || err?.response?.status;
-    const isBusy = isQuotaError || status === 503 || err?.message?.includes("503");
-
-    const errorMessage = isQuotaError ? err.message : (isBusy ? "AI service is temporarily busy. Please try again in a few moments." : (err?.message || "Internal server error"));
-
+    const classified = classifyProviderError(err);
+    req.log.error(
+      { 
+        errType: classified.type, 
+        status: classified.status, 
+        retryable: classified.retryable, 
+        currentStep 
+      }, 
+      `Error in streaming message at step: ${currentStep}: ${classified.sanitizedMessage}`
+    );
+    logSystemError("chatbot", classified.sanitizedMessage, { 
+      currentStep, 
+      conversationId: req.params.id, 
+      errorType: classified.type 
+    });
 
     if (!res.headersSent) {
       res.setHeader("Content-Type", "text/event-stream");
@@ -1289,15 +1296,14 @@ ${liveContext}`;
       res.status(200);
     }
     
-    if (isBusy || isQuotaError) {
-      // Stream graceful error message to the UI as assistant content if possible, or error chunk
-      res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
-    } else {
-      res.write(`data: ${JSON.stringify({ 
-        step: currentStep, 
-        error: errorMessage 
-      })}\n\n`);
-    }
+    // Stream sanitized error payload to UI
+    res.write(`data: ${JSON.stringify({ 
+      error: classified.userMessage,
+      errorType: classified.type,
+      retryable: classified.retryable,
+      retryDelaySeconds: classified.retryDelaySeconds,
+      step: currentStep
+    })}\n\n`);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   }

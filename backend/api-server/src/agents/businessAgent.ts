@@ -276,10 +276,27 @@ DIRECTIVES:
         };
       }
 
+      // Case: Unsupported or unconfigured capability
+      if (llmDecision.intent === "unsupported") {
+        const targetToolName = llmDecision.selectedTool;
+        const matchedCap = targetToolName ? capabilities.find((c) => c.capabilityId === targetToolName || c.name === targetToolName) : undefined;
+        return {
+          success: true,
+          data: {
+            intent: "unsupported",
+            response:
+              matchedCap
+                ? `The capability "${matchedCap.name}" is discovered but not yet authorized/connected. Please connect and authorize this integration in project settings.`
+                : (llmDecision.userExplanation || "The requested business action or integration is not currently supported or authorized on this project."),
+          },
+        };
+      }
+
       // Case A: Business Information or Customer Information Request -> Execute RAG
       if (
         llmDecision.intent === "business_information" || 
         llmDecision.intent === "information" || 
+        llmDecision.intent === "customer_information" ||
         (!llmDecision.selectedTool)
       ) {
         
