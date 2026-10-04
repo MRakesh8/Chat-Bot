@@ -18,7 +18,27 @@ import {
   ExternalLink,
   PowerOff,
   Power,
+  Sparkles,
+  ArrowRight,
+  ShieldCheck,
+  CheckCircle2,
+  Globe,
+  Database,
+  MessageSquare,
+  Shield,
+  Layers,
+  LayoutDashboard,
+  Settings as SettingsIcon,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,6 +92,7 @@ export default function ProjectsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isExploreOpen, setIsExploreOpen] = useState(false);
   
   const savedFilters = getProjectsFilterState();
   const [searchQuery, setSearchQuery] = useState(savedFilters.searchQuery);
@@ -95,13 +116,13 @@ export default function ProjectsPage() {
   };
   
   const authFetch = useAuthFetch();
-  const { dbUser } = useAuth();
+  const { dbUser, activeOrganizationId } = useAuth();
 
   const isUnrestricted = dbUser?.role === "super_admin";
   const canCreate = dbUser?.features?.canCreateProject !== false || isUnrestricted;
 
   const { data: projectList, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ["projects"],
+    queryKey: ["projects", activeOrganizationId, dbUser?.id],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/projects"));
       if (!res.ok) {
@@ -236,15 +257,25 @@ export default function ProjectsPage() {
               </div>
             </div>
           </div>
-          <Button
-            onClick={() => setLocation("/projects/new")}
-            disabled={!canCreate}
-            title={!canCreate ? "Contact support to enable project creation" : ""}
-            className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 gap-2 shrink-0 h-11 px-6 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-4 h-4" />
-            New Project
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setIsExploreOpen(true)}
+              className="border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 text-primary gap-2 shrink-0 h-11 px-5 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] font-medium shadow-sm"
+            >
+              <Sparkles className="w-4 h-4 text-primary" />
+              ✨ Explore NOVA
+            </Button>
+            <Button
+              onClick={() => setLocation("/projects/new")}
+              disabled={!canCreate}
+              title={!canCreate ? "Contact support to enable project creation" : ""}
+              className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary shadow-[0_0_20px_rgba(var(--primary),0.3)] text-primary-foreground border-0 gap-2 shrink-0 h-11 px-6 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-4 h-4" />
+              New Project
+            </Button>
+          </div>
         </div>
 
         {/* Toolbar: Search & Sort */}
@@ -506,6 +537,109 @@ export default function ProjectsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Explore NOVA Demo Project Dialog */}
+      <Dialog open={isExploreOpen} onOpenChange={setIsExploreOpen}>
+        <DialogContent className="max-w-2xl bg-card/95 backdrop-blur-xl border border-border text-foreground p-6 sm:p-8 rounded-3xl shadow-2xl">
+          <DialogHeader className="space-y-2">
+            <div className="flex items-center gap-2 text-primary font-semibold text-sm">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <span>Interactive Demo Experience</span>
+            </div>
+            <DialogTitle className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+              Explore NOVA Business AI
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-sm leading-relaxed">
+              See what a complete NOVA project looks like and test real features before connecting your own website.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 p-5 rounded-2xl bg-foreground/[0.02] border border-foreground/10 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-foreground/5 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-lg text-foreground">Apex Dynamics — Demo</span>
+                  <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs px-2.5 py-0.5">
+                    🧪 Demo Mode
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Industry: Enterprise Business & Technology Consulting
+                </p>
+              </div>
+              <span className="text-xs font-mono text-muted-foreground/80 bg-foreground/5 px-2.5 py-1 rounded-lg">
+                5 Knowledge Sources • 2 Integrations
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
+                <LayoutDashboard className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Project Dashboard & Metrics</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
+                <Globe className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Website Intelligence & Capabilities</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
+                <Database className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Curated Knowledge Base & RAG</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
+                <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Interactive AI Chatbot Testing</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
+                <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Agent Control & Confirmation Flow</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-background/50 border border-border/50">
+                <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Connected Services & Sandbox</span>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
+              <ShieldCheck className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+              <p>
+                <strong className="text-foreground font-medium">Safe Demo Environment:</strong> This demo operates using fictional business data. Real business actions and external API executions are safely disabled.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
+            <Button
+              variant="ghost"
+              onClick={() => setIsExploreOpen(false)}
+              className="w-full sm:w-auto text-muted-foreground hover:text-foreground order-3 sm:order-1 text-sm"
+            >
+              Close
+            </Button>
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto order-1 sm:order-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsExploreOpen(false);
+                  setLocation("/projects/new");
+                }}
+                className="w-full sm:w-auto border-foreground/20 hover:bg-foreground/5 text-xs sm:text-sm"
+              >
+                Connect My Website
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsExploreOpen(false);
+                  setLocation("/projects/00000000-0000-4000-8000-000000000000/edit");
+                }}
+                className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-primary-foreground font-medium shadow-md gap-2 text-xs sm:text-sm"
+              >
+                Open Demo Project
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

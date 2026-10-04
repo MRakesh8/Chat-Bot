@@ -24,6 +24,7 @@ import {
 } from "../security/agentSafety";
 import { VerificationAgent } from "../agents/verification";
 import { logger } from "../lib/logger";
+import { isDemoProjectId } from "./demo-project";
 
 export interface CustomerContext {
   customerId?: string;
@@ -90,6 +91,14 @@ export async function executeServerTool(
       success: false,
       status: "EXECUTION_FAILED",
       error: "Missing required projectId"
+    };
+  }
+
+  if (isDemoProjectId(projectId)) {
+    return {
+      success: false,
+      status: "FORBIDDEN",
+      error: "🧪 This is a demo project. Real business actions are disabled here."
     };
   }
 

@@ -19,12 +19,23 @@ import { checkAndIncrementUsage } from "../../security/quota";
 import { verifyActionConfirmationToken } from "../../security/agentSafety";
 import { executeServerTool } from "../../services/tool-execution";
 import { logger } from "../../lib/logger";
+import { isDemoProjectId } from "../../services/demo-project";
 
 const router = Router({ mergeParams: true });
 
 async function resolveAuthContext(req: any, projectId: string) {
   const userId: string | undefined = req.auth?.userId;
   if (!userId) return null;
+
+  if (isDemoProjectId(projectId)) {
+    return {
+      userId,
+      isSuperAdmin: false,
+      orgId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
+      membership: { role: "viewer" },
+      project: { id: projectId, organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9" }
+    };
+  }
 
   const isSuperAdmin = req.auth?.dbUser?.role === "super_admin";
 
@@ -49,6 +60,12 @@ const ExecuteToolBody = z.object({
 router.post("/:toolId/execute", async (req: any, res: any) => {
   try {
     const { projectId, toolId } = req.params;
+    if (isDemoProjectId(projectId)) {
+      return res.status(403).json({
+        error: "🧪 This is a demo project. Real business actions and tool executions are disabled in demo mode.",
+        status: "FORBIDDEN"
+      });
+    }
 
     const ctx = await resolveAuthContext(req, projectId);
     if (!ctx) return res.status(401).json({ error: "Unauthorized" });

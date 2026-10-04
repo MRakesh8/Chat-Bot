@@ -1,4 +1,4 @@
-﻿import { Router, Response } from "express";
+import { Router, Response } from "express";
 import { eq, desc, and } from "drizzle-orm";
 import { 
   projects,
@@ -6,11 +6,15 @@ import {
   notificationSettings
 } from "@workspace/db/schema";
 import { withTenantContext } from "@workspace/db";
+import { isDemoProjectId, getDemoNotifications } from "../../services/demo-project";
 
 const router = Router({ mergeParams: true });
 
 router.get("/", async (req: any, res: Response): Promise<any> => {
   const { projectId } = req.params;
+  if (isDemoProjectId(projectId)) {
+    return res.json(getDemoNotifications());
+  }
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
   
   if (!orgId || Array.isArray(orgId)) return res.status(400).json({ error: "Invalid organization ID" });

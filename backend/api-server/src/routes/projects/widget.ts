@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { authorizeMembership } from "../../middlewares/authorizeMembership";
 import { entitlementGuard } from "../../security";
+import { isDemoProjectId, getDemoWidgetSettings } from "../../services/demo-project";
 
 const router = Router({ mergeParams: true });
 
@@ -18,6 +19,9 @@ function generateWidgetToken() {
 
 router.get("/settings", async (req: any, res: Response) => {
   const { projectId } = req.params;
+  if (isDemoProjectId(projectId)) {
+    return res.json(getDemoWidgetSettings());
+  }
   const defaultSettings = {
     projectId,
     botName: "RAGHUB",

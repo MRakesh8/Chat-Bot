@@ -12,6 +12,7 @@ import {
   withTenantContext,
   db
 } from "@workspace/db";
+import { isDemoProjectId, getDemoDashboardData } from "../../services/demo-project";
 
 const router = Router({ mergeParams: true });
 
@@ -29,6 +30,9 @@ function hasRequiredRole(userRole: string, requiredRole: "owner" | "admin" | "ma
 
 router.get("/", async (req: any, res: Response): Promise<any> => {
   const { projectId } = req.params;
+  if (isDemoProjectId(projectId)) {
+    return res.json(getDemoDashboardData());
+  }
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
   const timeframe = (req.query.timeframe as string) || "7d";
 

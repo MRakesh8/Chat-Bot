@@ -14,6 +14,7 @@ import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { searchProjectKnowledge } from "../../services/knowledge";
 import { llmResponseCache } from "../../services/cache-provider";
 import { checkProjectEntitlement, logAdminBypassIfNecessary } from "../../security";
+import { isDemoProjectId, isDemoShareToken, getDemoProjectMeta, getDemoKnowledgeSources, getDemoKnowledgeChunks, getDemoDashboardData } from "../../services/demo-project";
 import { z } from "zod";
 
 const createProjectSchema = z.object({
@@ -187,14 +188,19 @@ router.post("/", async (req, res) => {
 
 // GET /projects/:id
 router.get("/:id", async (req, res) => {
-  const userId = (req as any).auth?.userId ?? null;
-  if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
   const id = req.params.id;
   if (!id) {
     res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  if (isDemoProjectId(id)) {
+    res.json(getDemoProjectMeta());
+    return;
+  }
+
+  const userId = (req as any).auth?.userId ?? null;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
   try {
@@ -248,14 +254,22 @@ router.get("/:id", async (req, res) => {
 
 // PATCH /projects/:id
 router.patch("/:id", async (req, res) => {
+  const id = req.params.id;
+  if (!id) {
+    res.status(400).json({ error: "Invalid id" }); return;
+  }
+  if (isDemoProjectId(id)) {
+    res.status(403).json({
+      error: "Demo project is read-only. Create your own project to customize settings.",
+      isDemo: true
+    });
+    return;
+  }
+
   const userId = (req as any).auth?.userId ?? null;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
-  }
-  const id = req.params.id;
-  if (!id) {
-    res.status(400).json({ error: "Invalid id" }); return;
   }
   
   const parsed = updateProjectSchema.safeParse(req.body);
@@ -312,13 +326,21 @@ router.patch("/:id", async (req, res) => {
 
 // DELETE /projects/:id
 router.delete("/:id", async (req, res) => {
+  const id = req.params.id;
+  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isDemoProjectId(id)) {
+    res.status(403).json({
+      error: "Demo project cannot be deleted.",
+      isDemo: true
+    });
+    return;
+  }
+
   const userId = (req as any).auth?.userId ?? null;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const id = req.params.id;
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     // 1. Resolve parent organization
     const projectMeta = await withBypassRLS(async (tx: any) => {
@@ -417,8 +439,20 @@ router.post("/:id/knowledge/from-chat", async (req, res) => {
 
 // â”€â”€â”€ Shared / public routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// GET /projects/share/:token â€” public project info
+// GET /projects/share/:token — public project info
 router.get("/share/:token", async (req, res) => {
+  if (isDemoShareToken(req.params.token)) {
+    const meta = getDemoProjectMeta();
+    res.json({
+      id: meta.id,
+      name: meta.name,
+      description: meta.description,
+      shareToken: meta.shareToken,
+      isActive: true,
+      entitlement: meta.entitlement
+    });
+    return;
+  }
   try {
     const [project] = await db
       .select({
@@ -441,8 +475,17 @@ router.get("/share/:token", async (req, res) => {
   }
 });
 
-// POST /projects/share/:token/conversations â€” start a new conversation
+// POST /projects/share/:token/conversations — start a new conversation
 router.post("/share/:token/conversations", async (req, res) => {
+  if (isDemoShareToken(req.params.token)) {
+    res.status(201).json({
+      id: "demo-conv-" + Date.now(),
+      title: "Apex Dynamics Demo Chat",
+      projectId: getDemoProjectMeta().id,
+      createdAt: new Date().toISOString()
+    });
+    return;
+  }
   try {
     const [project] = await db
       .select()
@@ -472,10 +515,18 @@ router.post("/share/:token/conversations", async (req, res) => {
   }
 });
 
-// GET /projects/share/:token/conversations/:convId â€” get conversation + messages
+// GET /projects/share/:token/conversations/:convId — get conversation + messages
 router.get("/share/:token/conversations/:convId", async (req, res) => {
   const convId = req.params.convId;
   if (!convId) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isDemoShareToken(req.params.token)) {
+    res.json({
+      id: convId,
+      title: "Apex Dynamics Demo Chat",
+      messages: []
+    });
+    return;
+  }
   try {
     const [project] = await db
       .select()
@@ -543,7 +594,7 @@ async function buildProjectKnowledgeContext(projectId: string, userId: string, q
   }
 }
 
-// POST /projects/share/:token/conversations/:convId/messages â€” SSE streaming
+// POST /projects/share/:token/conversations/:convId/messages — SSE streaming
 router.post("/share/:token/conversations/:convId/messages", async (req, res) => {
   const convId = req.params.convId;
   if (!convId) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -552,6 +603,64 @@ router.post("/share/:token/conversations/:convId/messages", async (req, res) => 
   if (!content?.trim() && (!fileIds || fileIds.length === 0)) {
     res.status(400).json({ error: "content or fileIds is required" });
     return;
+  }
+
+  if (isDemoShareToken(req.params.token)) {
+    const messageContent = content?.trim() ?? "";
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+
+    const cleanLowerMsg = messageContent.toLowerCase();
+
+    // Fast deterministic check for action requests
+    if (
+      cleanLowerMsg.includes("order") || 
+      cleanLowerMsg.includes("cancel") || 
+      cleanLowerMsg.includes("create product") || 
+      cleanLowerMsg.includes("delete") || 
+      cleanLowerMsg.includes("buy") || 
+      cleanLowerMsg.includes("payment") ||
+      cleanLowerMsg.includes("checkout")
+    ) {
+      const demoReply = "🧪 This is a demo project. Real business actions are disabled here. When you connect your own store or website in a real project, authorized business actions can be securely executed.";
+      res.write(`data: ${JSON.stringify({ content: demoReply })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // Normal questions: answer using Demo knowledge context
+    try {
+      const demoChunks = getDemoKnowledgeChunks().map(c => c.content).join("\n\n");
+      const systemPrompt = `You are the AI Business Assistant for Apex Dynamics Consulting. Answer the user's question using ONLY the provided demo knowledge.
+Demo Knowledge Context:
+${demoChunks}
+
+Rules:
+- Be helpful, polite, and professional.
+- If asked about services, strategic advisory, digital transformation, pricing models, or offices, answer accurately using the context.
+- If asked about something not in the knowledge base, state politely that Apex Dynamics Consulting focuses on enterprise business strategy and digital transformation.`;
+
+      const aiRes = await ai.models.generateContent("demo_user", {
+        contents: [
+          { role: "user", parts: [{ text: systemPrompt }] },
+          { role: "user", parts: [{ text: messageContent }] }
+        ]
+      });
+
+      const responseText = aiRes.text || "Apex Dynamics Consulting is a premier advisory firm specializing in Business Strategy, Digital Transformation, and AI Architecture.";
+      res.write(`data: ${JSON.stringify({ content: responseText })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      return;
+    } catch (err: any) {
+      res.write(`data: ${JSON.stringify({ content: "Apex Dynamics Consulting provides strategic planning, digital transformation, and enterprise AI architecture services." })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+      return;
+    }
   }
 
   try {
@@ -1052,6 +1161,12 @@ async function resolveAuthorizedProjectOrg(
   projectId: string,
   providedOrgId?: string
 ): Promise<{ project: any; authoritativeOrgId: string } | null> {
+  if (isDemoProjectId(projectId)) {
+    return {
+      project: getDemoProjectMeta(),
+      authoritativeOrgId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9"
+    };
+  }
   const memberships = (req as any).auth?.memberships || [];
   const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
 

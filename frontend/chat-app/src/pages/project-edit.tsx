@@ -60,6 +60,7 @@ export default function ProjectEditPage() {
   const authFetch = useAuthFetch();
   const { dbUser, user } = useAuth();
   
+  const isDemo = projectId === "00000000-0000-4000-8000-000000000000" || projectId === "demo";
   const isAdmin = dbUser?.role === "admin" || dbUser?.role === "super_admin";
 
   const [name, setName] = useState("");
@@ -191,6 +192,13 @@ export default function ProjectEditPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isDemo) {
+      toast({
+        title: "Demo Project (Read-Only)",
+        description: "Project settings modifications are disabled in demo mode. Connect your own website to create a live project.",
+      });
+      return;
+    }
     if (!name.trim()) {
       toast({ title: "Project name is required", variant: "destructive" });
       return;
@@ -300,6 +308,48 @@ export default function ProjectEditPage() {
   return (
     <>
       <div className="flex-1 w-full min-w-0 px-6 py-6 md:px-8 lg:px-10">
+        {/* Demo Mode Top Action Banner */}
+        {isDemo && (
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-primary/15 border border-amber-500/30 backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 border border-amber-500/30 flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-foreground text-sm md:text-base">
+                    🧪 Interactive Demo Project — Apex Dynamics Consulting
+                  </span>
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold">
+                    Safe Sandbox
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  You are exploring a realistic NOVA project. Real external mutations and live API calls are disabled.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation("/projects")}
+                className="text-xs font-semibold gap-1.5 flex-1 md:flex-initial border-amber-500/30 hover:bg-amber-500/10"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Exit Demo
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setLocation("/projects/new")}
+                className="text-xs font-semibold gap-1.5 bg-gradient-to-r from-primary to-orange-500 hover:opacity-90 text-white shadow-md flex-1 md:flex-initial"
+              >
+                <Globe className="w-3.5 h-3.5" /> Connect My Website
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-6 mb-12">
           <div>
             <div className="flex items-center gap-3">
@@ -328,7 +378,17 @@ export default function ProjectEditPage() {
               ) : (
                 <div 
                   className="flex items-center gap-3 group cursor-pointer" 
-                  onClick={() => { setTempName(project?.name || name); setIsEditingName(true); }}
+                  onClick={() => {
+                    if (isDemo) {
+                      toast({
+                        title: "Demo Mode",
+                        description: "Project renaming is disabled in demo mode. Connect your own website to customize your project.",
+                      });
+                      return;
+                    }
+                    setTempName(project?.name || name);
+                    setIsEditingName(true);
+                  }}
                 >
                   <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
                     {project?.name || "Loading..."}
@@ -337,7 +397,18 @@ export default function ProjectEditPage() {
                     variant="ghost" 
                     size="icon" 
                     className="opacity-100 transition-opacity h-8 w-8 rounded-full hover:bg-white/10" 
-                    onClick={(e) => { e.stopPropagation(); setTempName(project?.name || name); setIsEditingName(true); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isDemo) {
+                        toast({
+                          title: "Demo Mode",
+                          description: "Project renaming is disabled in demo mode. Connect your own website to customize your project.",
+                        });
+                        return;
+                      }
+                      setTempName(project?.name || name);
+                      setIsEditingName(true);
+                    }}
                   >
                     <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
                   </Button>

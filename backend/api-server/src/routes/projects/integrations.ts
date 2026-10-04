@@ -15,6 +15,7 @@ import { eq, and } from "drizzle-orm";
 import { providerRegistry } from "../../services/integrations/provider-registry";
 import { checkProjectEntitlement } from "../../security/entitlement";
 import { logger } from "../../lib/logger";
+import { isDemoProjectId, getDemoIntegrations } from "../../services/demo-project";
 
 // Register providers to ensure they are available
 import "../../services/integrations/providers/shopify";
@@ -25,6 +26,16 @@ const router = Router({ mergeParams: true });
 async function resolveAuthContext(req: any, projectId: string) {
   const userId: string | undefined = req.auth?.userId;
   if (!userId) return null;
+
+  if (isDemoProjectId(projectId)) {
+    return {
+      userId,
+      isSuperAdmin: false,
+      orgId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
+      membership: { role: "viewer" },
+      project: { id: projectId, organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9" }
+    };
+  }
 
   const isSuperAdmin = req.auth?.dbUser?.role === "super_admin";
 
@@ -45,6 +56,9 @@ async function resolveAuthContext(req: any, projectId: string) {
 router.get("/", async (req: any, res: any) => {
   try {
     const { projectId } = req.params;
+    if (isDemoProjectId(projectId)) {
+      return res.json({ integrations: getDemoIntegrations() });
+    }
 
     const ctx = await resolveAuthContext(req, projectId);
     if (!ctx) return res.status(401).json({ error: "Unauthorized" });

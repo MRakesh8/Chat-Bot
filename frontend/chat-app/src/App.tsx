@@ -124,6 +124,14 @@ export default function App() {
                             <Route path="/projects/new" component={ProjectEditPage} />
                             <Route path="/projects/:id/edit" component={ProjectEditPage} />
 
+                            {/* Demo and Explore routes */}
+                            <Route path="/projects/demo">
+                              <Redirect to="/projects/00000000-0000-4000-8000-000000000000/edit" replace />
+                            </Route>
+                            <Route path="/projects/explore">
+                              <Redirect to="/projects/00000000-0000-4000-8000-000000000000/edit" replace />
+                            </Route>
+
                             {/* Legacy /admin/projects redirects */}
                             <Route path="/admin/projects">
                               <Redirect to="/projects" replace />

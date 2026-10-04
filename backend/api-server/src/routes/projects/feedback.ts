@@ -1,4 +1,4 @@
-﻿import { Router, Response } from "express";
+import { Router, Response } from "express";
 
 import { eq, sql, desc, and } from "drizzle-orm";
 import { 
@@ -7,11 +7,15 @@ import {
   projectFeedback
 } from "@workspace/db/schema";
 import { withTenantContext } from "@workspace/db";
+import { isDemoProjectId, getDemoFeedback } from "../../services/demo-project";
 
 const router = Router({ mergeParams: true });
 
 router.get("/", async (req: any, res: Response): Promise<any> => {
   const { projectId } = req.params;
+  if (isDemoProjectId(projectId)) {
+    return res.json(getDemoFeedback());
+  }
   const orgId = req.headers["x-organization-id"] || req.query.organizationId;
 
   if (!orgId || Array.isArray(orgId)) {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file index.ts (files route)
  * @description Defines Express routes for uploading, analyzing, and managing knowledge sources (files, URLs, repositories, notes) in the system.
  */
@@ -16,6 +16,7 @@ import { enqueueKnowledgeProcessing } from "../../lib/queue";
 import { extractYouTubeId } from "../../lib/youtube";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { logAdminBypassIfNecessary, checkAndIncrementUsage } from "../../security";
+import { isDemoProjectId, getDemoKnowledgeSources } from "../../services/demo-project";
 
 const router = Router();
 
@@ -537,6 +538,11 @@ router.post("/url", async (req, res) => {
 router.get("/project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
+    if (isDemoProjectId(projectId)) {
+      res.json(getDemoKnowledgeSources());
+      return;
+    }
+
     const userId = (req as any).auth?.userId;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
