@@ -668,15 +668,28 @@ router.post("/conversations/:id/messages", async (req, res) => {
     req.log.info("[MESSAGE_SAVED] user message saved");
 
     // --- AGENT CONTROL PIPELINE FOR NORMAL NOVA CHAT (Phase 1 & 2) ---
-    if (primaryProject && !useNormalAi) {
+    if (!useNormalAi) {
       try {
         const { CoordinatorAgent } = require("../../agents/coordinator");
         const coordinator = new CoordinatorAgent();
         const confirmationToken = (req.body as any)?.confirmationToken;
         const actionId = (req.body as any)?.actionId;
 
+        const bodyContext = (req.body as any)?.currentContext || {};
+        const activeProjectId = primaryProject?.id || (bodyContext.currentProjectId && bodyContext.currentProjectId !== "demo" ? bodyContext.currentProjectId : null);
+
+        // Resolve user's authorized projects for project-aware navigation and ambiguity resolution
+        const authorizedProjects = await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            organizationId: projects.organizationId,
+          })
+          .from(projects)
+          .where(eq(projects.userId, userId));
+
         const coordRes = await coordinator.execute({
-          projectId: primaryProject.id,
+          projectId: activeProjectId || "00000000-0000-4000-8000-000000000000",
           sessionId: conversationId,
           userId,
           customerContext: {
@@ -687,7 +700,19 @@ router.post("/conversations/:id/messages", async (req, res) => {
             message: content,
             intent: content,
             confirmationToken,
-            actionId
+            actionId,
+            currentContext: {
+              currentRoute: bodyContext.currentRoute || "",
+              currentScreen: bodyContext.currentScreen || "",
+              currentProjectId: activeProjectId,
+              currentProjectName: primaryProject?.name || bodyContext.currentProjectName || null,
+              currentOrganizationId: primaryProject?.organizationId || bodyContext.currentOrganizationId || null,
+              userId,
+              userRole: (req as any).auth?.dbUser?.role || "owner",
+              authorizedProjects: authorizedProjects.length > 0 ? authorizedProjects : [
+                { id: "00000000-0000-4000-8000-000000000000", name: "Apex Dynamics — Demo" }
+              ]
+            }
           }
         });
 
@@ -718,6 +743,25 @@ router.post("/conversations/:id/messages", async (req, res) => {
               sessionId: conversationId as any,
               sender: "assistant",
               content: confirmMsg,
+            });
+            return;
+          }
+
+          if (bData.intent === "navigation") {
+            const finalMsg = bData.response || `Opened ${bData.action?.targetFeature || "feature"}.`;
+            res.write(`data: ${JSON.stringify({
+              intent: "navigation",
+              status: bData.status,
+              action: bData.action,
+              content: finalMsg
+            })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+
+            await db.insert(messages).values({
+              sessionId: conversationId as any,
+              sender: "assistant",
+              content: finalMsg,
             });
             return;
           }

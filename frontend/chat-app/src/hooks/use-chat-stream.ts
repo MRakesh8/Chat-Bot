@@ -58,6 +58,29 @@ export function useChatStream() {
       const fallbackEnabled = localStorage.getItem("openrouter_fallback_enabled") !== "false";
       const fallbackKey = localStorage.getItem("openrouter_fallback_key") || "";
 
+      // Determine current UI context for Agent Control navigation
+      const currentRoute = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+      let currentProjectId: string | null = null;
+      let currentScreen: string | null = null;
+
+      const matchEdit = currentRoute.match(/\/projects\/([^\/]+)\/edit/);
+      if (matchEdit && matchEdit[1]) {
+        currentProjectId = matchEdit[1];
+        const urlParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+        currentScreen = urlParams.get("tab") || "overview";
+      } else if (currentRoute.startsWith("/projects")) {
+        currentScreen = "projects_list";
+      } else if (currentRoute.startsWith("/settings")) {
+        currentScreen = "settings";
+      }
+
+      const currentContext = {
+        currentRoute,
+        currentScreen,
+        currentProjectId,
+        currentProjectName: null
+      };
+
       const response = await fetch(apiUrl(`/api/gemini/conversations/${conversationId}/messages`), {
         method: "POST",
         headers,
@@ -67,7 +90,8 @@ export function useChatStream() {
           projectIds, 
           useNormalAi,
           fallbackEnabled,
-          fallbackKey
+          fallbackKey,
+          currentContext
         }),
         credentials: "include",
         signal: controller.signal,
@@ -102,6 +126,11 @@ export function useChatStream() {
           if (line.startsWith("data: ")) {
             try {
               const json = JSON.parse(line.slice(6));
+              if (json.action && json.action.type === "navigate" && json.action.route) {
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("nova:navigate", { detail: { route: json.action.route } }));
+                }
+              }
               if (json.done) {
                 // Optimistically write final messages to prevent layout flash before refetch
                 const userMsg = {

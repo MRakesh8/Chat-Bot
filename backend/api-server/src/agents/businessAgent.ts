@@ -24,6 +24,144 @@ export interface CapabilityStatus {
   riskLevel: "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "IRREVERSIBLE";
 }
 
+export interface NavigationFeature {
+  key: string;
+  label: string;
+  requiresProject: boolean;
+  tab?: string;
+  routeFormat?: string;
+  aliases: string[];
+}
+
+export const NAVIGATION_FEATURES: NavigationFeature[] = [
+  {
+    key: "widget-studio",
+    label: "Widget Studio",
+    requiresProject: true,
+    tab: "widget-studio",
+    aliases: ["widget studio", "widget customization", "customize widget", "widget theme", "widget settings", "widget appearance", "widget studio customization"]
+  },
+  {
+    key: "knowledge",
+    label: "Knowledge Base",
+    requiresProject: true,
+    tab: "knowledge",
+    aliases: ["knowledge base", "knowledge", "vector index", "knowledge sources", "sources", "documents", "rag knowledge"]
+  },
+  {
+    key: "project-settings",
+    label: "Project Settings",
+    requiresProject: true,
+    tab: "settings",
+    aliases: ["project settings", "system prompt", "edit project", "project config", "project configuration"]
+  },
+  {
+    key: "api-keys",
+    label: "API Keys",
+    requiresProject: true,
+    tab: "api-keys",
+    aliases: ["api keys", "provider keys", "llm keys", "project keys", "openrouter key", "gemini key"]
+  },
+  {
+    key: "channels",
+    label: "Connected Services",
+    requiresProject: true,
+    tab: "channels",
+    aliases: ["connected services", "channels", "whatsapp", "shopify integration", "tool integrations", "project integrations", "integrations"]
+  },
+  {
+    key: "analytics",
+    label: "Analytics",
+    requiresProject: true,
+    tab: "analytics",
+    aliases: ["analytics", "reports", "clarity", "project analytics", "metrics", "insights"]
+  },
+  {
+    key: "notifications",
+    label: "Notifications",
+    requiresProject: true,
+    tab: "notifications",
+    aliases: ["notifications", "alerts", "escalations", "notification settings"]
+  },
+  {
+    key: "deployment",
+    label: "Deployment & Go Live",
+    requiresProject: true,
+    tab: "deployment",
+    aliases: ["deployment", "go live", "readiness check", "embed code", "widget script", "publish"]
+  },
+  {
+    key: "guide",
+    label: "Project Guide",
+    requiresProject: true,
+    tab: "guide",
+    aliases: ["project guide", "how nova works", "architecture guide", "architecture", "system architecture"]
+  },
+  {
+    key: "overview",
+    label: "Project Overview",
+    requiresProject: true,
+    tab: "overview",
+    aliases: ["project overview", "project dashboard", "overview", "dashboard"]
+  },
+  {
+    key: "chat",
+    label: "Test Chat",
+    requiresProject: true,
+    tab: "chat",
+    aliases: ["test chat", "chat experience", "playground"]
+  },
+  {
+    key: "context-engine",
+    label: "Context Engine",
+    requiresProject: true,
+    tab: "context-engine",
+    aliases: ["context engine", "dom context", "page context"]
+  },
+  {
+    key: "projects-list",
+    label: "Projects",
+    requiresProject: false,
+    routeFormat: "/projects",
+    aliases: ["projects", "projects list", "all projects", "my projects", "view projects", "explore projects"]
+  },
+  {
+    key: "new-project",
+    label: "Create New Project",
+    requiresProject: false,
+    routeFormat: "/projects/new",
+    aliases: ["new project", "create project", "add project", "start project"]
+  },
+  {
+    key: "global-settings",
+    label: "Settings",
+    requiresProject: false,
+    routeFormat: "/settings",
+    aliases: ["settings", "global settings", "app settings", "user settings", "settings page"]
+  },
+  {
+    key: "billing",
+    label: "Billing",
+    requiresProject: false,
+    routeFormat: "/billing",
+    aliases: ["billing", "subscription", "plans", "pricing", "manage subscription"]
+  },
+  {
+    key: "profile",
+    label: "Profile",
+    requiresProject: false,
+    routeFormat: "/profile",
+    aliases: ["profile", "my profile", "account", "user profile"]
+  },
+  {
+    key: "services",
+    label: "Connected Services",
+    requiresProject: false,
+    routeFormat: "/services",
+    aliases: ["global services", "all services", "workspace services"]
+  }
+];
+
 export class BusinessAgent extends BaseAgent {
   private securityAgent: SecurityAgent;
   private verificationAgent: VerificationAgent;
@@ -32,6 +170,210 @@ export class BusinessAgent extends BaseAgent {
     super("BusinessAgent");
     this.securityAgent = new SecurityAgent();
     this.verificationAgent = new VerificationAgent();
+  }
+
+  /**
+   * Resolves context-aware navigation requests and project-aware actions.
+   */
+  async resolveNavigationAction(context: AgentContext): Promise<AgentResult | null> {
+    const { payload, userId } = context;
+    const userMessage = (payload?.message || payload?.intent || "").trim();
+    if (!userMessage) return null;
+
+    const currentContext = payload?.currentContext || {};
+    const lowerMsg = userMessage.toLowerCase();
+
+    // Check if userMessage matches a navigation intent trigger
+    const navTriggers = ["go to", "open", "take me to", "navigate to", "show me", "view", "switch to", "head to", "launch", "open the"];
+    const hasNavTrigger = navTriggers.some(t => lowerMsg.includes(t));
+
+    // Find matching feature from NAVIGATION_FEATURES
+    let matchedFeature = NAVIGATION_FEATURES.find(f => {
+      return f.aliases.some(alias => {
+        if (hasNavTrigger) {
+          return lowerMsg.includes(alias);
+        }
+        // Exact or close match for standalone feature requests e.g. "Widget Studio"
+        return lowerMsg === alias || lowerMsg === `go to ${alias}` || lowerMsg === `open ${alias}`;
+      });
+    });
+
+    if (!matchedFeature && payload?.targetFeature) {
+      matchedFeature = NAVIGATION_FEATURES.find(f => f.key === payload.targetFeature);
+    }
+
+    if (!matchedFeature) {
+      return null; // Not a navigation request
+    }
+
+    // --- FEATURE DOES NOT REQUIRE A PROJECT (e.g. /projects, /settings, /billing, /profile) ---
+    if (!matchedFeature.requiresProject) {
+      const targetRoute = matchedFeature.routeFormat || "/projects";
+      
+      // Verification
+      const verRes = await this.verificationAgent.execute({
+        payload: { result: { action: { type: "navigate", route: targetRoute } } }
+      });
+
+      // Audit Log
+      await db.insert(enterpriseAuditLogs).values({
+        projectId: (context.projectId && context.projectId !== "00000000-0000-4000-8000-000000000000" && context.projectId !== "demo") ? context.projectId : "00000000-0000-4000-8000-000000000000",
+        actionType: "navigate",
+        details: {
+          userId: userId || null,
+          targetFeature: matchedFeature.label,
+          targetRoute,
+          status: verRes.data?.verified ? "ALLOWED" : "FAILED"
+        }
+      }).catch(err => logger.error({ err }, "Failed to write navigation audit log"));
+
+      return {
+        success: true,
+        data: {
+          intent: "navigation",
+          status: "COMPLETED",
+          toolExecuted: "navigate",
+          action: {
+            type: "navigate",
+            route: targetRoute,
+            targetFeature: matchedFeature.label
+          },
+          response: `Opened ${matchedFeature.label}.`
+        }
+      };
+    }
+
+    // --- FEATURE REQUIRES A PROJECT ---
+    let targetProjectId: string | null = null;
+    let targetProjectName: string | null = null;
+
+    // 1. Check current project context (if user is inside a project)
+    const ctxProjectId = currentContext.currentProjectId || (context.projectId && context.projectId !== "00000000-0000-4000-8000-000000000000" && context.projectId !== "demo" ? context.projectId : null);
+    if (ctxProjectId) {
+      targetProjectId = ctxProjectId;
+      targetProjectName = currentContext.currentProjectName || null;
+      if (!targetProjectName && currentContext.authorizedProjects) {
+        const p = currentContext.authorizedProjects.find((ap: any) => ap.id === ctxProjectId);
+        if (p) targetProjectName = p.name;
+      }
+    }
+
+    // 2. Check if user explicitly specified a project name in the prompt
+    const authProjects = currentContext.authorizedProjects || [];
+    if (!targetProjectId || (hasNavTrigger && lowerMsg.includes(" for "))) {
+      for (const p of authProjects) {
+        const pNameLower = p.name.toLowerCase();
+        if (lowerMsg.includes(pNameLower) || lowerMsg.includes(p.id)) {
+          targetProjectId = p.id;
+          targetProjectName = p.name;
+          break;
+        }
+      }
+    }
+
+    // If targetProjectId is still null, check if the whole userMessage matches one of the user's project names
+    if (!targetProjectId && authProjects.length > 0) {
+      const matchedProj = authProjects.find((p: any) => lowerMsg.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(lowerMsg));
+      if (matchedProj) {
+        targetProjectId = matchedProj.id;
+        targetProjectName = matchedProj.name;
+      }
+    }
+
+    // 3. PROJECT AMBIGUITY CHECK: If project cannot be determined, ASK USER. DO NOT GUESS.
+    if (!targetProjectId) {
+      let availableStr = "";
+      if (authProjects.length > 0) {
+        availableStr = `\n\nYour available projects:\n${authProjects.map((p: any) => `• ${p.name}`).join("\n")}`;
+      }
+      return {
+        success: true,
+        data: {
+          intent: "clarification",
+          status: "PENDING_CLARIFICATION",
+          targetFeature: matchedFeature.key,
+          response: `Which project would you like to open ${matchedFeature.label} for?${availableStr}`
+        }
+      };
+    }
+
+    // If targetProjectName is missing, fetch from DB
+    if (!targetProjectName && targetProjectId) {
+      try {
+        const [proj] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, targetProjectId));
+        if (proj) targetProjectName = proj.name;
+      } catch (err) {
+        logger.error({ err, targetProjectId }, "Failed to fetch project name for navigation");
+      }
+    }
+
+    // 4. ENTITLEMENT & PERMISSION CHECK FOR TARGET PROJECT
+    const entitlement = await checkProjectEntitlement(targetProjectId);
+    if (!entitlement.allowed) {
+      return {
+        success: false,
+        data: {
+          intent: "unsupported",
+          status: "ENTITLEMENT_EXPIRED",
+          response: entitlement.message || `Your subscription or trial for project '${targetProjectName || targetProjectId}' has expired. Please upgrade to continue.`
+        }
+      };
+    }
+
+    const targetRoute = `/projects/${targetProjectId}/edit?tab=${matchedFeature.tab || "overview"}`;
+
+    // Security & Verification Gate
+    const secRes = await this.securityAgent.execute({
+      projectId: targetProjectId,
+      userId,
+      payload: { proposedAction: { type: "navigate", route: targetRoute, targetFeature: matchedFeature.label } }
+    });
+
+    if (secRes.data?.allowed === false) {
+      return {
+        success: false,
+        data: {
+          intent: "unsupported",
+          status: "FORBIDDEN",
+          response: secRes.data?.reason || "You do not have permission to access this project screen."
+        }
+      };
+    }
+
+    const verRes = await this.verificationAgent.execute({
+      payload: { result: { action: { type: "navigate", route: targetRoute } } }
+    });
+
+    // Write Enterprise Audit Log
+    await db.insert(enterpriseAuditLogs).values({
+      projectId: targetProjectId,
+      actionType: "navigate",
+      details: {
+        userId: userId || null,
+        targetFeature: matchedFeature.label,
+        targetRoute,
+        projectName: targetProjectName,
+        status: verRes.data?.verified ? "ALLOWED" : "FAILED"
+      }
+    }).catch(err => logger.error({ err }, "Failed to write navigation audit log"));
+
+    const projLabel = targetProjectName ? ` for ${targetProjectName}` : "";
+    return {
+      success: true,
+      data: {
+        intent: "navigation",
+        status: "COMPLETED",
+        toolExecuted: "navigate",
+        action: {
+          type: "navigate",
+          route: targetRoute,
+          targetFeature: matchedFeature.label,
+          projectId: targetProjectId,
+          projectName: targetProjectName
+        },
+        response: `Opened ${matchedFeature.label}${projLabel}.`
+      }
+    };
   }
 
   /**
@@ -108,12 +450,8 @@ export class BusinessAgent extends BaseAgent {
       const userMessage = payload?.message || payload?.intent || "";
       const confirmationToken = payload?.confirmationToken;
 
-      if (!projectId) {
-        return { success: false, error: "Project ID is required." };
-      }
-
       // ─── STEP -1: DIRECT CONFIRMATION FAST-PATH ──────────────────────────
-      if (confirmationToken) {
+      if (confirmationToken && projectId) {
         const execResult = await executeServerTool({
           projectId,
           userId: userId || "public_visitor",
@@ -149,6 +487,16 @@ export class BusinessAgent extends BaseAgent {
             response: `Successfully executed ${execResult.toolExecuted}. Result: ${safeDataStr}`,
           },
         };
+      }
+
+      // ─── STEP 0: CONTEXT-AWARE NAVIGATION & PROJECT AMBIGUITY RESOLUTION ───
+      const navResult = await this.resolveNavigationAction(context);
+      if (navResult) {
+        return navResult;
+      }
+
+      if (!projectId) {
+        return { success: false, error: "Project ID is required." };
       }
 
       // ─── STEP 0: FAST DETERMINISTIC STANDALONE GENERAL CONVERSATION GUARD ─────────

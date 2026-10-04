@@ -98,9 +98,27 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function NavigationListener() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    const handleNav = (e: Event) => {
+      const customEvent = e as CustomEvent<{ route: string }>;
+      if (customEvent.detail?.route) {
+        setLocation(customEvent.detail.route);
+      }
+    };
+    window.addEventListener("nova:navigate", handleNav);
+    return () => window.removeEventListener("nova:navigate", handleNav);
+  }, [setLocation]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <WouterRouter base={basePath}>
+      <NavigationListener />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ThemeProvider defaultTheme="light">

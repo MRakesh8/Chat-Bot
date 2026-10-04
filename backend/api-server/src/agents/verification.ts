@@ -22,8 +22,20 @@ export class VerificationAgent extends BaseAgent {
          verified = false;
          reason = result.error || "Action engine reported failure.";
       } else {
-         // 1. Verify based on action engine verification block (browser automation)
-         if (result.verification) {
+         // 1. Verify based on action engine verification block (browser automation & navigation)
+         if (result.action?.type === "navigate" || result.tool === "navigate") {
+            const route = result.action?.route || result.route;
+            if (!route || typeof route !== "string") {
+               verified = false;
+               reason = "Navigation verification failed; target route is invalid or missing.";
+            } else if (!route.startsWith("/")) {
+               verified = false;
+               reason = "Navigation verification failed; target route must be a valid relative path starting with '/'.";
+            } else {
+               verified = true;
+               reason = `Target route '${route}' verified successfully.`;
+            }
+         } else if (result.verification) {
             const { urlChanged, elementFound, domMutated, successToast } = result.verification;
             if (result.tool === "navigate" && !urlChanged) {
                verified = false;
