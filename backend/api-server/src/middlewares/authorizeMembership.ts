@@ -13,7 +13,7 @@ const ROLE_WEIGHTS: Record<string, number> = {
 export const authorizeMembership = (requiredRole: "owner" | "admin" | "manager" | "agent" | "viewer") => {
   return async (req: Request, res: Response, next: NextFunction): Promise<any> => {
     try {
-      const projectId = req.params.projectId || req.params.id || req.query.projectId || req.body.projectId;
+      const projectId = req.params?.projectId || req.params?.id || req.query?.projectId || req.body?.projectId;
       if (projectId === "demo" || projectId === "00000000-0000-4000-8000-000000000000") {
         (req as any).organizationId = "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9";
         (req as any).membershipRole = "viewer";
@@ -30,7 +30,7 @@ export const authorizeMembership = (requiredRole: "owner" | "admin" | "manager" 
         return next();
       }
 
-      let organizationId = req.params.organizationId || req.query.organizationId || req.body.organizationId;
+      let organizationId = req.params?.organizationId || req.query?.organizationId || req.body?.organizationId;
       if (!organizationId && projectId) {
         const project = await withBypassRLS(async (tx: any) => {
           return await tx.query.projects.findFirst({

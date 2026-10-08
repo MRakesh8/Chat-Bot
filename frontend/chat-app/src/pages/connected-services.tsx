@@ -43,13 +43,13 @@ export default function ConnectedServicesPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   
-  const { session } = useAuth();
+  const { session, activeOrganizationId } = useAuth();
   const authFetch = useAuthFetch();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: services = [], isLoading, isError, error, refetch, isFetching } = useQuery<Service[]>({
-    queryKey: ["connectedServices"],
+    queryKey: ["connectedServices", activeOrganizationId],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/services"));
       if (!res.ok) {

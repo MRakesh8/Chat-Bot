@@ -12,10 +12,10 @@ export const entitlementMiddleware = async (
 ): Promise<any> => {
   // 1. Resolve projectId from route context
   const projectId =
-    req.params.projectId ||
-    req.params.id ||
-    req.body.projectId ||
-    req.query.projectId ||
+    req.params?.projectId ||
+    req.params?.id ||
+    req.body?.projectId ||
+    req.query?.projectId ||
     (req as any).projectId;
 
   if (!projectId) {

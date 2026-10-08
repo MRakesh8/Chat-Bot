@@ -142,7 +142,7 @@ router.post("/", async (req, res) => {
   const { name, description, systemPrompt } = parsed.data;
 
   // Resolve active organization context
-  let orgId = req.headers["x-organization-id"] || req.query.organizationId || req.body.organizationId;
+  let orgId = req.headers["x-organization-id"] || req.query?.organizationId || req.body?.organizationId;
   if (Array.isArray(orgId)) orgId = orgId[0];
 
   if (!orgId) {

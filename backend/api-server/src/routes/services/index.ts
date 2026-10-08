@@ -16,7 +16,7 @@ const CreateServiceSchema = z.object({
 const UpdateServiceSchema = CreateServiceSchema.partial();
 
 function getOrgId(req: any) {
-  let orgId = req.headers["x-organization-id"] || req.query.organizationId || req.body.organizationId;
+  let orgId = req.headers["x-organization-id"] || req.query?.organizationId || req.body?.organizationId;
   if (Array.isArray(orgId)) orgId = orgId[0];
 
   if (!orgId) {

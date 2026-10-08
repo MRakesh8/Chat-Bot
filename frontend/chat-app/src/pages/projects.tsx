@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   ShieldCheck,
   Compass,
+  AlertCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -113,7 +114,7 @@ export default function ProjectsPage() {
   };
 
   const authFetch = useAuthFetch();
-  const { dbUser, activeOrganizationId } = useAuth();
+  const { session, dbUser, activeOrganizationId } = useAuth();
 
   const isUnrestricted = dbUser?.role === "super_admin";
   const canCreate = dbUser?.features?.canCreateProject !== false || isUnrestricted;
@@ -128,6 +129,7 @@ export default function ProjectsPage() {
       }
       return res.json() as Promise<Project[]>;
     },
+    enabled: !!session,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     staleTime: 30000,
