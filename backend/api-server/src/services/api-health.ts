@@ -22,7 +22,7 @@ export function classifyError(error: any): { status: ApiStatus; reason: string; 
   const errMessage = String(error?.message || error?.stack || error).toLowerCase();
 
   const is403 = statusStr === '403' || errMessage.includes('403') || errMessage.includes('permission denied') || errMessage.includes('api key not valid') || errMessage.includes('incorrect api key');
-  const isTimeout = errMessage.includes('timeout') || errMessage.includes('deadline exceeded') || statusStr === '504' || statusStr === '408';
+  const isTimeout = errMessage.includes('timeout') || errMessage.includes('timed out') || errMessage.includes('deadline exceeded') || statusStr === '504' || statusStr === '408';
   const isProviderDown = statusStr === '500' || statusStr === '502' || statusStr === '503';
   const isInvalidModel = statusStr === '400' || statusStr === '404' || errMessage.includes('model_not_found') || errMessage.includes('does not exist') || errMessage.includes('invalid model');
   const isNetwork = errMessage.includes('econnreset') || errMessage.includes('etimedout') || errMessage.includes('network error') || errMessage.includes('fetch error');

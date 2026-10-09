@@ -236,31 +236,58 @@ router.post("/api-keys", async (req: any, res: Response) => {
   }
 });
 
-router.put("/api-keys/:keyId", async (req: any, res: Response) => {
+router.put("/api-keys/:keyId", async (req: any, res: Response): Promise<any> => {
   const { projectId, keyId } = req.params;
-  const { model } = req.body;
+  const { model, name, apiKey } = req.body;
   try {
     const existing = await db.query.projectApiKeys.findFirst({
       where: and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId))
     });
     if (!existing) {
-      res.status(404).json({ error: "Key not found" });
-      return;
+      return res.status(404).json({ error: "Key not found" });
     }
 
+    let updateData: any = {};
+    if (name) updateData.name = name;
+
     // Validate if the model is in availableModels
-    if (model && existing.availableModels && Array.isArray(existing.availableModels)) {
-      if (!existing.availableModels.includes(model)) {
-        res.status(400).json({ error: `Model ${model} is not supported by this API key.` });
-        return;
+    if (model) {
+      if (existing.availableModels && Array.isArray(existing.availableModels)) {
+        if (!existing.availableModels.includes(model)) {
+          res.status(400).json({ error: `Model ${model} is not supported by this API key.` });
+          return;
+        }
+      }
+      updateData.model = model;
+    }
+
+    if (apiKey) {
+      try {
+        const verified = await ProviderVerifier.verifyAndFetchModels(apiKey, existing.provider);
+        updateData.encryptedKey = dbCrypto.encrypt(apiKey);
+        let maskedKey = apiKey.substring(0, 5) + "..." + apiKey.substring(apiKey.length - 4);
+        if (verified.provider === "gemini") {
+          maskedKey = `AIza****${apiKey.slice(-4)}`;
+        }
+        updateData.maskedKey = maskedKey;
+        updateData.status = "HEALTHY";
+        updateData.lastSuccess = new Date();
+        updateData.isEnabled = true;
+        updateData.failureReason = null;
+        updateData.cooldownUntil = null;
+        updateData.provider = verified.provider;
+        updateData.model = verified.defaultModel;
+        updateData.availableModels = verified.models;
+      } catch (e: any) {
+        return res.status(400).json({ error: e.message || "Failed to verify replacement API key" });
       }
     }
 
-    await db.update(projectApiKeys).set({ model }).where(and(
+    await db.update(projectApiKeys).set(updateData).where(and(
       eq(projectApiKeys.id, keyId as any),
       eq(projectApiKeys.projectId, projectId)
     ));
-    res.json({ success: true, message: "Key updated" });
+    res.json({ success: true, message: "Project API key updated successfully." });
   } catch (error) {
     res.status(500).json({ error: "Failed to update project key" });
   }
@@ -385,6 +412,20 @@ router.patch("/api-keys/:keyId/disable", async (req: any, res: Response) => {
     res.json({ success: true, message: "Key disabled." });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to disable API key" });
+  }
+});
+
+router.post("/api-keys/:keyId/reset-cooldown", async (req: any, res: Response) => {
+  const { projectId, keyId } = req.params;
+  try {
+    await db.update(projectApiKeys).set({
+      cooldownUntil: null,
+      status: "HEALTHY",
+      failureReason: null
+    }).where(and(eq(projectApiKeys.id, keyId as any), eq(projectApiKeys.projectId, projectId)));
+    res.json({ success: true, message: "Cooldown cleared successfully." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to clear cooldown" });
   }
 });
 

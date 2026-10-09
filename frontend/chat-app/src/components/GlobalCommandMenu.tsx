@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Folder, MessageSquare, Settings, Search, Sparkle } from "lucide-react";
+import { Folder, MessageSquare, Settings, Search, Sparkle, Key } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -112,7 +112,11 @@ export function GlobalCommandMenu() {
 
           <CommandSeparator />
 
-          <CommandGroup heading="Settings">
+          <CommandGroup heading="Settings & Infrastructure">
+            <CommandItem onSelect={() => runCommand(() => setLocation("/api-center"))}>
+              <Key className="mr-2 h-4 w-4 text-amber-400" />
+              <span>API Center & Providers</span>
+            </CommandItem>
             <CommandItem onSelect={() => runCommand(() => setLocation("/settings"))}>
               <Settings className="mr-2 h-4 w-4" />
               <span>Settings</span>
