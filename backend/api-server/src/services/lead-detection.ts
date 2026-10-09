@@ -1,6 +1,7 @@
 import { db, widgetLeads } from "@workspace/db";
 import { eq, and, or, sql } from "drizzle-orm";
 import { emitActivityEvent } from "./activity";
+import { createNotification } from "./notifications";
 
 export interface LeadScoreConfig {
   weights: {
@@ -195,6 +196,17 @@ export async function processAndSaveLead(params: {
           sessionId: resLead.sessionId || undefined,
           metadata: { score: resLead.score, scoreValue: resLead.scoreValue }
         });
+
+        // Smart notification for lead update (e.g. contact info provided)
+        createNotification({
+          projectId: String(projectId),
+          type: "LEAD_CAPTURED",
+          severity: resLead.score === "HIGH" ? "warning" : "info",
+          title: resLead.score === "HIGH" ? `High Intent Lead: ${resLead.name || resLead.email || "Visitor"}` : `Lead Updated: ${resLead.name || resLead.email || "Visitor"}`,
+          message: [resLead.email, resLead.phone, resLead.company, resLead.userIntent].filter(Boolean).join(" • ") || "Contact info updated",
+          referenceId: resLead.id,
+          dedupeKey: `lead_${resLead.id}_${resLead.score}`,
+        }).catch(() => {});
       }
 
       return resLead;
@@ -231,6 +243,17 @@ export async function processAndSaveLead(params: {
           sessionId: inserted.sessionId || undefined,
           metadata: { score: inserted.score, scoreValue: inserted.scoreValue }
         });
+
+        // Smart notification for new lead
+        createNotification({
+          projectId: String(projectId),
+          type: "LEAD_CAPTURED",
+          severity: inserted.score === "HIGH" ? "warning" : "info",
+          title: inserted.score === "HIGH" ? `High Intent Lead: ${inserted.name || inserted.email || "Visitor"}` : `New Lead Captured: ${inserted.name || inserted.email || "Visitor"}`,
+          message: [inserted.email, inserted.phone, inserted.company, inserted.userIntent].filter(Boolean).join(" • ") || "Contact info saved",
+          referenceId: inserted.id,
+          dedupeKey: `lead_${inserted.id}`,
+        }).catch(() => {});
       }
 
       return inserted;

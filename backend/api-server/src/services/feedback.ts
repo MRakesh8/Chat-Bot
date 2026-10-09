@@ -11,6 +11,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { createNotification } from "./notifications";
 
 export async function submitMessageFeedback(params: {
   projectId: string;
@@ -149,8 +150,8 @@ async function processSuggestionNotification(projectId: string, feedbackId: stri
       return;
     }
 
-    // 4. Create notification in existing notifications table
-    await db.insert(notifications).values({
+    // 4. Create notification via notification service (with deduplication & activity emission)
+    await createNotification({
       organizationId: finalOrgId as string,
       projectId,
       type: "SUGGESTION",
@@ -159,7 +160,6 @@ async function processSuggestionNotification(projectId: string, feedbackId: stri
       message: preview,
       referenceId: feedbackId,
       dedupeKey,
-      createdAt: new Date(),
     });
 
     logger.info({ projectId, feedbackId, organizationId: finalOrgId }, "Created suggestion notification for project owner/admins");
@@ -197,12 +197,7 @@ async function processNotificationThresholds(projectId: string, type: "LIKE" | "
     const [org] = await db.select({ organizationId: projects.organizationId }).from(projects).where(eq(projects.id, projectId));
     if (!org || !org.organizationId) return;
 
-    // We can't easily onConflictDoNothing with an index on just dedupeKey unless we make it unique.
-    // Instead we query first to prevent dupes.
-    const [existing] = await db.select().from(notifications).where(eq(notifications.dedupeKey, dedupeKey));
-    if (existing) return;
-
-    await db.insert(notifications).values({
+    await createNotification({
       organizationId: org.organizationId as string,
       projectId,
       type: "QUALITY_ALERT",

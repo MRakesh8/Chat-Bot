@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 
 import geminiRouter from "./gemini";
 import localDemoGeminiRouter from "./gemini/local-demo";
@@ -14,6 +14,7 @@ import integrationsRouter from "./integrations";
 import systemRouter from "./system";
 import superAdminRouter from "./super-admin";
 import agentRouter from "./agent";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -28,6 +29,7 @@ router.use("/services", servicesRouter);
 router.use("/payments", paymentsRouter);
 router.use("/integrations", integrationsRouter);
 router.use("/agent", agentRouter);
+router.use("/notifications", notificationsRouter);
 router.use("/system", systemRouter);
 router.use("/super-admin", superAdminRouter);
 

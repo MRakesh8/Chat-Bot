@@ -26,6 +26,7 @@ import { VerificationAgent } from "../agents/verification";
 import { logger } from "../lib/logger";
 import { isDemoProjectId } from "./demo-project";
 import { emitActivityEvent } from "./activity";
+import { createNotification } from "./notifications";
 
 export interface CustomerContext {
   customerId?: string;
@@ -516,6 +517,29 @@ export async function executeServerTool(
             status: isVerified ? "SUCCESS" : "FAILED"
           }
         });
+
+        // Trigger smart notification if tool execution failed
+        if (!isVerified) {
+          createNotification({
+            projectId,
+            type: "TOOL_FAILED",
+            severity: "error",
+            title: `Tool Failed: ${resolvedActionName}`,
+            message: `Tool execution on provider ${providerName} failed. ${executionError || verRes.data?.reason || "Verification failed"}`,
+            referenceId: insertedAudit.id,
+            dedupeKey: `tool_fail_${insertedAudit.id}`,
+          }).catch(() => {});
+        } else if (serverRiskLevel === "HIGH" || serverRiskLevel === "CRITICAL") {
+          createNotification({
+            projectId,
+            type: "SECURITY_ALERT",
+            severity: "warning",
+            title: `High Risk Tool Action: ${resolvedActionName}`,
+            message: `Action executed on provider ${providerName} with ${serverRiskLevel} risk level.`,
+            referenceId: insertedAudit.id,
+            dedupeKey: `tool_sec_${insertedAudit.id}`,
+          }).catch(() => {});
+        }
       }
     } catch (auditErr) {
       logger.error({ auditErr }, "Failed to write audit log entry");

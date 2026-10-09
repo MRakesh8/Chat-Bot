@@ -50,3 +50,30 @@ export async function resolveAuthorizedProjectOrg(
 
   return null;
 }
+
+export async function resolveAuthorizedOrgForUser(
+  req: any,
+  providedOrgId?: string
+): Promise<{ authoritativeOrgId: string } | null> {
+  const auth = req.auth;
+  if (!auth) return null;
+
+  const memberships = auth.memberships || [];
+  const isSuperAdmin = auth.dbUser?.role === "super_admin";
+
+  let candidateOrgIds: string[] = memberships.map((m: any) => m.organizationId);
+
+  if (providedOrgId && typeof providedOrgId === "string") {
+    if (candidateOrgIds.includes(providedOrgId) || isSuperAdmin) {
+      return { authoritativeOrgId: providedOrgId };
+    }
+  }
+
+  if (candidateOrgIds.length > 0) {
+    return { authoritativeOrgId: candidateOrgIds[0] };
+  }
+
+  return null;
+}
+
+
