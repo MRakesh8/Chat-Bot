@@ -55,6 +55,34 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
     staleTime: 1000 * 60 * 5,
   });
 
+  const { data: unreadSummary } = useQuery({
+    queryKey: ["top-nav-unread-summary", projectId],
+    queryFn: async () => {
+      try {
+        if (projectId) {
+          const res = await authFetch(apiUrl(`/api/projects/${projectId}/notifications/unread-count`));
+          if (res.ok) {
+            const data = await res.json();
+            return { totalUnread: Number(data.unreadCount || 0) };
+          }
+        } else {
+          const res = await authFetch(apiUrl(`/api/notifications/unread-summary`));
+          if (res.ok) {
+            const data = await res.json();
+            return { totalUnread: Number(data.totalUnread || 0) };
+          }
+        }
+      } catch {
+        // Safe fallback
+      }
+      return { totalUnread: 0 };
+    },
+    enabled: !!user,
+    refetchInterval: 20000,
+  });
+
+  const unreadCount = unreadSummary?.totalUnread || 0;
+
   const getPageTitle = () => {
     if (location === "/" || location.startsWith("/chat")) return "Chat Workspace";
     if (location.startsWith("/projects/new")) return "New Project";
@@ -153,10 +181,14 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
             }
           }}
           className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary relative transition-colors"
-          title="Notifications"
+          title={unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}` : "Notifications"}
         >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center animate-in zoom-in shadow-xs">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </Button>
 
         {/* User Account Menu */}

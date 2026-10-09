@@ -202,7 +202,12 @@ export default function SettingsPage() {
                 )}
 
                 {effectiveProjectId ? (
-                  <Notifications projectId={effectiveProjectId} />
+                  <Notifications
+                    projectId={effectiveProjectId}
+                    onSelectTab={(tab) => {
+                      setLocation(`/projects/${effectiveProjectId}/edit?tab=${tab}`);
+                    }}
+                  />
                 ) : null}
               </div>
             ) : (
