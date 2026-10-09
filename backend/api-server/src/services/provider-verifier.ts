@@ -56,7 +56,9 @@ export class ProviderVerifier {
 
   private static async verifyGemini(apiKey: string): Promise<VerifiedProvider> {
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+        signal: AbortSignal.timeout(10000)
+      });
       if (!response.ok) {
         if (response.status === 403 || response.status === 401) throw new Error("Invalid Gemini API key.");
         throw new Error(`Gemini API Error: ${response.status}`);
@@ -90,7 +92,8 @@ export class ProviderVerifier {
   private static async verifyGroq(apiKey: string): Promise<VerifiedProvider> {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/models", {
-        headers: { "Authorization": `Bearer ${apiKey}` }
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10000)
       });
       if (!response.ok) {
         if (response.status === 401) throw new Error("Invalid Groq API key.");
@@ -112,7 +115,8 @@ export class ProviderVerifier {
   private static async verifyOpenAI(apiKey: string): Promise<VerifiedProvider> {
     try {
       const response = await fetch("https://api.openai.com/v1/models", {
-        headers: { "Authorization": `Bearer ${apiKey}` }
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10000)
       });
       if (!response.ok) {
         if (response.status === 401) throw new Error("Invalid OpenAI API key.");
@@ -134,7 +138,8 @@ export class ProviderVerifier {
   private static async verifyClaude(apiKey: string): Promise<VerifiedProvider> {
     try {
       const response = await fetch("https://api.anthropic.com/v1/models", {
-        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" }
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        signal: AbortSignal.timeout(10000)
       });
       if (!response.ok) {
         if (response.status === 401) throw new Error("Invalid Anthropic API key.");
@@ -155,14 +160,17 @@ export class ProviderVerifier {
 
   private static async verifyOpenRouter(apiKey: string): Promise<VerifiedProvider> {
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/models");
+      const response = await fetch("https://openrouter.ai/api/v1/models", {
+        signal: AbortSignal.timeout(10000)
+      });
       if (!response.ok) {
         throw new Error(`OpenRouter API Error: ${response.statusText}`);
       }
       
       // auth check using openrouter key endpoint
       const authCheck = await fetch("https://openrouter.ai/api/v1/auth/key", {
-        headers: { "Authorization": `Bearer ${apiKey}` }
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10000)
       });
       if (!authCheck.ok) {
          throw new Error("Invalid OpenRouter API key.");

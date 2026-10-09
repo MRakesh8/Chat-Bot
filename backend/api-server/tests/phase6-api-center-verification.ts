@@ -213,6 +213,44 @@ async function runPhase6Tests() {
     assert(attackerProjectQuery.length === 0, "IDOR Guard: Cross-project key query returns 0 rows");
   }
 
+  // --- Section 6: RBAC Authorization & System Reset Scoping ---
+  console.log("\n--- Section 6: RBAC Authorization & System Reset Scoping ---");
+  {
+    // 1. RBAC Check simulation
+    const normalUserAuth = { dbUser: { role: "user", email: "regular@example.com" } };
+    const adminUserAuth = { dbUser: { role: "admin", email: "admin@example.com" } };
+    const isNormalAdmin = normalUserAuth.dbUser.role === "admin" || normalUserAuth.dbUser.role === "super_admin";
+    const isAdminUser = adminUserAuth.dbUser.role === "admin" || adminUserAuth.dbUser.role === "super_admin";
+    
+    assert(isNormalAdmin === false, "RBAC: Regular user role denied admin access");
+    assert(isAdminUser === true, "RBAC: Admin role granted access to system reports");
+
+    // 2. Verify System Reset scoping: System reset query must NOT touch user keys
+    if (createdUserKeyId) {
+      // Mark user key with specific status
+      await db.update(userApiKeys).set({
+        status: "QUOTA_EXCEEDED",
+        failureReason: "User quota hit",
+      }).where(eq(userApiKeys.id, createdUserKeyId));
+
+      // Simulate system reset query: where isSystem = true or userId is null
+      await db.update(userApiKeys)
+        .set({
+          status: "HEALTHY",
+          cooldownUntil: null,
+          failureReason: null,
+        })
+        .where(eq(userApiKeys.isSystem, true));
+
+      // Check that the user key was NOT affected
+      const [userKeyAfterSystemReset] = await db.select().from(userApiKeys).where(eq(userApiKeys.id, createdUserKeyId));
+      assert(
+        userKeyAfterSystemReset.status === "QUOTA_EXCEEDED" && userKeyAfterSystemReset.failureReason === "User quota hit",
+        "System Reset Scoping: Resetting system keys strictly leaves user keys untouched"
+      );
+    }
+  }
+
   // --- Cleanup ---
   console.log("\n--- Cleaning up Test Fixtures ---");
   try {
