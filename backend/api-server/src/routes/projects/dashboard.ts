@@ -12,10 +12,12 @@ import {
   widgetAnalytics,
   notifications,
   notificationSettings,
+  enterpriseAuditLogs,
   withTenantContext
 } from "@workspace/db";
 import { isDemoProjectId, getDemoDashboardData, getDemoNotifications } from "../../services/demo-project";
 import { resolveAuthorizedProjectOrg } from "../../security";
+import { getProjectActivity, activityBus, ActivityItem } from "../../services/activity";
 
 const router = Router({ mergeParams: true });
 
@@ -42,6 +44,9 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
     const { project, authoritativeOrgId } = resolved;
 
     const dashboardData = await withTenantContext(authoritativeOrgId, async (tx: any) => {
+      // Real activity cutoff (15 minutes window)
+      const activeCutoff = new Date(Date.now() - 15 * 60 * 1000);
+
       // Customers
       const [{ totalCustomers }] = await tx.select({
         totalCustomers: sql<number>`count(${customers.id})`.mapWith(Number)
@@ -69,7 +74,42 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
         highIntentLeads: sql<number>`count(${widgetLeads.id})`.mapWith(Number)
       }).from(widgetLeads).where(and(eq(widgetLeads.projectId, projectId), eq(widgetLeads.score, "HIGH")));
 
-      const totalToolExecutions = 0;
+      // Real Active Sessions (chat sessions with message or creation activity in the last 15 minutes, not expired)
+      const [{ activeSessions }] = await tx.select({
+        activeSessions: sql<number>`count(distinct ${chatSessions.id})`.mapWith(Number)
+      })
+      .from(chatSessions)
+      .where(and(
+        eq(chatSessions.projectId, projectId),
+        sql`(${chatSessions.createdAt} >= (now() - interval '15 minutes') OR EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.sessionId} = ${chatSessions.id} 
+          AND ${messages.createdAt} >= (now() - interval '15 minutes')
+        ))`,
+        sql`(${chatSessions.expiresAt} IS NULL OR ${chatSessions.expiresAt} > now())`
+      ));
+
+      // Real Active Customers / Users
+      const [{ activeCustomers }] = await tx.select({
+        activeCustomers: sql<number>`count(distinct ${customers.id})`.mapWith(Number)
+      })
+      .from(customers)
+      .innerJoin(chatSessions, eq(customers.id, chatSessions.customerId))
+      .where(and(
+        eq(customers.projectId, projectId),
+        sql`(${chatSessions.createdAt} >= (now() - interval '15 minutes') OR EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.sessionId} = ${chatSessions.id} 
+          AND ${messages.createdAt} >= (now() - interval '15 minutes')
+        ))`
+      ));
+
+      const realActiveUsers = Math.max(activeSessions, activeCustomers);
+
+      // Real Tool Executions count from audit logs
+      const [{ totalToolExecutions }] = await tx.select({
+        totalToolExecutions: sql<number>`count(${enterpriseAuditLogs.id})`.mapWith(Number)
+      }).from(enterpriseAuditLogs).where(eq(enterpriseAuditLogs.projectId, projectId));
 
       // Usage / Quota
       const [entitlement] = await tx.select().from(projectEntitlements).where(eq(projectEntitlements.projectId, projectId));
@@ -87,15 +127,17 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
           aiResponses: totalAiResponses,
           toolExecutions: totalToolExecutions,
           capturedLeads,
-          highIntentLeads
+          highIntentLeads,
+          activeUsers: realActiveUsers,
+          activeSessions: activeSessions
         },
         customers: {
           total: totalCustomers,
-          active: totalCustomers
+          active: realActiveUsers
         },
         conversations: {
           total: totalConversations,
-          active: 0
+          active: activeSessions
         },
         aiActivity: {
           responses: totalAiResponses,
@@ -150,7 +192,8 @@ router.get("/stats", async (req: any, res: Response): Promise<any> => {
       capturedLeads: 18,
       highIntentLeads: 6,
       conversionRate: "5.3%",
-      activeUsers: demo.customers.active
+      activeUsers: 3,
+      activeSessions: 3
     });
   }
 
@@ -167,6 +210,8 @@ router.get("/stats", async (req: any, res: Response): Promise<any> => {
     const { authoritativeOrgId } = resolved;
 
     const statsData = await withTenantContext(authoritativeOrgId, async (tx: any) => {
+      const activeCutoff = new Date(Date.now() - 15 * 60 * 1000);
+
       const [{ totalCustomers }] = await tx.select({
         totalCustomers: sql<number>`count(${customers.id})`.mapWith(Number)
       }).from(customers).where(eq(customers.projectId, projectId));
@@ -190,17 +235,53 @@ router.get("/stats", async (req: any, res: Response): Promise<any> => {
         highIntentLeads: sql<number>`count(${widgetLeads.id})`.mapWith(Number)
       }).from(widgetLeads).where(and(eq(widgetLeads.projectId, projectId), eq(widgetLeads.score, "HIGH")));
 
+      // Real Active Sessions & Users
+      const [{ activeSessions }] = await tx.select({
+        activeSessions: sql<number>`count(distinct ${chatSessions.id})`.mapWith(Number)
+      })
+      .from(chatSessions)
+      .where(and(
+        eq(chatSessions.projectId, projectId),
+        sql`(${chatSessions.createdAt} >= (now() - interval '15 minutes') OR EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.sessionId} = ${chatSessions.id} 
+          AND ${messages.createdAt} >= (now() - interval '15 minutes')
+        ))`,
+        sql`(${chatSessions.expiresAt} IS NULL OR ${chatSessions.expiresAt} > now())`
+      ));
+
+      const [{ activeCustomers }] = await tx.select({
+        activeCustomers: sql<number>`count(distinct ${customers.id})`.mapWith(Number)
+      })
+      .from(customers)
+      .innerJoin(chatSessions, eq(customers.id, chatSessions.customerId))
+      .where(and(
+        eq(customers.projectId, projectId),
+        sql`(${chatSessions.createdAt} >= (now() - interval '15 minutes') OR EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.sessionId} = ${chatSessions.id} 
+          AND ${messages.createdAt} >= (now() - interval '15 minutes')
+        ))`
+      ));
+
+      const realActiveUsers = Math.max(activeSessions, activeCustomers);
+
+      const [{ totalToolExecutions }] = await tx.select({
+        totalToolExecutions: sql<number>`count(${enterpriseAuditLogs.id})`.mapWith(Number)
+      }).from(enterpriseAuditLogs).where(eq(enterpriseAuditLogs.projectId, projectId));
+
       const convRate = totalConversations > 0 ? ((capturedLeads / totalConversations) * 100).toFixed(1) + "%" : "0.0%";
 
       return {
         totalCustomers,
         totalConversations,
         aiResponses: totalAiResponses,
-        toolExecutions: 0,
+        toolExecutions: totalToolExecutions,
         capturedLeads,
         highIntentLeads,
         conversionRate: convRate,
-        activeUsers: totalCustomers
+        activeUsers: realActiveUsers,
+        activeSessions: activeSessions
       };
     });
 
@@ -378,55 +459,181 @@ router.get("/activity", async (req: any, res: Response): Promise<any> => {
     }
 
     const { authoritativeOrgId } = resolved;
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 25, 100));
+    const before = typeof req.query.before === "string" ? req.query.before : undefined;
 
-    const activityData = await withTenantContext(authoritativeOrgId, async (tx: any) => {
-      const leadsList = await tx.select()
-        .from(widgetLeads)
-        .where(eq(widgetLeads.projectId, projectId))
-        .orderBy(desc(widgetLeads.createdAt))
-        .limit(10);
-
-      const recentMessages = await tx.select({
-        content: messages.content,
-        sender: messages.sender,
-        createdAt: messages.createdAt,
-      })
-      .from(messages)
-      .innerJoin(chatSessions, eq(messages.sessionId, chatSessions.id))
-      .where(and(eq(chatSessions.projectId, projectId), eq(messages.sender, "user")))
-      .orderBy(desc(messages.createdAt))
-      .limit(10);
-
-      const activityItems = [];
-      for (const lead of leadsList) {
-        activityItems.push({
-          id: `lead-${lead.id}`,
-          type: "lead",
-          title: `Lead Captured: ${lead.name || lead.email || "Visitor"}`,
-          detail: [lead.email, lead.phone, lead.company].filter(Boolean).join(" • ") || "Contact info saved",
-          timestamp: lead.createdAt ? new Date(lead.createdAt).toISOString() : new Date().toISOString()
-        });
-      }
-
-      for (const msg of recentMessages) {
-        activityItems.push({
-          id: `msg-${Math.random().toString(36).substring(7)}`,
-          type: "message",
-          title: "Incoming Visitor Query",
-          detail: msg.content.length > 60 ? msg.content.substring(0, 60) + "..." : msg.content,
-          timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString()
-        });
-      }
-
-      activityItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-      return activityItems.slice(0, 15);
+    const activityData = await getProjectActivity({
+      projectId,
+      organizationId: authoritativeOrgId,
+      limit,
+      before,
     });
 
     return res.json(activityData);
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error fetching activity data");
     return res.status(500).json({ error: "Unable to load activity feed. Please try again." });
+  }
+});
+
+/**
+ * GET /projects/:projectId/dashboard/activity/stream
+ * Real-time SSE Live Activity Stream with Tenant Context Isolation
+ */
+router.get("/activity/stream", async (req: any, res: Response): Promise<any> => {
+  const { projectId } = req.params;
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
+
+  try {
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      if (!req.auth) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+
+    // Initial connection event
+    res.write(`data: ${JSON.stringify({ type: "connected", projectId, timestamp: new Date().toISOString() })}\n\n`);
+
+    // Subscribe to real-time events for this authorized project
+    const unsubscribe = activityBus.subscribe(projectId, (event: ActivityItem) => {
+      try {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      } catch (err) {
+        // Response stream might be ending
+      }
+    });
+
+    // 15-second keepalive ping to maintain connection through firewalls/proxies
+    const keepaliveInterval = setInterval(() => {
+      try {
+        res.write(`: keepalive\n\n`);
+      } catch (err) {
+        clearInterval(keepaliveInterval);
+      }
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(keepaliveInterval);
+      unsubscribe();
+    });
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error opening activity stream");
+    return res.status(500).json({ error: "Failed to establish activity stream" });
+  }
+});
+
+/**
+ * GET /projects/:projectId/dashboard/live
+ * Ultra-fast live activity and active user sync endpoint
+ */
+router.get("/live", async (req: any, res: Response): Promise<any> => {
+  const { projectId } = req.params;
+  if (isDemoProjectId(projectId)) {
+    return res.json({
+      activeUsers: 3,
+      activeSessions: 3,
+      totalConversations: 342,
+      totalCustomers: 128,
+      aiResponses: 856,
+      toolExecutions: 24,
+      capturedLeads: 18,
+      recentActivity: [
+        { id: "demo-act-1", type: "lead", title: "New Lead Captured: Sarah Connor", detail: "sarah@cyberdyne.com", timestamp: new Date().toISOString() }
+      ],
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
+
+  try {
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      if (!req.auth) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
+    }
+
+    const { authoritativeOrgId } = resolved;
+
+    const liveData = await withTenantContext(authoritativeOrgId, async (tx: any) => {
+      const [{ activeSessions }] = await tx.select({
+        activeSessions: sql<number>`count(distinct ${chatSessions.id})`.mapWith(Number)
+      })
+      .from(chatSessions)
+      .where(and(
+        eq(chatSessions.projectId, projectId),
+        sql`(${chatSessions.createdAt} >= (now() - interval '15 minutes') OR EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.sessionId} = ${chatSessions.id} 
+          AND ${messages.createdAt} >= (now() - interval '15 minutes')
+        ))`,
+        sql`(${chatSessions.expiresAt} IS NULL OR ${chatSessions.expiresAt} > now())`
+      ));
+
+      const [{ activeCustomers }] = await tx.select({
+        activeCustomers: sql<number>`count(distinct ${customers.id})`.mapWith(Number)
+      })
+      .from(customers)
+      .innerJoin(chatSessions, eq(customers.id, chatSessions.customerId))
+      .where(and(
+        eq(customers.projectId, projectId),
+        sql`(${chatSessions.createdAt} >= (now() - interval '15 minutes') OR EXISTS (
+          SELECT 1 FROM ${messages} 
+          WHERE ${messages.sessionId} = ${chatSessions.id} 
+          AND ${messages.createdAt} >= (now() - interval '15 minutes')
+        ))`
+      ));
+
+      const realActiveUsers = Math.max(activeSessions, activeCustomers);
+
+      const [{ totalConversations }] = await tx.select({
+        totalConversations: sql<number>`count(${chatSessions.id})`.mapWith(Number)
+      }).from(chatSessions).where(eq(chatSessions.projectId, projectId));
+
+      const [{ totalAiResponses }] = await tx.select({
+        totalAiResponses: sql<number>`count(${messages.id})`.mapWith(Number)
+      })
+      .from(messages)
+      .innerJoin(chatSessions, eq(messages.sessionId, chatSessions.id))
+      .where(and(eq(chatSessions.projectId, projectId), eq(messages.sender, "assistant")));
+
+      const [{ capturedLeads }] = await tx.select({
+        capturedLeads: sql<number>`count(${widgetLeads.id})`.mapWith(Number)
+      }).from(widgetLeads).where(eq(widgetLeads.projectId, projectId));
+
+      const [{ totalToolExecutions }] = await tx.select({
+        totalToolExecutions: sql<number>`count(${enterpriseAuditLogs.id})`.mapWith(Number)
+      }).from(enterpriseAuditLogs).where(eq(enterpriseAuditLogs.projectId, projectId));
+
+      const recentItems = await getProjectActivity({
+        projectId,
+        organizationId: authoritativeOrgId,
+        limit: 15,
+      });
+
+      return {
+        activeUsers: realActiveUsers,
+        activeSessions,
+        totalConversations,
+        aiResponses: totalAiResponses,
+        toolExecutions: totalToolExecutions,
+        capturedLeads,
+        recentActivity: recentItems,
+        timestamp: new Date().toISOString()
+      };
+    });
+
+    return res.json(liveData);
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error fetching live dashboard data");
+    return res.status(500).json({ error: "Unable to load live dashboard data. Please try again." });
   }
 });
 

@@ -43,13 +43,22 @@ const DEMO_USER: User = {
 const DEMO_DB_USER: DbUser = {
   id: "00000000-0000-4000-8000-000000000001",
   email: "demo@example.com",
-  role: "super_admin",
+  role: "user",
   features: {
     canCreateProject: true,
     canUseWidgetStudio: true,
     canUseContextEngine: true,
   },
   memberships: [{ organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9", role: "owner" }]
+};
+
+const DEMO_SESSION: Session = {
+  access_token: "local-demo-token",
+  token_type: "bearer",
+  expires_in: 3600,
+  refresh_token: "demo-refresh-token",
+  user: DEMO_USER,
+  expires_at: Math.floor(Date.now() / 1000) + 3600,
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -84,6 +93,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
     setUser(DEMO_USER);
     setDbUser(DEMO_DB_USER);
+    setSession(DEMO_SESSION);
     setActiveOrganizationId(DEMO_DB_USER.memberships![0].organizationId);
     setIsLoading(false);
   };
@@ -130,6 +140,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (isDemo) {
       setUser(DEMO_USER);
       setDbUser(DEMO_DB_USER);
+      setSession(DEMO_SESSION);
       setActiveOrgId(DEMO_DB_USER.memberships![0].organizationId);
       setIsLoading(false);
     }

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
@@ -38,6 +38,8 @@ type Project = {
   userId: string;
   shareToken: string;
   isActive: boolean;
+  websiteUrl?: string | null;
+  status?: string;
   createdAt: string;
   updatedAt: string;
   entitlement?: {
@@ -106,23 +108,7 @@ export default function ProjectEditPage() {
 
   const { prefetchTab, getTabTriggerProps } = useProjectTabPrefetch(projectId, activeTab);
 
-  const { data: project, isLoading, isError, error } = useQuery<{
-    id: string;
-    name: string;
-    description: string | null;
-    systemPrompt: string;
-    userId: string;
-    shareToken: string;
-    isActive: boolean;
-    createdAt: string;
-    updatedAt: string;
-    entitlement?: {
-      allowed: boolean;
-      status: "TRIAL_ACTIVE" | "TRIAL_EXPIRED" | "SUBSCRIPTION_ACTIVE" | "SUSPENDED";
-      expiresAt?: string | null;
-      message?: string | null;
-    };
-  }, { status?: number; message?: string }>({
+  const { data: project, isLoading, isError, error } = useQuery<Project, { status?: number; message?: string }>({
     queryKey: ["project", projectId],
     queryFn: async () => {
       const res = await authFetch(apiUrl(`/api/projects/${projectId}`));

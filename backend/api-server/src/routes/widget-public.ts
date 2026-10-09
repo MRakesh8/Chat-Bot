@@ -2,8 +2,9 @@ import { submitMessageFeedback, submitProjectFeedback } from '../services/feedba
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
 import { db, crypto, withBypassRLS } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads, chatSessions, customers, workflowExecutions, executionSteps, projectLocalSessions } from "@workspace/db/schema";
+import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads, chatSessions, messages as messagesTable, customers, workflowExecutions, executionSteps, projectLocalSessions } from "@workspace/db/schema";
 import { eq, and, isNull, or, desc } from "drizzle-orm";
+import { emitActivityEvent } from "../services/activity";
 import { UniversalProviderAdapter } from "../services/llm-provider";
 import { minuteCache, llmResponseCache } from "../services/cache-provider";
 import nodeCrypto from "crypto";
@@ -352,11 +353,115 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
     const lastUserMessage = messages[messages.length - 1]?.content || "";
     const previousAssistantMessage = messages.length >= 2 ? messages[messages.length - 2]?.content : "";
 
+    // 1. Resolve or Create chatSession in Database for Widget Visitor
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let dbSessionId: string | null = null;
+    
+    if (sessionId && UUID_PATTERN.test(sessionId)) {
+      try {
+        const existingSession = await db.query.chatSessions.findFirst({
+          where: and(eq(chatSessions.id, sessionId), eq(chatSessions.projectId, projectId))
+        });
+        if (existingSession) {
+          dbSessionId = existingSession.id;
+          // Refresh session activity expiration (active for next 30 minutes)
+          await db.update(chatSessions)
+            .set({ expiresAt: new Date(Date.now() + 30 * 60 * 1000) })
+            .where(eq(chatSessions.id, dbSessionId));
+        }
+      } catch (err) {
+        req.log.warn({ err }, "Error checking existing chat session");
+      }
+    }
+    
+    if (!dbSessionId) {
+      try {
+        // Create new chat session for this widget interaction
+        const newSessionId = (sessionId && UUID_PATTERN.test(sessionId)) ? sessionId : nodeCrypto.randomUUID();
+        const [createdSession] = await db.insert(chatSessions).values({
+          id: newSessionId,
+          projectId: projectId,
+          userId: userId,
+          title: lastUserMessage ? (lastUserMessage.slice(0, 50) + (lastUserMessage.length > 50 ? "..." : "")) : "Website Visitor Chat",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+        }).returning();
+        if (createdSession) {
+          dbSessionId = createdSession.id;
+          emitActivityEvent({
+            id: `session-${createdSession.id}`,
+            type: "conversation_started",
+            title: "New Visitor Conversation Started",
+            detail: createdSession.title || "Website visitor connected",
+            timestamp: createdSession.createdAt || new Date(),
+            projectId,
+            sessionId: createdSession.id,
+          });
+        }
+      } catch (err) {
+        req.log.error({ err }, "Error inserting new widget chat session");
+      }
+    }
+
+    // 2. Persist User Message to DB
+    if (dbSessionId && lastUserMessage) {
+      try {
+        const [savedMsg] = await db.insert(messagesTable).values({
+          sessionId: dbSessionId,
+          sender: "user",
+          content: lastUserMessage,
+        }).returning();
+        if (savedMsg) {
+          emitActivityEvent({
+            id: `msg-${savedMsg.id}`,
+            type: "message",
+            title: "Incoming Visitor Query",
+            detail: lastUserMessage,
+            status: "DELIVERED",
+            timestamp: savedMsg.createdAt || new Date(),
+            projectId,
+            sessionId: dbSessionId,
+          });
+        }
+      } catch (err) {
+        req.log.error({ err }, "Error saving widget user message");
+      }
+    }
+
+    // Helper to persist Assistant Message to DB
+    const saveAssistantMessage = async (assistantText: string) => {
+      if (dbSessionId && assistantText && assistantText.trim()) {
+        try {
+          const [savedAiMsg] = await db.insert(messagesTable).values({
+            sessionId: dbSessionId,
+            sender: "assistant",
+            content: assistantText.trim(),
+          }).returning();
+          await db.update(chatSessions)
+            .set({ expiresAt: new Date(Date.now() + 30 * 60 * 1000) })
+            .where(eq(chatSessions.id, dbSessionId));
+          if (savedAiMsg) {
+            emitActivityEvent({
+              id: `ai-${savedAiMsg.id}`,
+              type: "ai_response",
+              title: "AI Assistant Response",
+              detail: assistantText.trim(),
+              status: "DELIVERED",
+              timestamp: savedAiMsg.createdAt || new Date(),
+              projectId,
+              sessionId: dbSessionId,
+            });
+          }
+        } catch (err) {
+          req.log.error({ err }, "Error saving widget assistant message");
+        }
+      }
+    };
+
     // Track Lead & Frequent Questions asynchronously in background
     if (lastUserMessage) {
       processAndSaveLead({
         projectId,
-        sessionId: (sessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) ? sessionId : undefined,
+        sessionId: dbSessionId || ((sessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) ? sessionId : undefined),
         sourcePageUrl: websiteContext?.url,
         userMessage: lastUserMessage,
       }).catch((e) => req.log.error({ err: e }, "Background lead processing error"));
@@ -449,11 +554,16 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
         });
 
+        let correctionFullText = "";
         for await (const chunk of stream) {
           if (chunk.text) {
+            correctionFullText += chunk.text;
             res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
             if (typeof (res as any).flush === 'function') (res as any).flush();
           }
+        }
+        if (correctionFullText) {
+          await saveAssistantMessage(correctionFullText);
         }
       } catch (err) {
         req.log.error({ err }, "Error in correction flow");
@@ -538,7 +648,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
       req.log.warn({ err }, "Could not resolve customer identity for widget session");
     }
 
-    // Fuse context & KB
+    // Fuse context & KB with conversation coreference awareness
     let fusedContext;
     try {
       fusedContext = await contextFuser.fuse({
@@ -548,7 +658,8 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         userId,
         customerId,
         settings: contextSettings as any,
-        apiKeys: keys
+        apiKeys: keys,
+        conversationHistory: messages
       });
     } catch (err: any) {
       req.log.error({ err }, "Failed contextFuser() step...");
@@ -595,132 +706,125 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
     const chatMessages = [
       { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Understood. I will act as a helpful customer support chatbot using the provided knowledge base context." }] },
+      { role: "model", parts: [{ text: "Understood. I will act as the official AI assistant for this connected website, strictly answering using the provided knowledge base, website context, and project instructions." }] },
       ...messages.map(m => ({
         role: (m.role === "assistant" ? "model" : "user"),
         parts: [{ text: m.content }]
       }))
     ];
 
-    // INTENT DETECTION
+    // INTENT DETECTION (FOR SERVER ACTIONS & DOM TOOLS)
     let intentType = "GENERAL_QUESTION";
-    try {
-      const intentPrompt = `Classify the user's intent based on their latest message: "${lastUserMessage}".
-      
-      Categories:
-      - ACTION_REQUEST: The user is explicitly asking you to DO something on the website (e.g., "Create a client", "Click the Add button", "Fill the form", "Navigate to dashboard", "Delete the invoice", "Update my profile").
-      - KNOWLEDGE_QUESTION: The user is asking for information, facts, or help that requires an explanation (e.g., "How do I create a client?", "What is your refund policy?").
-      - GENERAL_QUESTION: Conversational chat or generic questions.
-      
-      Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;
-
-      const intentHash = nodeCrypto.createHash("sha256").update(`${projectId}:${intentPrompt}`).digest("hex");
-      const cachedIntent = await llmResponseCache.get(intentHash);
-
-      if (cachedIntent) {
-        intentType = cachedIntent;
-      } else {
-        const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
-          contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
-          config: { responseMimeType: "application/json" }
-        });
+    if (req.body?.confirmationToken) {
+      intentType = "ACTION_REQUEST";
+    } else {
+      try {
+        const intentPrompt = `Classify the user's intent based on their latest message: "${lastUserMessage}".
         
-        try {
-          const raw = (intentRes.text || "").trim();
-          const cleanText = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-          const parsed = JSON.parse(cleanText || "{}");
-          if (parsed.intent) {
-            intentType = parsed.intent;
-            await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL
+        Categories:
+        - ACTION_REQUEST: The user is explicitly asking you to DO something or perform a transactional operation on the website (e.g., "Create a client", "Click the Add button", "Fill the form", "Navigate to dashboard", "Delete the invoice", "Update my profile", "Cancel order").
+        - KNOWLEDGE_QUESTION: The user is asking for information, profile, skills, services, projects, FAQs, pricing, or help that requires an explanation (e.g., "Who is Rakesh?", "What projects has he built?", "What are his skills?", "How do I create a client?", "What is your refund policy?").
+        - GENERAL_QUESTION: Conversational chat, greetings, or generic questions.
+        
+        Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;
+
+        const intentHash = nodeCrypto.createHash("sha256").update(`${projectId}:${intentPrompt}`).digest("hex");
+        const cachedIntent = await llmResponseCache.get(intentHash);
+
+        if (cachedIntent) {
+          intentType = cachedIntent;
+        } else {
+          const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
+            contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
+            config: { responseMimeType: "application/json" }
+          });
+          
+          try {
+            const raw = (intentRes.text || "").trim();
+            const cleanText = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+            const parsed = JSON.parse(cleanText || "{}");
+            if (parsed.intent) {
+              intentType = parsed.intent;
+              await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL
+            }
+          } catch (e) {
+            req.log.error({ err: e }, "Failed to parse intent JSON");
           }
-        } catch (e) {
-          req.log.error({ err: e }, "Failed to parse intent JSON");
         }
+      } catch (e) {
+        req.log.error({ err: e }, "Intent detection failed, defaulting to GENERAL_QUESTION");
       }
-    } catch (e) {
-      req.log.error({ err: e }, "Intent detection failed, defaulting to GENERAL_QUESTION");
     }
     
     req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
 
     try {
-      // 1. Delegate request to CoordinatorAgent -> BusinessAgent pipeline
-      const { CoordinatorAgent } = require("../agents/coordinator");
-      const coordinator = new CoordinatorAgent();
-      const coordRes = await coordinator.execute({
-        projectId,
-        sessionId,
-        userId: userId || "public_visitor",
-        customerContext: {
-          customerId,
-          verified: customerVerified,
-          isBusinessAdmin: false
-        },
-        payload: {
-          message: lastUserMessage,
-          intent: lastUserMessage,
-          confirmationToken: req.body?.confirmationToken,
-          context: finalWebsiteContext
+      // 1. Delegate strictly ACTION_REQUEST to CoordinatorAgent -> BusinessAgent pipeline
+      if (intentType === "ACTION_REQUEST" || req.body?.confirmationToken) {
+        const { CoordinatorAgent } = require("../agents/coordinator");
+        const coordinator = new CoordinatorAgent();
+        const coordRes = await coordinator.execute({
+          projectId,
+          sessionId,
+          userId: userId || "public_visitor",
+          customerContext: {
+            customerId,
+            verified: customerVerified,
+            isBusinessAdmin: false
+          },
+          payload: {
+            message: lastUserMessage,
+            intent: lastUserMessage,
+            confirmationToken: req.body?.confirmationToken,
+            context: finalWebsiteContext
+          }
+        });
+
+        if (coordRes.success && coordRes.data) {
+          const bData = coordRes.data;
+
+          if (bData.status === "PENDING_CONFIRMATION") {
+            res.write(`data: ${JSON.stringify({ activity: "Confirmation required" })}\n\n`);
+            res.write(`data: ${JSON.stringify({
+              status: "PENDING_CONFIRMATION",
+              requiresConfirmation: true,
+              confirmationToken: bData.confirmationToken,
+              actionId: bData.actionId,
+              riskLevel: bData.riskLevel,
+              toolExecuted: bData.toolExecuted,
+              content: bData.response
+            })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+            await saveAssistantMessage(bData.response);
+            return res;
+          }
+
+          if (bData.intent === "action" && bData.status === "COMPLETED") {
+            res.write(`data: ${JSON.stringify({ activity: "Executing authorized server tool..." })}\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
+            res.write(`data: ${JSON.stringify({ activity: "Verifying execution status..." })}\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
+            res.write(`data: ${JSON.stringify({ activity: "Completed" })}\n\n`);
+            res.write(`data: ${JSON.stringify({ content: bData.response, toolExecuted: bData.toolExecuted, result: bData.result })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+            await saveAssistantMessage(bData.response);
+            return res;
+          }
+
+          if (bData.action) {
+            const payload = { 
+              action: bData.action,
+              executionId: bData.executionId,
+              security: bData.security
+            };
+            res.write(`data: ${JSON.stringify(payload)}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+            return res;
+          }
         }
-      });
-
-      if (coordRes.success && coordRes.data?.intent) {
-        const bData = coordRes.data;
-
-        if (bData.status === "PENDING_CONFIRMATION") {
-          res.write(`data: ${JSON.stringify({ activity: "Confirmation required" })}\n\n`);
-          res.write(`data: ${JSON.stringify({
-            status: "PENDING_CONFIRMATION",
-            requiresConfirmation: true,
-            confirmationToken: bData.confirmationToken,
-            actionId: bData.actionId,
-            riskLevel: bData.riskLevel,
-            toolExecuted: bData.toolExecuted,
-            content: bData.response
-          })}\n\n`);
-          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-          res.end();
-          return res;
-        }
-
-        if (bData.intent === "action" && bData.status === "COMPLETED") {
-          res.write(`data: ${JSON.stringify({ activity: "Executing authorized server tool..." })}\n\n`);
-          if (typeof (res as any).flush === 'function') (res as any).flush();
-          res.write(`data: ${JSON.stringify({ activity: "Verifying execution status..." })}\n\n`);
-          if (typeof (res as any).flush === 'function') (res as any).flush();
-          res.write(`data: ${JSON.stringify({ activity: "Completed" })}\n\n`);
-          res.write(`data: ${JSON.stringify({ content: bData.response, toolExecuted: bData.toolExecuted, result: bData.result })}\n\n`);
-          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-          res.end();
-          return res;
-        }
-
-        if (bData.intent === "clarification" || bData.intent === "unsupported") {
-          res.write(`data: ${JSON.stringify({ content: bData.response })}\n\n`);
-          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-          res.end();
-          return res;
-        }
-
-        if ((bData.intent === "general_conversation" || bData.intent === "business_information" || bData.intent === "information") && bData.response) {
-          res.write(`data: ${JSON.stringify({ content: bData.response })}\n\n`);
-          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-          res.end();
-          return res;
-        }
-      }
-
-      // If intent was ACTION_REQUEST for browser steps
-      if (intentType === "ACTION_REQUEST" && coordRes.success && coordRes.data?.action) {
-        const payload = { 
-          action: coordRes.data.action,
-          executionId: coordRes.data.executionId,
-          security: coordRes.data.security
-        };
-        res.write(`data: ${JSON.stringify(payload)}\n\n`);
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-        res.end();
-        return res;
       }
 
       // 2. Fallback to conversational LLM stream with context
@@ -752,12 +856,16 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         }
       }
 
+      if (fullResponseText) {
+        await saveAssistantMessage(fullResponseText);
+      }
+
       // Track Knowledge Gap if AI returned fallback response or retrieved no context
       if (isFallbackResponse(fullResponseText) || (!fusedContext?.knowledgeChunks || fusedContext.knowledgeChunks.length === 0)) {
         trackKnowledgeGap({
           projectId,
           questionText: lastUserMessage,
-          sessionId: isUuidSessionId ? sessionId : undefined,
+          sessionId: dbSessionId || (isUuidSessionId ? sessionId : undefined),
           sourceUrl: websiteContext?.url,
           confidence: "low",
           reason: isFallbackResponse(fullResponseText) ? "AI_FALLBACK" : "NO_RAG_MATCH",

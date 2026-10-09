@@ -529,8 +529,8 @@ export async function searchProjectKnowledge(params: {
     }
   }
 
-  // 1. Candidate Generation
-  const fetchLimit = 10;
+  // 1. Candidate Generation with Domain-Aware Query Expansion
+  const fetchLimit = 15;
   const STOP_WORDS = new Set([
     "about", "above", "after", "again", "against", "all", "and", "any", "are", "because", "been", "before", "being", 
     "below", "between", "both", "but", "could", "did", "does", "doing", "down", "during", "each", "few", "for", 
@@ -542,14 +542,39 @@ export async function searchProjectKnowledge(params: {
     "with", "you", "your", "yours", "yourself", "yourselves", "tell", "show", "give", "please", "can", "will"
   ]);
 
-  const words = uniqueStrings(
-    params.query
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((word) => word.length > 2 && !STOP_WORDS.has(word)),
-    8,
-  );
+  const rawWords = params.query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+
+  // Query Expansion for high-frequency intent domains
+  const expandedTerms = new Set<string>(rawWords);
+  const lowerQuery = params.query.toLowerCase();
+
+  if (lowerQuery.match(/\b(skills?|tech(nology|nologies)?|stack|frameworks?|languages?|expertise|proficienc(y|ies))\b/i)) {
+    ["skills", "technologies", "specializes", "stack", "tools", "languages", "frameworks", "developer", "html", "react", "node", "postgresql"].forEach(t => expandedTerms.add(t));
+  }
+  if (lowerQuery.match(/\b(projects?|built|builds|portfolio|created|develop(ed|ment)?|apps?|solutions?)\b/i)) {
+    ["projects", "built", "completed", "features", "platform", "website", "chatbot", "psychology", "farm"].forEach(t => expandedTerms.add(t));
+  }
+  if (lowerQuery.match(/\b(educat(ion|ed)?|degree|undergraduate|study|college|university|background)\b/i)) {
+    ["education", "undergraduate", "developer", "degree", "profile", "rakesh"].forEach(t => expandedTerms.add(t));
+  }
+  if (lowerQuery.match(/\b(services?|offer(s|ing)?|solutions?|capabilities|consult(ing|ation)?)\b/i)) {
+    ["services", "specializes", "development", "websites", "chatbots", "custom software", "api"].forEach(t => expandedTerms.add(t));
+  }
+  if (lowerQuery.match(/\b(contact|reach|email|phone|whatsapp|call|talk|discuss|hire|hire me|connect)\b/i)) {
+    ["contact", "whatsapp", "phone", "email", "discussion", "quotation", "planning"].forEach(t => expandedTerms.add(t));
+  }
+  if (lowerQuery.match(/\b(who|about|profile|bio|background|rakesh)\b/i)) {
+    ["rakesh", "profile", "about", "developer", "undergraduate", "specializes"].forEach(t => expandedTerms.add(t));
+  }
+  if (lowerQuery.match(/\b(cost|price|pricing|rates?|quote|quotation|charge|fee)\b/i)) {
+    ["pricing", "contact", "cost", "quotation", "discussion", "scope", "estimate"].forEach(t => expandedTerms.add(t));
+  }
+
+  const words = uniqueStrings(Array.from(expandedTerms), 15);
 
   let metadataMatches: Array<any> = [];
   if (words.length > 0) {
@@ -560,6 +585,7 @@ export async function searchProjectKnowledge(params: {
       ilike(knowledgeSources.notes, `%${word}%`),
       ilike(knowledgeSources.summary, `%${word}%`),
       ilike(knowledgeSources.keywordIndex, `%${word}%`),
+      ilike(knowledgeSources.rawContent, `%${word}%`),
       ilike(knowledgeSources.sourceUrl, `%${word}%`),
     ]);
 
@@ -636,18 +662,23 @@ export async function searchProjectKnowledge(params: {
   for (const match of metadataMatches) {
     const id = match.id;
     if (!candidatesMap.has(id)) {
-      candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: match.notes || match.rawContent || match.summary || "" });
+      // Build composite rich text that preserves notes, rawContent, and summary
+      const compositeText = [match.notes, match.rawContent, match.summary].filter(Boolean).join("\n\n");
+      candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: compositeText || match.rawContent || "" });
     }
   }
 
   for (const chunk of similarChunks) {
     const id = chunk.sourceId;
     if (id && !candidatesMap.has(id)) {
-      candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: chunk.chunkText || chunk.notes || chunk.rawContent || chunk.summary || "" });
+      const compositeText = [chunk.notes, chunk.chunkText || chunk.rawContent, chunk.summary].filter(Boolean).join("\n\n");
+      candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: compositeText || chunk.chunkText || "" });
     } else if (id && candidatesMap.has(id)) {
       const existing = candidatesMap.get(id);
       existing.isVectorMatch = true;
-      existing.contentText = existing.contentText.length > 0 ? existing.contentText : (chunk.chunkText || chunk.notes || chunk.rawContent || chunk.summary || "");
+      if (!existing.contentText || existing.contentText.length < 50) {
+        existing.contentText = [chunk.notes, chunk.chunkText || chunk.rawContent, chunk.summary].filter(Boolean).join("\n\n");
+      }
     }
   }
 
@@ -658,60 +689,62 @@ export async function searchProjectKnowledge(params: {
   for (const candidate of candidatesMap.values()) {
     const lowerTag = (candidate.tag || "").toLowerCase();
     const lowerCategory = (candidate.categoryName || "").toLowerCase();
+    const lowerTitle = (candidate.title || "").toLowerCase();
     const lowerContent = (candidate.contentText || "").toLowerCase();
+    const lowerNotes = (candidate.notes || "").toLowerCase();
+    const lowerSummary = (candidate.summary || "").toLowerCase();
+    const fullSourceText = `${lowerTitle} ${lowerTag} ${lowerCategory} ${lowerContent} ${lowerNotes} ${lowerSummary}`;
 
     let tagScore = 0;
     let categoryScore = 0;
     let keywordScore = 0;
     let entityScore = 0;
-    // Boost vector score to make semantic similarity more impactful, but still behind exact metadata match
-    let vectorScore = candidate.isVectorMatch ? 80 : 0; 
+    let vectorScore = candidate.isVectorMatch ? 120 : 0; 
     let intentScore = 0;
 
     if (lowerTag === queryStr) {
       tagScore = 200;
     } else if (lowerTag && (lowerTag.includes(queryStr) || queryTerms.some(t => lowerTag.includes(t)))) {
-      tagScore = 150;
+      tagScore = 120;
     }
 
     if (lowerCategory && (lowerCategory.includes(queryStr) || queryTerms.some(t => lowerCategory.includes(t)))) {
       categoryScore = 100;
     }
 
-    const lowerTitle = (candidate.title || "").toLowerCase();
     const isExactEntity = lowerTitle === queryStr || lowerTag.split('/').map((s: string) => s.trim()).includes(queryStr);
-    
     if (isExactEntity) {
-      entityScore = 180;
-    } else if (queryStr && lowerContent.includes(queryStr)) {
-      entityScore = 60;
+      entityScore = 200;
+    } else if (queryStr && fullSourceText.includes(queryStr)) {
+      entityScore = 100;
     }
 
-    if (queryTerms.some(t => lowerContent.includes(t))) {
-      keywordScore = 80;
+    // Keyword & Expanded Term Scoring
+    let matchedTermsCount = 0;
+    for (const term of queryTerms) {
+      if (fullSourceText.includes(term)) {
+        matchedTermsCount++;
+      }
     }
+    keywordScore = Math.min(matchedTermsCount * 40, 240);
 
     // Intent-Aware Ranking Boost
     if (params.ragIntent) {
       if (params.ragIntent === "GENERAL_OVERVIEW") {
-        if (lowerCategory.includes("overview") || lowerCategory.includes("website") || lowerCategory.includes("about") || lowerTag.includes("homepage") || lowerTag.includes("about")) {
-          intentScore += 250;
-        }
-        // Penalize highly specific/technical chunks for general questions
-        if (lowerCategory.includes("troubleshooting") || lowerCategory.includes("authentication") || lowerTag.includes("crud") || lowerTag.includes("login")) {
-          intentScore -= 100;
+        if (lowerCategory.includes("overview") || lowerCategory.includes("website") || lowerCategory.includes("about") || lowerTag.includes("homepage") || lowerTag.includes("about") || fullSourceText.includes("specializes") || fullSourceText.includes("portfolio")) {
+          intentScore += 200;
         }
       } else if (params.ragIntent === "HOW_TO") {
         if (lowerCategory.includes("how-to") || lowerCategory.includes("instructions") || lowerCategory.includes("guide")) {
           intentScore += 150;
         }
-      } else if (params.ragIntent === "AUTHENTICATION") {
-        if (lowerCategory.includes("authentication") || lowerTag.includes("login") || lowerTag.includes("oauth") || lowerTag.includes("credentials")) {
-          intentScore += 200;
-        }
       } else if (params.ragIntent === "PRICING") {
-        if (lowerCategory.includes("pricing") || lowerTag.includes("cost") || lowerTag.includes("billing")) {
-          intentScore += 200;
+        if (lowerCategory.includes("pricing") || lowerTag.includes("cost") || lowerTag.includes("billing") || fullSourceText.includes("pricing") || fullSourceText.includes("quotation")) {
+          intentScore += 220;
+        }
+      } else if (params.ragIntent === "CONTACT") {
+        if (fullSourceText.includes("whatsapp") || fullSourceText.includes("phone") || fullSourceText.includes("email") || fullSourceText.includes("contact")) {
+          intentScore += 220;
         }
       }
     }
@@ -726,8 +759,10 @@ export async function searchProjectKnowledge(params: {
   let topCandidates = scoredCandidates;
   if (topCandidates.length > 0) {
     const topScore = topCandidates[0].retrievalScore;
-    // Anti-Pollution Guard: Discard candidates with score < 50% of top score
-    topCandidates = topCandidates.filter(c => c.retrievalScore >= topScore * 0.5);
+    // Anti-Pollution Guard: Discard candidates with score < 40% of top score unless top score is low
+    if (topScore > 100) {
+      topCandidates = topCandidates.filter(c => c.retrievalScore >= topScore * 0.4);
+    }
   }
   
   topCandidates = topCandidates.slice(0, params.limit ?? 5);
@@ -739,7 +774,7 @@ export async function searchProjectKnowledge(params: {
   });
   logger.info(`[Retrieval Ranking]\n${debugLog.trim()}`);
 
-  // 5. Context Formatting
+  // 5. Context Formatting — Clean signal without noisy internal tags
   const MAX_CHARS = 10000;
   let currentChars = 0;
 
@@ -747,20 +782,12 @@ export async function searchProjectKnowledge(params: {
   const retrievedIdsSet = new Set<string>();
 
   for (const candidate of topCandidates) {
-    let itemStr = `Category: ${candidate.categoryName || "Uncategorized"}\nTag: ${candidate.tag || "None"}\n`;
-    if (candidate.sourceUrl) {
-      itemStr += `Source URL: ${candidate.sourceUrl}\n`;
+    const titleLabel = candidate.title && candidate.title !== "null" ? candidate.title : (candidate.categoryName && candidate.categoryName !== "Uncategorized" ? candidate.categoryName : "Knowledge Base Reference");
+    let itemStr = `[Knowledge Reference: ${titleLabel}]\n${candidate.contentText.trim()}`;
+    
+    if (candidate.sourceUrl && candidate.sourceUrl !== "null" && candidate.sourceUrl.startsWith("http")) {
+      itemStr += `\nReference URL: ${candidate.sourceUrl}`;
     }
-    if (candidate.websiteLinks && candidate.websiteLinks.length > 0) {
-      itemStr += `Website Links: ${candidate.websiteLinks.join(", ")}\n`;
-    }
-    if (candidate.videoLinks && candidate.videoLinks.length > 0) {
-      itemStr += `Video Links: ${candidate.videoLinks.join(", ")}\n`;
-    }
-    if (candidate.githubLinks && candidate.githubLinks.length > 0) {
-      itemStr += `GitHub Links: ${candidate.githubLinks.join(", ")}\n`;
-    }
-    itemStr += `\nContent:\n${candidate.contentText}`;
     
     if (currentChars + itemStr.length > MAX_CHARS && finalItems.length > 0) break;
 

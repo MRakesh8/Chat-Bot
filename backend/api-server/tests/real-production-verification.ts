@@ -38,9 +38,15 @@ async function runVerification() {
       testProjectId = existingKey.projectId;
       testKeyId = existingKey.id;
       
+      const envKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      let validEncryptedKey = existingKey.encryptedKey;
+      if (envKey) {
+        validEncryptedKey = crypto.encrypt(envKey);
+      }
+      
       // Unset isPrimary for other keys of this project and set test key as primary with stale model
       await db.update(projectApiKeys).set({ isPrimary: false }).where(eq(projectApiKeys.projectId, testProjectId));
-      await db.update(projectApiKeys).set({ model: originalModel, isPrimary: true, isEnabled: true }).where(eq(projectApiKeys.id, testKeyId));
+      await db.update(projectApiKeys).set({ encryptedKey: validEncryptedKey, model: originalModel, isPrimary: true, isEnabled: true }).where(eq(projectApiKeys.id, testKeyId));
       
       console.log(`[TEST 2] Forced projectKey ${testKeyId} as primary model stale: ${originalModel}`);
       
@@ -138,9 +144,8 @@ async function runVerification() {
 
   // 5. HEALTH CHECK TEST (No hardcoded retired models)
   try {
-    const [existingKey] = await db.select().from(projectApiKeys).where(eq(projectApiKeys.provider, "gemini")).limit(1);
-    if (existingKey) {
-      const apiKey = crypto.decrypt(existingKey.encryptedKey);
+    const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    if (apiKey) {
       const verified = await ProviderVerifier.verifyAndFetchModels(apiKey, "gemini");
 
       const hasRetiredModel = verified.models.includes("gemini-1.5-flash") || verified.models.includes("gemini-2.0-flash-exp");
@@ -149,6 +154,8 @@ async function runVerification() {
         pass: !hasRetiredModel && verified.models.length > 0,
         evidence: `Discovered active models: [${verified.models.join(", ")}]. Default model resolved: ${verified.defaultModel}. Retired models present: ${hasRetiredModel}`
       };
+    } else {
+      results["5_HEALTH_CHECK_DYNAMIC_DISCOVERY"] = { pass: false, evidence: "No Gemini API key available in env for test" };
     }
   } catch (e: any) {
     results["5_HEALTH_CHECK_DYNAMIC_DISCOVERY"] = { pass: false, evidence: `Error: ${e.message}` };

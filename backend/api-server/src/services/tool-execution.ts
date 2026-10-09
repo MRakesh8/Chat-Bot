@@ -25,6 +25,7 @@ import {
 import { VerificationAgent } from "../agents/verification";
 import { logger } from "../lib/logger";
 import { isDemoProjectId } from "./demo-project";
+import { emitActivityEvent } from "./activity";
 
 export interface CustomerContext {
   customerId?: string;
@@ -481,9 +482,9 @@ export async function executeServerTool(
 
     const isVerified = verRes.data?.verified === true && !executionError;
 
-    // 9. Enterprise Audit Logging
+    // 9. Enterprise Audit Logging & Live Activity Emission
     try {
-      await db.insert(enterpriseAuditLogs).values({
+      const [insertedAudit] = await db.insert(enterpriseAuditLogs).values({
         projectId,
         actionType: isVerified ? "TOOL_EXECUTION_SUCCESS" : "TOOL_EXECUTION_FAILED",
         details: {
@@ -498,7 +499,24 @@ export async function executeServerTool(
           riskLevel: serverRiskLevel,
           error: executionError || verRes.data?.reason || null
         }
-      });
+      }).returning();
+
+      if (insertedAudit) {
+        emitActivityEvent({
+          id: `audit-${insertedAudit.id}`,
+          type: "tool_execution",
+          title: `Tool Executed: ${resolvedActionName}`,
+          detail: `Provider: ${providerName} • Status: ${isVerified ? "SUCCESS" : "FAILED"}`,
+          status: isVerified ? "SUCCESS" : "FAILED",
+          timestamp: insertedAudit.timestamp,
+          projectId,
+          metadata: {
+            durationMs: Date.now() - executionStart,
+            riskLevel: serverRiskLevel,
+            status: isVerified ? "SUCCESS" : "FAILED"
+          }
+        });
+      }
     } catch (auditErr) {
       logger.error({ auditErr }, "Failed to write audit log entry");
     }

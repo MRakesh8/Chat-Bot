@@ -102,7 +102,7 @@ export class GeminiAdapter extends BaseProviderAdapter {
         }
       };
     } catch (e: any) {
-      throw new Error(this.classifyError(e));
+      throw e;
     }
   }
 
@@ -134,29 +134,77 @@ export class GeminiAdapter extends BaseProviderAdapter {
         if (chunk.text) yield { text: chunk.text };
       }
     } catch (e: any) {
-      throw new Error(this.classifyError(e));
+      throw e;
     }
   }
 
   classifyError(error: any): any {
-    const status = error?.status || error?.response?.status;
-    const msg = error?.message?.toLowerCase() || "";
-    
-    if (status === 401 || status === 403 || (status === 400 && (msg.includes("api key") || msg.includes("apikey") || msg.includes("invalid key")))) {
+    if (!error) return "UNKNOWN_ERROR";
+    const status = error?.status || error?.response?.status || error?.code;
+    const msg = (error?.message || String(error || "")).toLowerCase();
+
+    // 1. DNS / Network / Connection Failures
+    if (
+      msg.includes("no such host") ||
+      msg.includes("getaddrinfo") ||
+      msg.includes("enotfound") ||
+      msg.includes("econnrefused") ||
+      msg.includes("etimedout") ||
+      msg.includes("fetch failed") ||
+      msg.includes("network error") ||
+      msg.includes("socket hang up") ||
+      msg.includes("connection refused")
+    ) {
+      return "PROVIDER_UNAVAILABLE";
+    }
+
+    // 2. Invalid Credential (401 / 403 / Bad Key)
+    if (
+      status === 401 ||
+      status === 403 ||
+      (status === 400 && (msg.includes("api key") || msg.includes("apikey") || msg.includes("invalid key") || msg.includes("unauthenticated"))) ||
+      msg.includes("invalid_credential") ||
+      msg.includes("permission denied")
+    ) {
       return "INVALID_CREDENTIAL";
     }
-    if (status === 429 || msg.includes("quota") || msg.includes("rate limit") || msg.includes("rate_limited")) {
+
+    // 3. Rate Limited (429 / Quota)
+    if (
+      status === 429 ||
+      msg.includes("quota") ||
+      msg.includes("rate limit") ||
+      msg.includes("rate_limited") ||
+      msg.includes("resource_exhausted")
+    ) {
       return "RATE_LIMITED";
     }
-    if (status === 404 || msg.includes("not found") || msg.includes("is not found") || msg.includes("unsupported for generatecontent")) {
-      if (msg.includes("models/") || msg.includes("not found") || msg.includes("model") || status === 404) {
-        return "MODEL_NOT_FOUND";
-      }
-      return "INVALID_REQUEST";
+
+    // 4. Model Not Found (404 status or specific missing model string)
+    if (
+      status === 404 ||
+      msg.includes("is not found") ||
+      msg.includes("unsupported for generatecontent") ||
+      (msg.includes("model") && msg.includes("not found")) ||
+      (msg.includes("models/") && msg.includes("not found"))
+    ) {
+      return "MODEL_NOT_FOUND";
     }
+
+    // 5. Invalid Request (400)
     if (status === 400) return "INVALID_REQUEST";
-    if (status >= 500) return "PROVIDER_UNAVAILABLE";
-    if (msg.includes("invalid_credential")) return "INVALID_CREDENTIAL";
+
+    // 6. Provider Unavailable (5xx or High Demand)
+    if (
+      (typeof status === "number" && status >= 500) ||
+      status === 503 ||
+      msg.includes("high demand") ||
+      msg.includes("unavailable") ||
+      msg.includes("overloaded")
+    ) {
+      return "PROVIDER_UNAVAILABLE";
+    }
+
     return "UNKNOWN_ERROR";
   }
 }

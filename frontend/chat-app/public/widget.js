@@ -68,8 +68,23 @@
   let isOpen = sessionStorage.getItem(storageKeyOpen) === 'true';
   let isMobile = window.innerWidth <= 768;
 
-  let contextEngine = null;
-  let contextSessionId = null;
+  function generateSessionUuid() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  const sessionKey = `aria_ctx_session_${widgetToken}`;
+  let contextSessionId = sessionStorage.getItem(sessionKey);
+  if (!contextSessionId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contextSessionId)) {
+    contextSessionId = generateSessionUuid();
+    sessionStorage.setItem(sessionKey, contextSessionId);
+  }
 
   async function initContextEngine() {
     if (!config.contextEngine || !config.contextEngine.enabled) return;
@@ -85,12 +100,6 @@
             maxPayloadBytes: config.contextEngine.maxContextSizeBytes || 6144
           });
           contextEngine.start(document.body);
-          
-          contextSessionId = sessionStorage.getItem(`aria_ctx_session_${widgetToken}`);
-          if (!contextSessionId) {
-            contextSessionId = Math.random().toString(36).substring(2, 15);
-            sessionStorage.setItem(`aria_ctx_session_${widgetToken}`, contextSessionId);
-          }
           
           if (config.contextEngine.developerDebugMode) {
             setInterval(async () => {

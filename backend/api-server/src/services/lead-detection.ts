@@ -1,5 +1,6 @@
 import { db, widgetLeads } from "@workspace/db";
 import { eq, and, or, sql } from "drizzle-orm";
+import { emitActivityEvent } from "./activity";
 
 export interface LeadScoreConfig {
   weights: {
@@ -181,7 +182,22 @@ export async function processAndSaveLead(params: {
         .where(eq(widgetLeads.id, existingLead.id))
         .returning();
 
-      return updated[0];
+      const resLead = updated[0];
+      if (resLead) {
+        emitActivityEvent({
+          id: `lead-${resLead.id}`,
+          type: "lead",
+          title: resLead.score === "HIGH" ? `High Intent Lead: ${resLead.name || resLead.email || "Visitor"}` : `Lead Captured: ${resLead.name || resLead.email || "Visitor"}`,
+          detail: [resLead.email, resLead.phone, resLead.company, resLead.userIntent].filter(Boolean).join(" • ") || "Contact info saved",
+          status: resLead.score === "HIGH" ? "HIGH_INTENT" : resLead.status,
+          timestamp: resLead.updatedAt || new Date(),
+          projectId: String(projectId),
+          sessionId: resLead.sessionId || undefined,
+          metadata: { score: resLead.score, scoreValue: resLead.scoreValue }
+        });
+      }
+
+      return resLead;
     } else {
       // Create new lead record
       const [inserted] = await db
@@ -202,6 +218,20 @@ export async function processAndSaveLead(params: {
           updatedAt: new Date(),
         })
         .returning();
+
+      if (inserted) {
+        emitActivityEvent({
+          id: `lead-${inserted.id}`,
+          type: "lead",
+          title: inserted.score === "HIGH" ? `High Intent Lead: ${inserted.name || inserted.email || "Visitor"}` : `Lead Captured: ${inserted.name || inserted.email || "Visitor"}`,
+          detail: [inserted.email, inserted.phone, inserted.company, inserted.userIntent].filter(Boolean).join(" • ") || "Contact info saved",
+          status: inserted.score === "HIGH" ? "HIGH_INTENT" : inserted.status,
+          timestamp: inserted.createdAt || new Date(),
+          projectId: String(projectId),
+          sessionId: inserted.sessionId || undefined,
+          metadata: { score: inserted.score, scoreValue: inserted.scoreValue }
+        });
+      }
 
       return inserted;
     }

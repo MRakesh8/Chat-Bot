@@ -175,6 +175,12 @@ export class UniversalRouterService {
         userId: null,
         action: "MODEL_AUTO_SUBSTITUTION",
         target: initialResolved.credential.id,
+        details: JSON.stringify({
+          provider: initialResolved.provider,
+          originalModel: originalModelId || initialResolved.modelId,
+          substitutedModel: finalResolved.modelId,
+          credentialType: initialResolved.credential.type
+        })
       } as any);
       
       console.log(`[AI-ROUTER] Automatically substituted model ${originalModelId || initialResolved.modelId} -> ${finalResolved.modelId} for ${initialResolved.credential.type} key ${initialResolved.credential.id}`);
@@ -192,7 +198,7 @@ export class UniversalRouterService {
     
     let attempt = 0;
     let wasRepaired = resolved.modelId !== originalModelId;
-    while (attempt < 3) {
+    while (attempt < 2) {
       attempt++;
       const startTime = Date.now();
       try {
@@ -228,7 +234,7 @@ export class UniversalRouterService {
           error: e.message
         }).catch((e2: any) => console.error(e2));
 
-        if ((status === "MODEL_NOT_FOUND" || status === "RATE_LIMITED") && attempt < 3) {
+        if (status === "MODEL_NOT_FOUND" && attempt === 1) {
            if (resolved.modelId) excludeModels.add(resolved.modelId);
            const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
            const redis = getRedisClient();
@@ -256,9 +262,10 @@ export class UniversalRouterService {
     const adapter = registry.getAdapter(resolved.provider);
     
     let attempt = 0;
-    while (attempt < 3) {
+    while (attempt < 2) {
       attempt++;
       const startTime = Date.now();
+      let chunkCount = 0;
       try {
         const stream = adapter.generateChatStream({
           messages,
@@ -266,7 +273,11 @@ export class UniversalRouterService {
           model: resolved
         });
         
-        yield* stream;
+        for await (const chunk of stream) {
+          chunkCount++;
+          yield chunk;
+        }
+
         if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, originalModelId);
 
         const { updateKeyStats } = await import("../api-health");
@@ -290,7 +301,7 @@ export class UniversalRouterService {
           error: e.message
         }).catch((e2: any) => console.error(e2));
 
-        if ((status === "MODEL_NOT_FOUND" || status === "RATE_LIMITED") && attempt < 3) {
+        if (status === "MODEL_NOT_FOUND" && attempt === 1 && chunkCount === 0) {
            if (resolved.modelId) excludeModels.add(resolved.modelId);
            const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
            const redis = getRedisClient();

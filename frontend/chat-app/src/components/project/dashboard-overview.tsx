@@ -28,7 +28,11 @@ import {
   Clock,
   ExternalLink,
   Layers,
-  Building2
+  Building2,
+  Cpu,
+  Star,
+  ShieldAlert,
+  Sparkles
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -47,6 +51,8 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
   const authFetch = useAuthFetch();
   const { toast } = useToast();
   const [isReAnalyzing, setIsReAnalyzing] = React.useState(false);
+  const [realtimeEvents, setRealtimeEvents] = React.useState<any[]>([]);
+  const [streamConnected, setStreamConnected] = React.useState(false);
 
   const { data: dashboardData, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["admin-dashboard", projectId],
@@ -59,8 +65,111 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
       return res.json();
     },
     enabled: !!projectId,
-    refetchInterval: 15000, // Refresh every 15s
+    refetchInterval: 5000, // Real-time sync every 5s
   });
+
+  const { data: liveActivity = [] } = useQuery({
+    queryKey: ["dashboard-activity", projectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/dashboard/activity`));
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!projectId,
+    refetchInterval: 5000,
+  });
+
+  // Merge & Deduplicate polled activity with real-time stream events
+  React.useEffect(() => {
+    if (liveActivity && liveActivity.length > 0) {
+      setRealtimeEvents((prev) => {
+        const map = new Map<string, any>();
+        for (const act of liveActivity) {
+          map.set(act.id, act);
+        }
+        for (const act of prev) {
+          if (!map.has(act.id)) {
+            map.set(act.id, act);
+          }
+        }
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      });
+    }
+  }, [liveActivity]);
+
+  // Connect to SSE Activity Stream
+  React.useEffect(() => {
+    if (!projectId) return;
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function connectStream() {
+      try {
+        const streamUrl = apiUrl(`/api/projects/${projectId}/dashboard/activity/stream`);
+        const res = await authFetch(streamUrl, {
+          signal: controller.signal,
+          headers: { Accept: "text/event-stream" }
+        });
+
+        if (!res.ok || !res.body) {
+          if (isMounted) setStreamConnected(false);
+          return;
+        }
+
+        if (isMounted) setStreamConnected(true);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (isMounted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+
+          for (const chunk of parts) {
+            const trimmed = chunk.trim();
+            if (trimmed.startsWith("data: ")) {
+              try {
+                const eventData = JSON.parse(trimmed.slice(6));
+                if (eventData && eventData.id && eventData.type !== "connected") {
+                  setRealtimeEvents((prev) => {
+                    const map = new Map<string, any>();
+                    map.set(eventData.id, eventData);
+                    for (const item of prev) {
+                      if (!map.has(item.id)) map.set(item.id, item);
+                    }
+                    return Array.from(map.values()).sort(
+                      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    );
+                  });
+                }
+              } catch {
+                // Ignore malformed chunks
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          if (isMounted) setStreamConnected(false);
+        }
+      }
+    }
+
+    connectStream();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [projectId]);
 
   if (isLoading) {
     return (
@@ -99,8 +208,10 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
   if (!dashboardData) return null;
 
   const { overview, integrations, website, whatsapp, usage, errors } = dashboardData;
+  const activeUserCount = overview?.activeUsers || dashboardData.customers?.active || 0;
+  const activeSessionCount = overview?.activeSessions || dashboardData.conversations?.active || 0;
 
-  // Truthful activity summary (no random data generation)
+  // Truthful activity summary
   const activityData = [
     { date: "Current Period", conversations: overview.totalConversations || 0, aiResponses: overview.aiResponses || 0 }
   ];
@@ -136,8 +247,14 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                 <MessageSquare className="w-4 h-4" />
               </div>
             </div>
-            <div>
+            <div className="flex items-baseline justify-between">
               <div className="text-3xl font-bold text-foreground">{overview.totalConversations}</div>
+              {activeSessionCount > 0 && (
+                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full mr-1 bg-blue-500 animate-pulse" />
+                  {activeSessionCount} Active
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -164,8 +281,12 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                 <Users className="w-4 h-4" />
               </div>
             </div>
-            <div>
+            <div className="flex items-baseline justify-between">
               <div className="text-3xl font-bold text-foreground">{overview.totalCustomers}</div>
+              <Badge variant="outline" className={`text-[10px] ${activeUserCount > 0 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 font-medium" : "text-muted-foreground"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${activeUserCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/60"}`} />
+                {activeUserCount > 0 ? `${activeUserCount} Active Now` : "0 Active"}
+              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -181,7 +302,10 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                   <Activity className="w-4 h-4 text-primary" />
                   AI Engagement Overview
                 </span>
-                <Badge variant="outline" className="text-[10px]">LIVE METRICS</Badge>
+                <Badge variant="outline" className={`text-[10px] ${activeUserCount > 0 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : ""}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full mr-1 ${activeUserCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
+                  {activeUserCount > 0 ? "LIVE ACTIVITY" : "REALTIME SYNC"}
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
@@ -231,6 +355,92 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
             </CardContent>
           </Card>
           
+          {/* Live Activity Feed */}
+          <Card className="bg-card border-border shadow-xs overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${streamConnected ? "bg-emerald-500 animate-ping" : "bg-blue-500"}`} />
+                  Real-Time Live Activity
+                </span>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className={`text-[10px] ${streamConnected ? "text-emerald-500 border-emerald-500/30 font-medium" : "text-muted-foreground"}`}>
+                    {streamConnected ? "LIVE STREAM" : "REALTIME SYNC"}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    {(realtimeEvents.length > 0 ? realtimeEvents : liveActivity).length} Events
+                  </Badge>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {(realtimeEvents.length > 0 ? realtimeEvents : liveActivity).length > 0 ? (
+                <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                  {(realtimeEvents.length > 0 ? realtimeEvents : liveActivity).map((act: any) => {
+                    let iconNode = <MessageSquare className="w-3.5 h-3.5" />;
+                    let iconBg = "bg-blue-500/10 text-blue-500 border-blue-500/20";
+                    
+                    if (act.type === "lead") {
+                      iconNode = <UserCheck className="w-3.5 h-3.5" />;
+                      iconBg = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+                    } else if (act.type === "ai_response") {
+                      iconNode = <Zap className="w-3.5 h-3.5" />;
+                      iconBg = "bg-violet-500/10 text-violet-500 border-violet-500/20";
+                    } else if (act.type === "tool_execution") {
+                      iconNode = <Cpu className="w-3.5 h-3.5" />;
+                      iconBg = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+                    } else if (act.type === "conversation_started") {
+                      iconNode = <Sparkles className="w-3.5 h-3.5" />;
+                      iconBg = "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
+                    } else if (act.type === "feedback") {
+                      iconNode = <Star className="w-3.5 h-3.5" />;
+                      iconBg = "bg-cyan-500/10 text-cyan-500 border-cyan-500/20";
+                    } else if (act.type === "security") {
+                      iconNode = <ShieldAlert className="w-3.5 h-3.5" />;
+                      iconBg = "bg-rose-500/10 text-rose-500 border-rose-500/20";
+                    } else if (act.type === "integration") {
+                      iconNode = <Plug className="w-3.5 h-3.5" />;
+                      iconBg = "bg-pink-500/10 text-pink-500 border-pink-500/20";
+                    }
+
+                    return (
+                      <div
+                        key={act.id}
+                        className="p-3 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 transition-all flex items-start gap-3 text-xs"
+                      >
+                        <div className={`p-2 rounded-lg shrink-0 mt-0.5 border ${iconBg}`}>
+                          {iconNode}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-foreground truncate">{act.title}</span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {act.status && (
+                                <Badge variant="outline" className="text-[9px] px-1 py-0 uppercase">
+                                  {act.status}
+                                </Badge>
+                              )}
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-muted-foreground text-xs line-clamp-2">{act.detail}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground text-xs">
+                  <Activity className="w-6 h-6 text-muted-foreground/40 mb-2" />
+                  <p className="font-medium text-foreground">Waiting for live visitor activity...</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Real-time interactions and tool executions will appear here automatically.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="bg-card border-border shadow-xs overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center justify-between">

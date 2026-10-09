@@ -44,21 +44,26 @@ export class ContextFuser {
     customerId?: string | null;
     settings: ContextSettings;
     apiKeys?: any[];
+    conversationHistory?: Array<{ role: string; content: string }>;
   }): Promise<FusedContext> {
-    const { userMessage, websiteContext, projectId, userId, customerId, settings, apiKeys } = params;
+    const { userMessage, websiteContext, projectId, userId, customerId, settings, apiKeys, conversationHistory } = params;
 
     // ── 0. Intent Classification ──
     let userIntent: any = "General Question";
     if (apiKeys && apiKeys.length > 0) {
-      const activeKey = apiKeys[0].decryptedKey || apiKeys[0].encryptedKey;
-      userIntent = await intentClassifier.classify({
-        userMessage,
-        apiKey: activeKey
-      });
+      try {
+        const activeKey = apiKeys[0].decryptedKey || apiKeys[0].encryptedKey;
+        userIntent = await intentClassifier.classify({
+          userMessage,
+          apiKey: activeKey
+        });
+      } catch {
+        userIntent = "General Question";
+      }
     }
 
-    const needsWebsiteContext = ["Website Question", "Dashboard Analysis", "Form Assistance", "Table Analysis", "Navigation Help", "General Question"].includes(userIntent);
-    const needsKbContext = ["Knowledge Question", "Website Question", "General Question", "Pricing"].includes(userIntent);
+    const needsWebsiteContext = true;
+    const needsKbContext = true; // Always query KB for relevant grounded answers
 
     // ── 1. Format website context ──
     const rawWebsiteContextString = (websiteContext && needsWebsiteContext)
@@ -72,8 +77,8 @@ export class ContextFuser {
         ? this.detectMistakes(websiteContext)
         : [];
 
-    // ── 3. Augmented KB query ──
-    const augmentedQuery = this.augmentQuery(userMessage, websiteContext);
+    // ── 3. Augmented KB query with Conversation Coreference ──
+    const augmentedQuery = this.augmentQuery(userMessage, websiteContext, conversationHistory);
 
     // ── 4. Knowledge base search ──
     let kbContextString = "";
@@ -85,7 +90,7 @@ export class ContextFuser {
           userId,
           customerId,
           query: augmentedQuery,
-          limit: 3,
+          limit: 4,
         });
         kbContextString = searchResult.contextString;
         knowledgeChunks = searchResult.candidates || [];
@@ -390,7 +395,7 @@ export class ContextFuser {
     }
 
     // ── Custom Containers ──
-    const customContainers = this.unwrap<any>(content.customContainers);
+    const customContainers = this.unwrap<any>(content?.customContainers);
     if (customContainers.length) {
       const lines = customContainers.map((c: any) => `  • [${c.selector}]: ${c.text}`);
       sections.push(`Custom Scraped Elements:\n${lines.join("\n")}`);
@@ -473,25 +478,48 @@ export class ContextFuser {
 
   private augmentQuery(
     userMessage: string,
-    ctx: WebsiteContext | null
+    ctx: WebsiteContext | null,
+    conversationHistory?: Array<{ role: string; content: string }>
   ): string {
-    if (!ctx) return userMessage;
-
     const signals: string[] = [];
-    if (ctx.page?.type && ctx.page.type !== "unknown") {
-      signals.push(ctx.page.type);
-    }
-    if (ctx.page?.heading) {
-      signals.push(ctx.page.heading);
+
+    if (ctx) {
+      if (ctx.page?.type && ctx.page.type !== "unknown") {
+        signals.push(ctx.page.type);
+      }
+      if (ctx.page?.heading) {
+        signals.push(ctx.page.heading);
+      }
+      if (ctx.state?.visibleErrors?.length) {
+        signals.push("error");
+      }
     }
 
-    // If user is on a form page mentioning errors, boost error-related KB retrieval
-    if (ctx.state?.visibleErrors?.length) {
-      signals.push("error");
+    // Coreference Resolution: Extract subject context from immediate previous turns if user uses relative pronouns
+    if (conversationHistory && conversationHistory.length >= 1) {
+      const lower = userMessage.toLowerCase();
+      const hasCoreference = lower.match(/\b(he|him|his|she|her|they|them|it|that|this one|which one|the project|tell me more|more details|what else)\b/i);
+      
+      if (hasCoreference) {
+        // Find last assistant or user message
+        const lastTurn = conversationHistory[conversationHistory.length - 1];
+        if (lastTurn && lastTurn.content) {
+          // Extract notable nouns or titles
+          const candidateLines = lastTurn.content
+            .split(/\r?\n/)
+            .filter(l => l.trim().length > 0 && !l.startsWith("http"))
+            .slice(0, 3)
+            .join(" ")
+            .slice(0, 150);
+          if (candidateLines) {
+            signals.push(`previous topic: ${candidateLines}`);
+          }
+        }
+      }
     }
 
     if (!signals.length) return userMessage;
-    return `${userMessage} [context: ${signals.join(", ")}]`;
+    return `${userMessage} (${signals.join(", ")})`;
   }
 
   // =========================================================================

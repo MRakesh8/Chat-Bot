@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, crypto as dbCrypto } from "@workspace/db";
-import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings, chatSessions, messages, frequentQuestions, knowledgeGaps } from "@workspace/db/schema";
+import { projectWidgetSettings, projectApiKeys, widgetAnalytics, widgetLeads, projectContextSettings, chatSessions, messages, frequentQuestions, knowledgeGaps, enterpriseAuditLogs } from "@workspace/db/schema";
 import { eq, and, sql, ne, desc, gte, lte } from "drizzle-orm";
 import crypto from "crypto";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -535,22 +535,26 @@ router.get("/analytics", async (req: any, res: Response) => {
     const leadsList = await db.query.widgetLeads.findMany({
       where: eq(widgetLeads.projectId, projectId as any),
       orderBy: (widgetLeads, { desc }) => [desc(widgetLeads.createdAt)],
-      limit: 10,
+      limit: 15,
     });
 
     const recentMessages = await db.select({
+      id: messages.id,
       content: messages.content,
       sender: messages.sender,
       createdAt: messages.createdAt,
     })
     .from(messages)
     .innerJoin(chatSessions, eq(messages.sessionId, chatSessions.id))
-    .where(and(
-      eq(chatSessions.projectId, projectId as any),
-      eq(messages.sender, "user")
-    ))
+    .where(eq(chatSessions.projectId, projectId as any))
     .orderBy(desc(messages.createdAt))
-    .limit(10);
+    .limit(20);
+
+    const auditList = await db.select()
+      .from(enterpriseAuditLogs)
+      .where(eq(enterpriseAuditLogs.projectId, projectId as any))
+      .orderBy(desc(enterpriseAuditLogs.timestamp))
+      .limit(10);
 
     const recentActivity = [];
     for (const lead of leadsList) {
@@ -558,20 +562,34 @@ router.get("/analytics", async (req: any, res: Response) => {
         id: `lead-${lead.id}`,
         type: "lead",
         title: `Lead Captured: ${lead.name || lead.email || "Visitor"}`,
-        detail: [lead.email, lead.phone, lead.company].filter(Boolean).join(" â€¢ ") || "Contact information saved",
-        timestamp: lead.createdAt.toISOString(),
+        detail: [lead.email, lead.phone, lead.company].filter(Boolean).join(" • ") || "Contact information saved",
+        timestamp: lead.createdAt ? new Date(lead.createdAt).toISOString() : new Date().toISOString(),
       });
     }
 
     for (const msg of recentMessages) {
       recentActivity.push({
-        id: `msg-${Math.random().toString(36).substring(7)}`,
-        type: "message",
-        title: `Incoming Visitor Query`,
-        detail: msg.content.length > 60 ? msg.content.substring(0, 60) + "..." : msg.content,
+        id: `msg-${msg.id}`,
+        type: msg.sender === "user" ? "message" : "ai_response",
+        title: msg.sender === "user" ? "Incoming Visitor Query" : "AI Assistant Response",
+        detail: msg.content.length > 80 ? msg.content.substring(0, 80) + "..." : msg.content,
         timestamp: msg.createdAt ? new Date(msg.createdAt).toISOString() : new Date().toISOString(),
       });
     }
+
+    for (const audit of auditList) {
+      const details = (audit.details as any) || {};
+      const actionName = details.actionName || details.toolExecuted || audit.actionType;
+      recentActivity.push({
+        id: `audit-${audit.id}`,
+        type: "tool_execution",
+        title: `Tool Executed: ${actionName}`,
+        detail: details.providerName ? `Provider: ${details.providerName} • Status: ${details.status || "COMPLETED"}` : `Status: ${details.status || "COMPLETED"}`,
+        timestamp: audit.timestamp ? new Date(audit.timestamp).toISOString() : new Date().toISOString(),
+      });
+    }
+
+    recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     // Fetch AI response & suggestion feedback safely
     let feedbackList: any[] = [];
@@ -587,6 +605,36 @@ router.get("/analytics", async (req: any, res: Response) => {
 
     recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const activeCutoff = new Date(Date.now() - 15 * 60 * 1000);
+
+    const [activeSessionsNowRes] = await db.select({
+      count: sql<number>`count(distinct ${chatSessions.id})`.mapWith(Number)
+    })
+    .from(chatSessions)
+    .where(and(
+      eq(chatSessions.projectId, projectId as any),
+      sql`(${chatSessions.createdAt} >= ${activeCutoff} OR EXISTS (
+        SELECT 1 FROM ${messages} 
+        WHERE ${messages.sessionId} = ${chatSessions.id} 
+        AND ${messages.createdAt} >= ${activeCutoff}
+      ))`,
+      sql`(${chatSessions.expiresAt} IS NULL OR ${chatSessions.expiresAt} > now())`
+    ));
+
+    const [activeTodayRes] = await db.select({
+      count: sql<number>`count(distinct ${chatSessions.id})`.mapWith(Number)
+    })
+    .from(chatSessions)
+    .where(and(
+      eq(chatSessions.projectId, projectId as any),
+      gte(chatSessions.createdAt, todayStart)
+    ));
+
+    const activeTodayCount = Math.max(activeTodayRes?.count || 0, timeSeries[timeSeries.length - 1]?.conversations || 0);
+    const activeUsersNow = activeSessionsNowRes?.count || 0;
+
     res.json({
       totalConversations: baseTotalConversations,
       totalMessages,
@@ -594,6 +642,7 @@ router.get("/analytics", async (req: any, res: Response) => {
       tokenUsage,
       aiCost: aiCostFormatted,
       avgResponseTimeMs,
+      activeUsersNow,
       summary: {
         totalConversations: baseTotalConversations,
         totalMessages,
@@ -605,13 +654,14 @@ router.get("/analytics", async (req: any, res: Response) => {
         highIntentLeads: highIntentLeadsCount,
         conversionRate,
         avgMessagesPerConv,
-        activeToday: timeSeries[timeSeries.length - 1]?.conversations || 0,
+        activeToday: activeTodayCount,
+        activeNow: activeUsersNow,
       },
       timeframe,
       timeSeries,
       topQuestions,
       unansweredQuestions,
-      recentActivity: recentActivity.slice(0, 15),
+      recentActivity: recentActivity.slice(0, 25),
       leads: leadsList,
       feedback: feedbackList,
     });

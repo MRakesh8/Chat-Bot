@@ -1,10 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 
 const GEMINI_MODELS = [
-  "gemini-2.5-flash-lite",
+  "gemini-flash-latest",
   "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-pro-latest",
 ];
 
 // Cooldown map: keyId_modelId -> expiresAt timestamp
@@ -20,12 +21,12 @@ function isModelOnCooldown(keyId: string, model: string): boolean {
   return true;
 }
 
-function setModelCooldown(keyId: string, model: string, seconds = 3600): void {
-  const boundedSec = Math.max(30, Math.min(seconds, 86400));
+function setModelCooldown(keyId: string, model: string, seconds = 15): void {
+  const boundedSec = Math.max(5, Math.min(seconds, 86400));
   cooldownMap.set(`${keyId}:${model}`, Date.now() + boundedSec * 1000);
 }
 
-function parseGeminiError(err: any): { isQuota: boolean; isModelNotFound: boolean; isAuth: boolean; retryDelay?: number; message: string } {
+function parseGeminiError(err: any): { isQuota: boolean; isModelNotFound: boolean; isUnavailable: boolean; isAuth: boolean; retryDelay?: number; message: string } {
   const raw = typeof err === "string" ? err : (err?.message || String(err || ""));
   const status = err?.status || err?.response?.status;
   const msgLower = raw.toLowerCase();
@@ -36,11 +37,12 @@ function parseGeminiError(err: any): { isQuota: boolean; isModelNotFound: boolea
     if (match) retryDelay = Math.round(parseFloat(match[1]));
   }
 
-  const isQuota = status === 429 || msgLower.includes("resource_exhausted") || msgLower.includes("quota") || msgLower.includes("rate limit");
+  const isQuota = status === 429 || msgLower.includes("resource_exhausted") || msgLower.includes("quota") || msgLower.includes("rate limit") || msgLower.includes("rate_limited");
   const isModelNotFound = status === 404 || msgLower.includes("not found") || msgLower.includes("unsupported for generatecontent");
-  const isAuth = status === 401 || status === 403 || msgLower.includes("api key") || msgLower.includes("unauthenticated");
+  const isUnavailable = status === 503 || msgLower.includes("high demand") || msgLower.includes("unavailable") || msgLower.includes("overloaded") || msgLower.includes("temporarily unavailable");
+  const isAuth = status === 401 || status === 403 || msgLower.includes("api key") || msgLower.includes("unauthenticated") || msgLower.includes("invalid_credential");
 
-  return { isQuota, isModelNotFound, isAuth, retryDelay, message: raw };
+  return { isQuota, isModelNotFound, isUnavailable, isAuth, retryDelay, message: raw };
 }
 
 class GeminiFailoverModels {
@@ -62,7 +64,7 @@ class GeminiFailoverModels {
   async generateContent(userId: string | null, options: any): Promise<any> {
     const client = this.getClient(options.apiKey);
     const keyId = this.getKeyId(options.apiKey);
-    const requestedModel = options.model || "gemini-2.5-flash-lite";
+    const requestedModel = options.model || "gemini-flash-latest";
     
     // Build candidate model list prioritizing requested model, skipping models on cooldown
     const candidateModels = [
@@ -80,14 +82,12 @@ class GeminiFailoverModels {
     if (options.config?.responseMimeType) config.responseMimeType = options.config.responseMimeType;
 
     let lastError: any = null;
-    let triedAny = false;
 
     for (const model of candidateModels) {
       if (isModelOnCooldown(keyId, model)) {
         continue;
       }
 
-      triedAny = true;
       try {
         const res = await client.models.generateContent({
           model,
@@ -97,34 +97,38 @@ class GeminiFailoverModels {
         return { text: res.text || "" };
       } catch (err: any) {
         lastError = err;
-        const { isQuota, isModelNotFound, retryDelay } = parseGeminiError(err);
+        const { isQuota, isModelNotFound, isUnavailable, retryDelay } = parseGeminiError(err);
         
-        if (isQuota) {
-          setModelCooldown(keyId, model, retryDelay || 3600);
+        if (isQuota || isUnavailable) {
+          setModelCooldown(keyId, model, retryDelay || 10);
           continue; // Try next model in fallback chain
         } else if (isModelNotFound) {
           setModelCooldown(keyId, model, 86400); // 24hr cooldown on retired/missing models
           continue; // Try next model
         } else {
-          // Other errors (e.g. invalid arguments or bad auth) should fail immediately
           throw err;
         }
       }
     }
 
-    if (!triedAny && candidateModels.length > 0) {
-      // If all candidate models were on cooldown, reset the first one and try once to prevent permanent deadlock
-      try {
-        const fallbackModel = candidateModels[0];
-        const res = await client.models.generateContent({
-          model: fallbackModel,
-          contents,
-          config
-        });
-        cooldownMap.delete(`${keyId}:${fallbackModel}`);
-        return { text: res.text || "" };
-      } catch (err: any) {
-        lastError = err;
+    if (candidateModels.length > 0) {
+      // If all candidate models encountered a temporary spike or RPM limit, sleep briefly and retry primary fallback
+      const { isQuota, isUnavailable } = parseGeminiError(lastError);
+      if (isQuota || isUnavailable) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        for (const fallbackModel of ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"]) {
+          try {
+            const res = await client.models.generateContent({
+              model: fallbackModel,
+              contents,
+              config
+            });
+            cooldownMap.delete(`${keyId}:${fallbackModel}`);
+            return { text: res.text || "" };
+          } catch (retryErr: any) {
+            lastError = retryErr;
+          }
+        }
       }
     }
 
@@ -144,7 +148,7 @@ class GeminiFailoverModels {
   async generateContentStream(userId: string | null, options: any): Promise<any> {
     const client = this.getClient(options.apiKey);
     const keyId = this.getKeyId(options.apiKey);
-    const requestedModel = options.model || "gemini-2.5-flash-lite";
+    const requestedModel = options.model || "gemini-flash-latest";
 
     const candidateModels = [
       requestedModel,
@@ -176,10 +180,10 @@ class GeminiFailoverModels {
         });
       } catch (err: any) {
         lastError = err;
-        const { isQuota, isModelNotFound, retryDelay } = parseGeminiError(err);
+        const { isQuota, isModelNotFound, isUnavailable, retryDelay } = parseGeminiError(err);
         
-        if (isQuota) {
-          setModelCooldown(keyId, model, retryDelay || 3600);
+        if (isQuota || isUnavailable) {
+          setModelCooldown(keyId, model, retryDelay || 10);
           continue;
         } else if (isModelNotFound) {
           setModelCooldown(keyId, model, 86400);
@@ -190,18 +194,23 @@ class GeminiFailoverModels {
       }
     }
 
-    if (!triedAny && candidateModels.length > 0) {
-      try {
-        const fallbackModel = candidateModels[0];
-        const stream = await client.models.generateContentStream({
-          model: fallbackModel,
-          contents,
-          config
-        });
-        cooldownMap.delete(`${keyId}:${fallbackModel}`);
-        return stream;
-      } catch (err: any) {
-        lastError = err;
+    if (candidateModels.length > 0) {
+      const { isQuota, isUnavailable } = parseGeminiError(lastError);
+      if (isQuota || isUnavailable) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        for (const fallbackModel of ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"]) {
+          try {
+            const stream = await client.models.generateContentStream({
+              model: fallbackModel,
+              contents,
+              config
+            });
+            cooldownMap.delete(`${keyId}:${fallbackModel}`);
+            return stream;
+          } catch (retryErr: any) {
+            lastError = retryErr;
+          }
+        }
       }
     }
 

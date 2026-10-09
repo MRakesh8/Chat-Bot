@@ -1,6 +1,6 @@
 import { isDemoProjectId, getDemoProjectMeta } from "../services/demo-project";
 import { db, withTenantContext, projects } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export async function resolveAuthorizedProjectOrg(
   req: any,
@@ -35,7 +35,9 @@ export async function resolveAuthorizedProjectOrg(
   for (const orgId of candidateOrgIds) {
     try {
       const [project] = await withTenantContext(orgId, async (tx: any) => {
-        return await tx.select().from(projects).where(eq(projects.id, projectId));
+        return await tx.select().from(projects).where(
+          and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
+        );
       });
 
       if (project) {

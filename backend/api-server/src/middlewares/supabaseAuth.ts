@@ -71,6 +71,16 @@ export const supabaseAuthMiddleware = async (
 
         (req as any).auth = { 
           userId: LOCAL_DEMO_USER_ID,
+          dbUser: {
+            id: LOCAL_DEMO_USER_ID,
+            email: "local-demo@example.com",
+            role: "user",
+            features: {
+              canCreateProject: true,
+              canUseWidgetStudio: true,
+              canUseContextEngine: true,
+            }
+          },
           memberships: memberships.map((m: any) => ({
             organizationId: m.organizationId,
             role: m.role
@@ -133,6 +143,16 @@ export const supabaseAuthMiddleware = async (
 
       (req as any).auth = { 
         userId: LOCAL_DEMO_USER_ID,
+        dbUser: {
+          id: LOCAL_DEMO_USER_ID,
+          email: "local-demo@example.com",
+          role: "user",
+          features: {
+            canCreateProject: true,
+            canUseWidgetStudio: true,
+            canUseContextEngine: true,
+          }
+        },
         memberships: memberships.map((m: any) => ({
           organizationId: m.organizationId,
           role: m.role

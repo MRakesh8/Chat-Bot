@@ -299,7 +299,7 @@ export function Analytics({ projectId }: { projectId: string }) {
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full ${isLive ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
-                {isLive ? "LIVE SYNC ACTIVE" : "PAUSED"}
+                {isLive ? ((summary.activeNow || 0) > 0 ? `${summary.activeNow} ACTIVE NOW` : "LIVE SYNC ACTIVE") : "PAUSED"}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">

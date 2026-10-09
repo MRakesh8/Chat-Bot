@@ -46,11 +46,11 @@ export function buildContextAwarePrompt(params: PromptBuilderParams): string {
   // ── 1. Base role ──
   if (fusedContext.websiteContextString) {
     sections.push(
-      `You are a helpful AI assistant embedded on this website. You have been provided with a structured text extraction of the user's current webpage interface. Use this data to provide intelligent, contextual assistance.`
+      `You are the official AI assistant embedded on this website. You have been provided with a structured text extraction of the user's current webpage interface. Use this data to provide intelligent, contextual assistance.`
     );
   } else {
     sections.push(
-      `You are a helpful customer support chatbot. Use the following context from our knowledge base to answer the user's questions.`
+      `You are the official AI assistant for this connected website. Use the following context from our knowledge base to answer the user's questions.`
     );
   }
 
@@ -114,30 +114,16 @@ export function buildContextAwarePrompt(params: PromptBuilderParams): string {
   }
 
   // ── 8. Instructions ──
-  if (fusedContext.websiteContextString) {
-    sections.push(
-      `CRITICAL INSTRUCTIONS:
-1. Use BOTH the website context AND knowledge base to answer questions accurately.
-2. CITE SOURCES: If you use information from the Knowledge Base, include the Source URL or Title in your answer (e.g., "[Source: URL or Title]").
-3. If you notice issues on the page (missing required fields, errors, warnings), proactively guide the user.
-4. When explaining dashboards, reference specific cards, stats, and charts present in the website context.
-5. When helping with forms, reference specific field names and their current values.
-6. Be conversational and context-aware — reference the provided website context data when answering questions about the page UI. Do NOT state that you cannot see the page.
-7. DO NOT fabricate information that is not present in the knowledge base or website context.
-8. If website context conflicts with the knowledge base, prefer the knowledge base for rules and policies, and the website context for current UI state.
-9. DO NOT provide a summary of the entire context unless explicitly requested. ONLY answer the specific question asked.`
-    );
-  } else {
-    sections.push(
-      `CRITICAL INSTRUCTIONS:
-1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering.
-2. CITE SOURCES: If you use information from the Knowledge Base, include the Source URL or Title in your answer (e.g., "[Source: URL or Title]").
-3. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer.
-4. NO UNASKED SUMMARIES: DO NOT summarize the entire context unless explicitly requested. ONLY answer the specific question asked.
-5. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information.
-Answer user questions accurately and clearly based ONLY on the provided context.`
-    );
-  }
+  sections.push(
+    `CRITICAL INSTRUCTIONS:
+1. ANSWER THE ACTUAL QUESTION: Answer the user's specific question directly, concisely, and cohesively in the very first sentence.
+2. CONNECTED WEBSITE PERSONA: You represent this connected website and its business/creator. Adhere strictly to the project rules and persona specified above. Never mention NOVA internal architecture, model names, internal databases, or metadata tags.
+3. PUBLIC PROFILE & APPROVED KNOWLEDGE: If the approved Knowledge Base or Website Context contains biographical, profile, skills, education, contact, or project details about a person (such as Rakesh, team members, or founders), answer directly and factually. Never refuse public approved information with "I don't have access to personal information".
+4. MULTI-TURN CONTINUITY: Understand conversational references (pronouns like 'he', 'that project', 'which one') using the ongoing chat history.
+5. GROUNDING & NO HALLUCINATION: Rely strictly on the provided Knowledge Base and Website Context. Do not invent facts, projects, or credentials.
+6. MISSING INFORMATION: If information is completely missing from the provided context, state naturally and politely: "I don't have that information available on this website."
+7. NO UNASKED SUMMARIES: Do not dump raw unstructured dumps of all chunks or cite internal formatting. Provide a clean, natural, helpful response.`
+  );
 
   return sections.join("\n\n");
 }

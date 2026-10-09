@@ -6,12 +6,7 @@ import { eq } from "drizzle-orm";
 async function runRAGTests() {
   console.log("Starting RAG Tests...");
 
-  const testProject = await db.select().from(projects).limit(1);
-  if (testProject.length === 0) {
-    console.error("No projects found in DB for testing.");
-    process.exit(1);
-  }
-  const projectId = testProject[0].id;
+  const projectId = "098ec428-1f17-4d79-8705-5479a07dddaf";
   const agent = new BusinessAgent();
 
   const questions = [
