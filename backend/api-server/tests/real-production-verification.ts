@@ -44,8 +44,8 @@ async function runVerification() {
         validEncryptedKey = crypto.encrypt(envKey);
       }
       
-      // Unset isPrimary for other keys of this project and set test key as primary with stale model
-      await db.update(projectApiKeys).set({ isPrimary: false }).where(eq(projectApiKeys.projectId, testProjectId));
+      // Disable all other keys for this project and force testKeyId as the single primary enabled key with stale model
+      await db.update(projectApiKeys).set({ isEnabled: false, isPrimary: false }).where(eq(projectApiKeys.projectId, testProjectId));
       await db.update(projectApiKeys).set({ encryptedKey: validEncryptedKey, model: originalModel, isPrimary: true, isEnabled: true }).where(eq(projectApiKeys.id, testKeyId));
       
       console.log(`[TEST 2] Forced projectKey ${testKeyId} as primary model stale: ${originalModel}`);
@@ -84,8 +84,10 @@ async function runVerification() {
   // 3. REAL STREAMING RECOVERY TEST (executeStream)
   try {
     if (testProjectId && testKeyId) {
-      // Reset back to stale model for streaming test
-      await db.update(projectApiKeys).set({ model: originalModel }).where(eq(projectApiKeys.id, testKeyId));
+      // Reset back to stale model with valid encrypted key for streaming test
+      const envKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const validEncryptedKey = envKey ? crypto.encrypt(envKey) : undefined;
+      await db.update(projectApiKeys).set({ ...(validEncryptedKey ? { encryptedKey: validEncryptedKey } : {}), model: originalModel, isEnabled: true, isPrimary: true }).where(eq(projectApiKeys.id, testKeyId));
       const redis = getRedisClient();
       if (redis && redis.status === "ready") {
         await redis.del(`raghub:model_catalog:gemini:${testKeyId}`);
