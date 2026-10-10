@@ -207,7 +207,7 @@ export default function ConnectedServicesPage() {
                   Platform Integrations
                 </Badge>
               </div>
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">
+              <h1 className="font-serif text-3xl md:text-4xl font-bold tracking-tight text-foreground">
                 Connected Services
               </h1>
               <p className="text-sm text-muted-foreground mt-1">

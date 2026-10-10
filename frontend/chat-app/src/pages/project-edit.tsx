@@ -501,34 +501,34 @@ export default function ProjectEditPage() {
 
           return (
             <div className="space-y-6 mb-8">
-              {/* Top Banner Row: Project Name, URL, Status & Actions */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 md:p-6 rounded-2xl md:rounded-3xl bg-card border border-border/80 shadow-xs">
+              {/* Top Banner Row: Project Name, URL, Status & Primary Actions */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 rounded-2xl bg-card border border-border/80 shadow-xs">
                 <div className="space-y-1.5 min-w-0">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight truncate">
-                      {project?.name || name || "Project"}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1 className="font-serif text-2xl md:text-3xl font-bold text-foreground tracking-tight truncate">
+                      {project?.name || name || "Project Workspace"}
                     </h1>
-                    <Badge variant="outline" className="text-xs font-bold px-2.5 py-0.5 bg-primary/10 text-primary border-primary/20 rounded-full">
-                      Setup {setupPercent}%
+                    <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5 bg-primary/10 text-primary border-primary/20 rounded-full">
+                      Setup {setupPercent}% Complete
                     </Badge>
                   </div>
 
                   <p className="text-xs md:text-sm text-muted-foreground font-medium">
-                    AI Business Assistant Workspace
+                    Manage and monitor your AI business assistant
                   </p>
 
                   <div className="pt-0.5 flex items-center gap-2 text-xs">
                     {isLocalDev ? (
-                      <span className="inline-flex items-center gap-1.5 text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-500/20 font-medium">
-                        <Laptop className="w-3.5 h-3.5" />
-                        <span>Local Environment ({storedUrl || "localhost:3000"})</span>
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground bg-muted/60 px-2.5 py-1 rounded-md border border-border text-[11px] font-mono">
+                        <Laptop className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span>Development ({storedUrl || "localhost:3000"})</span>
                       </span>
                     ) : (
                       <a
                         href={storedUrl!}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-blue-400 hover:underline font-semibold truncate"
+                        className="inline-flex items-center gap-1.5 text-primary hover:underline font-medium truncate text-xs"
                       >
                         <Globe className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{storedUrl}</span>
@@ -538,21 +538,18 @@ export default function ProjectEditPage() {
                   </div>
                 </div>
 
-                {/* Right Action: Launch Site vs Visit Site vs Local Dev */}
-                <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
+                {/* Right Action Button */}
+                <div className="flex items-center gap-3 shrink-0 self-start lg:self-center">
                   {isLive ? (
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-xl border border-emerald-400/20">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
-                        <span>Live</span>
-                      </div>
+                      <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-semibold px-3 py-1 gap-1.5 rounded-full text-xs">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Live
+                      </Badge>
                       {storedUrl && (
                         <Button
                           onClick={() => window.open(storedUrl, "_blank")}
-                          className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs h-9 px-4 rounded-xl gap-1.5 shadow-xs cursor-pointer"
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 px-4 rounded-xl gap-1.5 shadow-xs"
                         >
                           <ExternalLink className="w-3.5 h-3.5" /> Visit Site
                         </Button>
@@ -561,206 +558,147 @@ export default function ProjectEditPage() {
                   ) : !isLocalDev && storedUrl ? (
                     <Button
                       onClick={() => handleTabChange("deployment")}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 px-5 rounded-xl gap-1.5 shadow-xs cursor-pointer"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 px-5 rounded-xl gap-1.5 shadow-xs"
                     >
-                      <Rocket className="w-3.5 h-3.5" /> Launch Site
+                      <Rocket className="w-3.5 h-3.5" /> Deploy Assistant
                     </Button>
                   ) : (
                     <Button
                       variant="outline"
                       onClick={() => handleTabChange("deployment")}
-                      className="border-primary/30 hover:bg-primary/10 text-primary font-semibold text-xs h-9 px-4 rounded-xl gap-1.5 cursor-pointer"
+                      className="border-border text-foreground hover:bg-accent font-semibold text-xs h-9 px-4 rounded-xl gap-1.5"
                     >
-                      <Laptop className="w-3.5 h-3.5" /> Local Testing
+                      <Laptop className="w-3.5 h-3.5" /> Test Locally
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* YOUR NOVA JOURNEY Stepper */}
-              <div className="p-5 rounded-2xl md:rounded-3xl bg-card/60 border border-border/80 shadow-xs backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    YOUR NOVA JOURNEY
-                  </p>
-                  <span className="text-[11px] font-semibold text-primary">
-                    {setupPercent}% Complete
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs font-semibold">
-                  {/* Step 1: Website Connected */}
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange("settings")}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
-                      storedUrl
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
-                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
-                    }`}
-                  >
+              {/* Grid: Vertical Setup Checklist + Next What-To-Do Card */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* 1. Website Connected */}
+                <div
+                  onClick={() => handleTabChange("settings")}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                    storedUrl
+                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50"
+                      : "bg-card border-border/80 hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Step 1</span>
                     {storedUrl ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full">
+                        Connected
+                      </Badge>
                     ) : (
-                      <Globe className="w-4 h-4 shrink-0 opacity-60" />
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full text-muted-foreground border-border">
+                        Pending
+                      </Badge>
                     )}
-                    <span className="truncate">{storedUrl ? "Website Connected" : "Connect Website"}</span>
-                  </button>
-
-                  {/* Step 2: AI Analysis */}
-                  {(() => {
-                    const handleStep2Click = () => {
-                      if (isDiscoveryReady) {
-                        handleTabChange("overview");
-                        toast({
-                          title: "Website Intelligence Ready",
-                          description: "Viewing discovered business identity and capabilities.",
-                        });
-                      } else if (isAnalyzing) {
-                        handleTabChange("overview");
-                        toast({
-                          title: "Analysis in Progress",
-                          description: "NOVA AI is currently discovering your website content.",
-                        });
-                      } else if (isDiscoveryFailed || storedUrl) {
-                        handleStartAnalysis();
-                      } else {
-                        toast({
-                          title: "Connect Website First",
-                          description: "Connect your website URL to begin AI analysis.",
-                        });
-                        handleTabChange("settings");
-                      }
-                    };
-
-                    return (
-                      <button
-                        type="button"
-                        onClick={handleStep2Click}
-                        disabled={isStartingAnalysis}
-                        title={
-                          isDiscoveryReady
-                            ? "AI Analysis Ready — Click to view Website Intelligence"
-                            : isAnalyzing
-                            ? "AI Analyzing — Discovery in progress"
-                            : isDiscoveryFailed
-                            ? "Analysis Failed — Click to retry"
-                            : storedUrl
-                            ? "Click to start AI analysis on connected website"
-                            : "Connect a website first to run AI analysis"
-                        }
-                        className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
-                          isDiscoveryReady
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
-                            : isAnalyzing
-                            ? "bg-primary/15 border-primary/30 text-primary"
-                            : isDiscoveryFailed
-                            ? "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/15"
-                            : storedUrl
-                            ? "bg-primary/10 border-primary/20 text-primary hover:bg-primary/20"
-                            : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        {isDiscoveryReady ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                        ) : isAnalyzing ? (
-                          <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-                        ) : isDiscoveryFailed ? (
-                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                        ) : (
-                          <Brain className="w-4 h-4 shrink-0 opacity-75" />
-                        )}
-                        <span className="truncate">
-                          {isDiscoveryReady
-                            ? "AI Analysis Ready"
-                            : isAnalyzing
-                            ? "AI Analyzing..."
-                            : isDiscoveryFailed
-                            ? "Retry Analysis"
-                            : storedUrl
-                            ? "Start AI Analysis"
-                            : "AI Analysis"}
-                        </span>
-                      </button>
-                    );
-                  })()}
-
-                  {/* Step 3: Knowledge Ready */}
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange("knowledge")}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
-                      project
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
-                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
-                    }`}
-                  >
-                    {project ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Database className="w-4 h-4 shrink-0 opacity-60" />
-                    )}
-                    <span className="truncate">{project ? "Knowledge Ready" : "Setup Knowledge"}</span>
-                  </button>
-
-                  {/* Step 4: Widget Installation */}
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange("deployment")}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
-                      activeTab === "deployment" || activeTab === "widget-studio" || readinessData?.isReady
-                        ? "bg-primary/15 border-primary/30 text-primary"
-                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
-                    }`}
-                  >
-                    {readinessData?.isReady ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Paintbrush className="w-4 h-4 shrink-0 opacity-60" />
-                    )}
-                    <span className="truncate">Widget Install</span>
-                  </button>
-
-                  {/* Step 5: Launch */}
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange("deployment")}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
-                      isLive
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
-                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
-                    }`}
-                  >
-                    {isLive ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Rocket className="w-4 h-4 shrink-0 opacity-60" />
-                    )}
-                    <span className="truncate">{isLive ? "Live & Active" : "Launch"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* NEXT BEST ACTION Banner */}
-              <div className="p-4.5 rounded-2xl bg-gradient-to-r from-primary/10 via-indigo-500/10 to-purple-500/10 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4.5 h-4.5" />
                   </div>
+
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary block">
-                      NEXT RECOMMENDED ACTION
-                    </span>
-                    <p className="text-xs md:text-sm font-semibold text-foreground mt-0.5">
-                      {isAnalyzing
-                        ? "NOVA AI is discovering your website content & pages"
-                        : isLive
-                        ? "Your AI business assistant is live and active on your website"
-                        : readinessData?.isReady
-                        ? "Installation detected! Verify settings and launch your assistant"
-                        : "Get your widget embed code to deploy on your website"}
+                    <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-primary shrink-0" />
+                      Website Connected
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      {storedUrl ? storedUrl : "Add your business domain"}
                     </p>
                   </div>
+                </div>
+
+                {/* 2. Knowledge Ready */}
+                <div
+                  onClick={() => handleTabChange("knowledge")}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                    isDiscoveryReady || project
+                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50"
+                      : "bg-card border-border/80 hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Step 2</span>
+                    {isDiscoveryReady || project ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full">
+                        Ready
+                      </Badge>
+                    ) : isAnalyzing ? (
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-2 py-0.5 rounded-full animate-pulse">
+                        Analyzing...
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full text-muted-foreground border-border">
+                        Setup
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-primary shrink-0" />
+                      Knowledge Ready
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      {isDiscoveryReady ? "Automated discovery complete" : "RAG & business context sources"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3. Chat on Your Site */}
+                <div
+                  onClick={() => handleTabChange("deployment")}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                    isLive
+                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50"
+                      : "bg-card border-border/80 hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Step 3</span>
+                    {isLive ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full">
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full text-muted-foreground border-border">
+                        Not Installed
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-primary shrink-0" />
+                      Chat on Your Site
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      {isLive ? "Live widget responding" : "Embed 1-line script snippet"}
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* What To Do Next Card */}
+              <div className="p-5 rounded-2xl bg-card border border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-primary block">
+                    What to do next
+                  </span>
+                  <p className="text-sm font-medium text-foreground mt-1">
+                    {isAnalyzing
+                      ? "NOVA AI is currently analyzing your website content."
+                      : isLive
+                      ? "Your AI assistant is live on your website. Check visitor conversations & analytics."
+                      : readinessData?.isReady
+                      ? "Installation detected! Test your widget and launch."
+                      : !isDiscoveryReady && storedUrl
+                      ? "Run automated AI Discovery on your website to populate business knowledge."
+                      : "Embed the 1-line widget snippet into your website code."}
+                  </p>
                 </div>
 
                 <Button
@@ -776,18 +714,18 @@ export default function ProjectEditPage() {
                       handleTabChange("deployment");
                     }
                   }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs rounded-xl h-9 px-4 shrink-0 gap-1.5 cursor-pointer shadow-xs"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs rounded-xl h-10 px-5 shrink-0 gap-1.5 shadow-xs"
                 >
                   <span>
                     {isAnalyzing
-                      ? "View Analysis"
+                      ? "View Discovery"
                       : isLive
-                      ? "Visit Site"
+                      ? "View Site"
                       : readinessData?.isReady
                       ? "Verify & Launch"
                       : !isDiscoveryReady && storedUrl
-                      ? "Start Analysis"
-                      : "Get Code"}
+                      ? "Run AI Discovery"
+                      : "Get Embed Code"}
                   </span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Button>

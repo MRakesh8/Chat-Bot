@@ -81,21 +81,21 @@ export default function SettingsPage() {
               Global Account Scope
             </Badge>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Settings</h1>
+          <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground">Workspace Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Configure global account appearance, billing subscriptions, and workspace-wide API keys.
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-12 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
-            <TabsTrigger value="general" {...getTabTriggerProps("general")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+          <TabsList className="mb-8 bg-card border border-border p-1.5 w-full flex overflow-x-auto justify-start h-12 rounded-2xl shadow-xs no-scrollbar scroll-smooth">
+            <TabsTrigger value="general" {...getTabTriggerProps("general")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Settings className="w-4 h-4 mr-2" /> General
             </TabsTrigger>
-            <TabsTrigger value="billing" {...getTabTriggerProps("billing")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="billing" {...getTabTriggerProps("billing")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <CreditCard className="w-4 h-4 mr-2" /> Billing
             </TabsTrigger>
-            <TabsTrigger value="api-keys" {...getTabTriggerProps("api-keys")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+            <TabsTrigger value="api-keys" {...getTabTriggerProps("api-keys")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Key className="w-4 h-4 mr-2" /> API Keys
             </TabsTrigger>
           </TabsList>

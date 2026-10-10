@@ -873,120 +873,50 @@ export function ChatArea() {
         )}
       >
         {!conversationId ? (
-          <div className="w-full max-w-3xl mx-auto py-6 px-4 space-y-8 text-center">
+          <div className="w-full max-w-3xl mx-auto py-8 px-4 space-y-8 text-center">
             {/* Hero Header */}
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs font-semibold text-primary">
-                <Sparkle className="w-3.5 h-3.5" />
-                <span>NOVA Business AI Workspace</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground">
-                Good to see you, {displayName} 👋
+            <div className="space-y-2.5">
+              <h1 className="font-serif text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+                {greeting()}, {displayName}
               </h1>
-              <p className="text-muted-foreground text-sm sm:text-base max-w-lg mx-auto">
-                Ask anything about your business. NOVA is here to help you grow.
+              <p className="text-muted-foreground text-sm max-w-md mx-auto font-medium">
+                Ask anything about your business or projects.
               </p>
             </div>
 
             {/* Main Input Composer */}
             {renderInput(true)}
 
-            {/* Contextual Action Cards for Real Capabilities */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-4 text-left">
+            {/* Three Simple Example Question Links */}
+            <div className="pt-2 max-w-xl mx-auto space-y-2 text-left">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 mb-3 text-center">
+                Suggested questions
+              </p>
               <button
                 type="button"
-                onClick={() => handleSend("Analyze my website and show key business insights")}
-                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+                onClick={() => handleSend("Analyze my website and extract key business knowledge")}
+                className="w-full p-3 rounded-xl bg-card border border-border/80 hover:border-primary/40 text-xs text-foreground font-medium transition-all text-left flex items-center justify-between group cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-600 flex items-center justify-center font-bold text-sm">
-                  🌐
-                </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-                  Analyze My Website
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  Extract FAQs, products, contact info, and business knowledge automatically.
-                </p>
+                <span>How can I analyze my website and extract key business knowledge?</span>
+                <span className="text-primary group-hover:translate-x-0.5 transition-transform">→</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSend("Show business intelligence and active project metrics")}
-                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+                onClick={() => handleSend("What are the best practices for setting up customer support AI?")}
+                className="w-full p-3 rounded-xl bg-card border border-border/80 hover:border-primary/40 text-xs text-foreground font-medium transition-all text-left flex items-center justify-between group cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-sm">
-                  📊
-                </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-                  Show Business Insights
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  Review customer conversation metrics, captured leads, and active projects.
-                </p>
+                <span>What are the best practices for setting up customer support AI?</span>
+                <span className="text-primary group-hover:translate-x-0.5 transition-transform">→</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSend("Answer common business questions using project knowledge")}
-                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
+                onClick={() => handleSend("How do I connect external services and webhook triggers?")}
+                className="w-full p-3 rounded-xl bg-card border border-border/80 hover:border-primary/40 text-xs text-foreground font-medium transition-all text-left flex items-center justify-between group cursor-pointer"
               >
-                <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-sm">
-                  💬
-                </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-                  Answer Business Questions
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  Test your AI assistant against your custom knowledge base and system rules.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSend("Help set up customer support widget for my website")}
-                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold text-sm">
-                  🎧
-                </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-                  Help with Customer Support
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  Configure live chat widget styling, response guidelines, and notification alerts.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSend("Show connected services and integrations status")}
-                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold text-sm">
-                  🔌
-                </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-                  Connect Integrations
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  Link Shopify store, webhooks, WhatsApp, or custom API endpoints.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSend("Automate customer lead capture and notifications")}
-                className="group p-4 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-md transition-all text-left space-y-2 cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold text-sm">
-                  ⚡
-                </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
-                  Automate Tasks
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  Set up automated follow-ups, lead extraction, and channel messaging.
-                </p>
+                <span>How do I connect external services and webhook triggers?</span>
+                <span className="text-primary group-hover:translate-x-0.5 transition-transform">→</span>
               </button>
             </div>
           </div>
