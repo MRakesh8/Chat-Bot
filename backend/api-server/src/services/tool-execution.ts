@@ -88,6 +88,17 @@ export async function executeServerTool(
 
   const executionStart = Date.now();
 
+  if (executionId) {
+    const { isExecutionCancelled } = require("./execution-governance");
+    if (isExecutionCancelled(executionId)) {
+      return {
+        success: false,
+        status: "EXECUTION_FAILED",
+        error: "Execution run was cancelled by user.",
+      };
+    }
+  }
+
   if (!projectId) {
     return {
       success: false,

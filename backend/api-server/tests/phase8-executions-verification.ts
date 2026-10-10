@@ -12,6 +12,7 @@ import {
   retryExecution,
   approveExecution,
   sanitizePayload,
+  isExecutionCancelled,
 } from "../src/services/execution-governance";
 
 async function runPhase8Tests() {
@@ -167,6 +168,7 @@ async function runPhase8Tests() {
       assert(cancelRes.success === true, "Cancel active execution run");
       assert(cancelRes.execution?.status === "CANCELLED", "Verify status updated to CANCELLED");
       assert(cancelRes.execution?.error === "User clicked stop", "Verify cancellation reason stored");
+      assert(isExecutionCancelled(cancelExecId) === true, "Verify active cancellation registry updated");
 
       // Attempt second cancellation on already cancelled run
       const repeatCancel = await cancelExecution(testProjectA, testOrgA, cancelExecId, "Cancel again");
@@ -181,6 +183,7 @@ async function runPhase8Tests() {
       assert(retryRes.success === true, "Retry CANCELLED execution run");
       assert(retryRes.execution?.status === "RUNNING", "Status updated to RUNNING upon retry");
       assert(retryRes.execution?.retryCount === 1, "Retry count incremented to 1");
+      assert(isExecutionCancelled(cancelExecId!) === false, "Verify active cancellation cleared upon retry");
 
       // Force retry count to max (3) and attempt another retry
       await db.update(agentExecutions)

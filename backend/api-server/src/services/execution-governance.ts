@@ -250,6 +250,19 @@ export async function getExecutionById(projectId: string, organizationId: string
 }
 
 /**
+ * Active cancellation registry for in-flight execution runs.
+ */
+export const activeCancellations = new Set<string>();
+
+export function isExecutionCancelled(executionId: string): boolean {
+  return activeCancellations.has(executionId);
+}
+
+export function clearExecutionCancellation(executionId: string): void {
+  activeCancellations.delete(executionId);
+}
+
+/**
  * Safely cancels an active or pending agent execution with precondition checks.
  */
 export async function cancelExecution(projectId: string, organizationId: string, executionId: string, reason?: string) {
@@ -274,6 +287,8 @@ export async function cancelExecution(projectId: string, organizationId: string,
 
     const cleanReason = sanitizeActivityText(reason || "Cancelled by user", 200);
     const now = new Date();
+
+    activeCancellations.add(executionId);
 
     const [updated] = await tx
       .update(agentExecutions)
@@ -340,6 +355,8 @@ export async function retryExecution(projectId: string, organizationId: string, 
       };
     }
 
+    clearExecutionCancellation(executionId);
+
     const now = new Date();
     const newRetryCount = existing.retryCount + 1;
 
@@ -372,6 +389,33 @@ export async function retryExecution(projectId: string, organizationId: string, 
       } catch (busErr) {
         logger.error({ busErr }, "Failed to emit retry event to activityBus");
       }
+
+      // Asynchronously trigger re-execution with real BusinessAgent engine
+      import("../agents/businessAgent").then(({ BusinessAgent }) => {
+        const agent = new BusinessAgent();
+        agent.execute({
+          projectId,
+          userId: existing.userId || "public_visitor",
+          sessionId: existing.sessionId || "temp_session",
+          payload: existing.inputPayload || {},
+        }).then(async (result) => {
+          const resAny = result as any;
+          const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+          await updateExecutionProgress(projectId, organizationId, executionId, {
+            status: finalStatus,
+            outputData: result.data || { response: resAny.response },
+            error: result.error || null,
+            steps: resAny.steps || [],
+          });
+        }).catch(async (execErr: any) => {
+          await updateExecutionProgress(projectId, organizationId, executionId, {
+            status: "FAILED",
+            error: execErr?.message || "Retry execution failed",
+          });
+        });
+      }).catch((impErr) => {
+        logger.error({ impErr }, "Failed to dynamic import BusinessAgent for retry");
+      });
     }
 
     return { success: true, execution: updated };
@@ -414,6 +458,7 @@ export async function approveExecution(
       };
     }
 
+    clearExecutionCancellation(executionId);
     const now = new Date();
 
     const [updated] = await tx
@@ -442,6 +487,43 @@ export async function approveExecution(
       } catch (busErr) {
         logger.error({ busErr }, "Failed to emit approval event to activityBus");
       }
+
+      // Asynchronously trigger action resumption with real BusinessAgent engine
+      const tokenToUse = providedToken || existing.approvalToken || (existing.outputData as any)?.confirmationToken || (existing.inputPayload as any)?.confirmationToken;
+      const actionId = (existing.outputData as any)?.actionId || (existing.inputPayload as any)?.actionId;
+      const actionName = (existing.outputData as any)?.toolExecuted || (existing.inputPayload as any)?.actionName;
+      const inputPayload = (existing.inputPayload as any) || {};
+
+      import("../agents/businessAgent").then(({ BusinessAgent }) => {
+        const agent = new BusinessAgent();
+        agent.execute({
+          projectId,
+          userId: existing.userId || "public_visitor",
+          sessionId: existing.sessionId || "temp_session",
+          payload: {
+            ...inputPayload,
+            actionId,
+            actionName,
+            confirmationToken: tokenToUse,
+          },
+        }).then(async (result) => {
+          const resAny = result as any;
+          const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+          await updateExecutionProgress(projectId, organizationId, executionId, {
+            status: finalStatus,
+            outputData: result.data || { response: resAny.response },
+            error: result.error || null,
+            steps: resAny.steps || [],
+          });
+        }).catch(async (execErr: any) => {
+          await updateExecutionProgress(projectId, organizationId, executionId, {
+            status: "FAILED",
+            error: execErr?.message || "Approval resumption failed",
+          });
+        });
+      }).catch((impErr) => {
+        logger.error({ impErr }, "Failed to dynamic import BusinessAgent for approval");
+      });
     }
 
     return { success: true, execution: updated };
