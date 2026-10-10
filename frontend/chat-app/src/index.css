@@ -64,106 +64,115 @@
 :root {
   --app-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --app-font-serif: 'Fraunces', Georgia, serif;
+  --app-font-hand: 'Caveat', cursive;
   --app-font-mono: 'JetBrains Mono', Menlo, monospace;
 
-  /* Commercial SaaS Production Light Theme */
-  --background: 220 18% 97%;
-  --foreground: 222 47% 11%;
+  /* Official Warm SaaS Light Theme */
+  --background: 37 67% 96%;        /* #FBF6EE */
+  --foreground: 33 17% 10%;        /* #1F1B16 */
   
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --card-border: 220 13% 86%;
+  --card: 45 100% 98%;             /* #FFFDF8 */
+  --card-foreground: 33 17% 10%;   /* #1F1B16 */
+  --card-border: 39 42% 84%;       /* #E6DAC4 */
   
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --popover-border: 220 13% 86%;
+  --popover: 45 100% 98%;          /* #FFFDF8 */
+  --popover-foreground: 33 17% 10%;/* #1F1B16 */
+  --popover-border: 39 42% 84%;    /* #E6DAC4 */
   
-  /* NOVA Brand Purple Accent */
-  --primary: 258 75% 56%; 
+  /* Primary Coral Accent */
+  --primary: 14 100% 62%;          /* #FF6A3D */
   --primary-foreground: 0 0% 100%;
   
-  --secondary: 220 14% 93%;
-  --secondary-foreground: 222 47% 14%;
+  --secondary: 39 30% 90%;
+  --secondary-foreground: 33 17% 10%;
   
-  --muted: 220 14% 93%;
-  --muted-foreground: 220 12% 40%;
+  --muted: 39 25% 91%;
+  --muted-foreground: 36 10% 38%;   /* #6B6357 */
   
-  --accent: 258 80% 95%;
-  --accent-foreground: 258 75% 45%;
+  --accent: 45 100% 93%;
+  --accent-foreground: 14 100% 45%;
   
-  --destructive: 0 84% 60%;
+  --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
+
+  --success: 166 56% 28%;          /* #1F6F5C */
+  --success-foreground: 0 0% 100%;
+
+  --highlight: 45 100% 68%;        /* #FFD75E */
   
-  --border: 220 13% 86%;
-  --input: 220 13% 86%;
-  --ring: 258 75% 56%;
+  --border: 39 42% 84%;            /* #E6DAC4 */
+  --input: 39 42% 84%;
+  --ring: 14 100% 62%;
 
-  --sidebar: 220 16% 95%;
-  --sidebar-foreground: 222 40% 20%;
-  --sidebar-border: 220 13% 86%;
-  --sidebar-primary: 258 75% 56%;
+  --sidebar: 37 55% 94%;
+  --sidebar-foreground: 33 17% 12%;
+  --sidebar-border: 39 42% 84%;
+  --sidebar-primary: 14 100% 62%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 14% 90%;
-  --sidebar-accent-foreground: 222 47% 11%;
-  --sidebar-ring: 258 75% 56%;
+  --sidebar-accent: 39 30% 88%;
+  --sidebar-accent-foreground: 33 17% 10%;
+  --sidebar-ring: 14 100% 62%;
 
-  --app-font-sans: 'Inter', sans-serif;
-  --app-font-serif: Georgia, serif;
-  --app-font-mono: Menlo, monospace;
   --radius: 0.75rem;
 
-  --chart-1: 258 75% 56%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 197 37% 24%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+  --chart-1: 14 100% 62%;
+  --chart-2: 166 56% 28%;
+  --chart-3: 45 100% 68%;
+  --chart-4: 36 10% 38%;
+  --chart-5: 33 17% 10%;
 }
 
 .dark {
-  /* Minimal Dark Theme */
-  --background: 240 10% 4%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 6%;
-  --card-foreground: 0 0% 98%;
-  --card-border: 240 5% 15%;
+  /* Warm Charcoal Dark Theme */
+  --background: 33 18% 8%;         /* #171410 */
+  --foreground: 39 52% 92%;        /* #F5EEE1 */
   
-  --popover: 240 10% 6%;
-  --popover-foreground: 0 0% 98%;
-  --popover-border: 240 5% 15%;
+  --card: 33 18% 11%;              /* #211D17 */
+  --card-foreground: 39 52% 92%;   /* #F5EEE1 */
+  --card-border: 34 20% 17%;       /* #352E24 */
   
-  --primary: 258 75% 62%;
+  --popover: 33 18% 11%;
+  --popover-foreground: 39 52% 92%;
+  --popover-border: 34 20% 17%;
+  
+  --primary: 14 100% 62%;          /* #FF6A3D */
   --primary-foreground: 0 0% 100%;
   
-  --secondary: 240 5% 12%;
-  --secondary-foreground: 0 0% 98%;
+  --secondary: 33 15% 16%;
+  --secondary-foreground: 39 52% 92%;
   
-  --muted: 240 5% 12%;
-  --muted-foreground: 240 5% 65%;
+  --muted: 33 15% 15%;
+  --muted-foreground: 35 15% 60%;  /* #A69A89 */
   
-  --accent: 258 40% 18%;
-  --accent-foreground: 258 85% 70%;
+  --accent: 14 40% 18%;
+  --accent-foreground: 14 100% 70%;
   
-  --destructive: 0 84% 60%;
+  --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  
-  --border: 240 5% 15%;
-  --input: 240 5% 15%;
-  --ring: 258 75% 62%;
-  
-  --sidebar: 240 10% 6%;
-  --sidebar-foreground: 240 5% 75%;
-  --sidebar-border: 240 5% 15%;
-  --sidebar-primary: 258 75% 62%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 5% 12%;
-  --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-ring: 258 75% 62%;
 
-  --chart-1: 258 75% 62%;
-  --chart-2: 200 90% 60%;
-  --chart-3: 320 85% 60%;
-  --chart-4: 150 80% 50%;
-  --chart-5: 45 95% 60%;
+  --success: 166 56% 28%;          /* #1F6F5C */
+  --success-foreground: 0 0% 100%;
+
+  --highlight: 45 100% 68%;        /* #FFD75E */
+  
+  --border: 34 20% 17%;            /* #352E24 */
+  --input: 34 20% 17%;
+  --ring: 14 100% 62%;
+  
+  --sidebar: 33 18% 9%;
+  --sidebar-foreground: 39 52% 85%;
+  --sidebar-border: 34 20% 17%;
+  --sidebar-primary: 14 100% 62%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 33 15% 16%;
+  --sidebar-accent-foreground: 39 52% 92%;
+  --sidebar-ring: 14 100% 62%;
+
+  --chart-1: 14 100% 62%;
+  --chart-2: 166 56% 28%;
+  --chart-3: 45 100% 68%;
+  --chart-4: 35 15% 60%;
+  --chart-5: 39 52% 92%;
 }
 
 .theme-evergreen {
