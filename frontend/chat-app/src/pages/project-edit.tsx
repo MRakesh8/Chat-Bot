@@ -444,149 +444,213 @@ export default function ProjectEditPage() {
           return (
             <div className="space-y-6 mb-8">
               {/* Top Banner Row: Project Name, URL, Status & Actions */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 p-6 rounded-3xl bg-card border border-border shadow-md">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-3xl font-extrabold text-foreground tracking-tight">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 md:p-6 rounded-2xl md:rounded-3xl bg-card border border-border/80 shadow-xs">
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight truncate">
                       {project?.name || name || "Project"}
                     </h1>
-                    <Badge variant="outline" className="text-xs font-bold px-3 py-1 bg-primary/10 text-primary border-primary/20">
+                    <Badge variant="outline" className="text-xs font-bold px-2.5 py-0.5 bg-primary/10 text-primary border-primary/20 rounded-full">
                       Setup {setupPercent}%
                     </Badge>
                   </div>
 
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Your AI Business Assistant
+                  <p className="text-xs md:text-sm text-muted-foreground font-medium">
+                    AI Business Assistant Workspace
                   </p>
 
-                  <div className="pt-1 flex items-center gap-3 font-mono text-sm">
+                  <div className="pt-0.5 flex items-center gap-2 text-xs">
                     {isLocalDev ? (
-                      <span className="flex items-center gap-2 text-purple-400 bg-purple-500/10 px-3 py-1 rounded-xl border border-purple-500/20 font-sans text-xs font-semibold">
-                        🖥 Local Development <span className="font-mono opacity-80">{storedUrl || "localhost:3000"}</span>
+                      <span className="inline-flex items-center gap-1.5 text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-500/20 font-medium">
+                        <Laptop className="w-3.5 h-3.5" />
+                        <span>Local Environment ({storedUrl || "localhost:3000"})</span>
                       </span>
                     ) : (
                       <a
                         href={storedUrl!}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1.5 text-blue-400 hover:underline font-semibold"
+                        className="inline-flex items-center gap-1.5 text-blue-400 hover:underline font-semibold truncate"
                       >
-                        🌐 {storedUrl}
+                        <Globe className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{storedUrl}</span>
+                        <ExternalLink className="w-3 h-3 shrink-0 opacity-75" />
                       </a>
                     )}
                   </div>
                 </div>
 
                 {/* Right Action: Launch Site vs Visit Site vs Local Dev */}
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
                   {isLive ? (
                     <div className="flex items-center gap-3">
-                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold px-3 py-1.5 text-xs gap-1.5 rounded-xl">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        ● Live
-                      </Badge>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-xl border border-emerald-400/20">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span>Live</span>
+                      </div>
                       {storedUrl && (
                         <Button
                           onClick={() => window.open(storedUrl, "_blank")}
-                          className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs h-10 px-5 rounded-xl gap-2 shadow-md"
+                          className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs h-9 px-4 rounded-xl gap-1.5 shadow-xs cursor-pointer"
                         >
-                          <ExternalLink className="w-4 h-4" /> ↗ Visit Site
+                          <ExternalLink className="w-3.5 h-3.5" /> Visit Site
                         </Button>
                       )}
                     </div>
                   ) : !isLocalDev && storedUrl ? (
                     <Button
                       onClick={() => handleTabChange("deployment")}
-                      className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-slate-950 font-bold text-xs h-10 px-6 rounded-xl gap-2 shadow-md"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 px-5 rounded-xl gap-1.5 shadow-xs cursor-pointer"
                     >
-                      <Rocket className="w-4 h-4" /> ↗ Launch Site
+                      <Rocket className="w-3.5 h-3.5" /> Launch Site
                     </Button>
                   ) : (
                     <Button
                       variant="outline"
                       onClick={() => handleTabChange("deployment")}
-                      className="border-purple-500/30 hover:bg-purple-500/10 text-purple-400 font-semibold text-xs h-10 px-5 rounded-xl gap-2"
+                      className="border-primary/30 hover:bg-primary/10 text-primary font-semibold text-xs h-9 px-4 rounded-xl gap-1.5 cursor-pointer"
                     >
-                      <Laptop className="w-4 h-4" /> Local Testing Controls
+                      <Laptop className="w-3.5 h-3.5" /> Local Testing
                     </Button>
                   )}
                 </div>
               </div>
 
               {/* YOUR NOVA JOURNEY Stepper */}
-              <div className="p-6 rounded-3xl bg-card/60 border border-border shadow-xs backdrop-blur-xl">
-                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">
-                  YOUR NOVA JOURNEY
-                </p>
+              <div className="p-5 rounded-2xl md:rounded-3xl bg-card/60 border border-border/80 shadow-xs backdrop-blur-xl">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    YOUR NOVA JOURNEY
+                  </p>
+                  <span className="text-[11px] font-semibold text-primary">
+                    {setupPercent}% Complete
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs font-semibold">
-                  <div className="flex items-center gap-2 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>✓ Website Connected</span>
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs font-semibold">
+                  {/* Step 1: Website Connected */}
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("settings")}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                      storedUrl
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
+                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    {storedUrl ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Globe className="w-4 h-4 shrink-0 opacity-60" />
+                    )}
+                    <span className="truncate">{storedUrl ? "Website Connected" : "Connect Website"}</span>
+                  </button>
 
-                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
-                    discoveryData?.discoveryStatus === "READY"
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                      : isAnalyzing
-                      ? "bg-primary/10 border-primary/20 text-primary"
-                      : "bg-muted/40 border-border text-muted-foreground"
-                  }`}>
+                  {/* Step 2: AI Analysis */}
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("guide")}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                      discoveryData?.discoveryStatus === "READY"
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
+                        : isAnalyzing
+                        ? "bg-primary/15 border-primary/30 text-primary"
+                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
                     {discoveryData?.discoveryStatus === "READY" ? (
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                     ) : isAnalyzing ? (
                       <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
                     ) : (
-                      <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground" />
+                      <Brain className="w-4 h-4 shrink-0 opacity-60" />
                     )}
-                    <span>{discoveryData?.discoveryStatus === "READY" ? "✓ AI Analysis" : isAnalyzing ? "● AI Analyzing" : "○ AI Analysis"}</span>
-                  </div>
+                    <span className="truncate">
+                      {discoveryData?.discoveryStatus === "READY"
+                        ? "AI Analysis Ready"
+                        : isAnalyzing
+                        ? "AI Analyzing..."
+                        : "AI Analysis"}
+                    </span>
+                  </button>
 
-                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
-                    project ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-muted/40 border-border text-muted-foreground"
-                  }`}>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>✓ Knowledge Ready</span>
-                  </div>
+                  {/* Step 3: Knowledge Ready */}
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("knowledge")}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                      project
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
+                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    {project ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Database className="w-4 h-4 shrink-0 opacity-60" />
+                    )}
+                    <span className="truncate">{project ? "Knowledge Ready" : "Setup Knowledge"}</span>
+                  </button>
 
-                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
-                    activeTab === "deployment" || activeTab === "widget-studio"
-                      ? "bg-primary/15 border-primary/30 text-primary"
-                      : "bg-muted/40 border-border text-muted-foreground"
-                  }`}>
-                    <div className="w-2.5 h-2.5 rounded-full bg-primary" />
-                    <span>● Widget Installation</span>
-                  </div>
+                  {/* Step 4: Widget Installation */}
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("deployment")}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                      activeTab === "deployment" || activeTab === "widget-studio" || readinessData?.isReady
+                        ? "bg-primary/15 border-primary/30 text-primary"
+                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    {readinessData?.isReady ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Paintbrush className="w-4 h-4 shrink-0 opacity-60" />
+                    )}
+                    <span className="truncate">Widget Install</span>
+                  </button>
 
-                  <div className={`flex items-center gap-2 p-3 rounded-2xl border ${
-                    isLive
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                      : "bg-muted/40 border-border text-muted-foreground"
-                  }`}>
-                    {isLive ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground" />}
-                    <span>{isLive ? "✓ Launch" : "○ Launch"}</span>
-                  </div>
+                  {/* Step 5: Launch */}
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("deployment")}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                      isLive
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
+                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    {isLive ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Rocket className="w-4 h-4 shrink-0 opacity-60" />
+                    )}
+                    <span className="truncate">{isLive ? "Live & Active" : "Launch"}</span>
+                  </button>
                 </div>
               </div>
 
               {/* NEXT BEST ACTION Banner */}
-              <div className="p-5 rounded-2xl bg-gradient-to-r from-primary/10 via-indigo-500/10 to-purple-500/10 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+              <div className="p-4.5 rounded-2xl bg-gradient-to-r from-primary/10 via-indigo-500/10 to-purple-500/10 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4.5 h-4.5" />
                   </div>
                   <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-primary block">
-                      NEXT BEST ACTION
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary block">
+                      NEXT RECOMMENDED ACTION
                     </span>
-                    <p className="text-sm font-bold text-foreground mt-0.5">
+                    <p className="text-xs md:text-sm font-semibold text-foreground mt-0.5">
                       {isAnalyzing
-                        ? "● NOVA is analyzing your website"
+                        ? "NOVA AI is discovering your website content & pages"
                         : isLive
-                        ? "🎉 Your AI assistant is live"
+                        ? "Your AI business assistant is live and active on your website"
                         : readinessData?.isReady
-                        ? "✓ Installation detected & ready to launch"
-                        : "🚀 Your assistant is ready to install"}
+                        ? "Installation detected! Verify settings and launch your assistant"
+                        : "Get your widget embed code to deploy on your website"}
                     </p>
                   </div>
                 </div>
@@ -602,15 +666,17 @@ export default function ProjectEditPage() {
                       handleTabChange("deployment");
                     }
                   }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs rounded-xl h-10 px-5 shrink-0 gap-1.5"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs rounded-xl h-9 px-4 shrink-0 gap-1.5 cursor-pointer shadow-xs"
                 >
-                  {isAnalyzing
-                    ? "View Analysis"
-                    : isLive
-                    ? "↗ Visit Site"
-                    : readinessData?.isReady
-                    ? "Verify & Launch"
-                    : "Get Installation Code"}
+                  <span>
+                    {isAnalyzing
+                      ? "View Analysis"
+                      : isLive
+                      ? "Visit Site"
+                      : readinessData?.isReady
+                      ? "Verify & Launch"
+                      : "Get Code"}
+                  </span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Button>
               </div>
