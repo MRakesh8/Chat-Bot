@@ -90,6 +90,7 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
     if (location.startsWith("/projects")) return "Projects";
     if (location.startsWith("/services")) return "Connected Services";
     if (location.startsWith("/billing")) return "Billing & Plan";
+    if (location.startsWith("/notifications")) return "Notifications";
     if (location.startsWith("/settings")) return "Settings";
     if (location.startsWith("/profile")) return "Profile";
     if (location.startsWith("/admin")) return "Admin Console";
@@ -188,9 +189,9 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
           aria-label="Notifications"
           onClick={() => {
             if (projectId) {
-              setLocation(`/settings?tab=notifications&projectId=${projectId}`);
+              setLocation(`/notifications?projectId=${projectId}`);
             } else {
-              setLocation("/settings?tab=notifications");
+              setLocation("/notifications");
             }
           }}
           className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary relative transition-colors focus-visible:ring-2 focus-visible:ring-primary/50"

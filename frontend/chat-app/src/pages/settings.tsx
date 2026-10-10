@@ -6,19 +6,11 @@ import { apiUrl } from "@/lib/api-url";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ApiKeysSettings } from "@/components/ApiKeysSettings";
 import { BillingSection } from "@/components/project/billing-section";
-import { Notifications } from "@/components/project/notifications";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettingsTabPrefetch } from "@/hooks/use-tab-prefetch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Palette, Globe, Mic, Lock, Bell, CreditCard, Key, Settings, Plus, Loader2 } from "lucide-react";
+import { Palette, Globe, Mic, Lock, CreditCard, Key, Settings } from "lucide-react";
 
 type Project = {
   id: string;
@@ -43,14 +35,20 @@ export default function SettingsPage() {
   };
 
   const initialParams = getUrlParams();
-  const [activeTab, setActiveTab] = useState(initialParams.tab);
+  const [activeTab, setActiveTab] = useState(
+    initialParams.tab === "notifications" ? "general" : initialParams.tab
+  );
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialParams.projectId);
 
   useEffect(() => {
     const { tab, projectId } = getUrlParams();
+    if (tab === "notifications") {
+      setLocation(projectId ? `/notifications?projectId=${projectId}` : "/notifications", { replace: true });
+      return;
+    }
     if (tab) setActiveTab(tab);
     if (projectId) setSelectedProjectId(projectId);
-  }, []);
+  }, [setLocation]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -61,7 +59,7 @@ export default function SettingsPage() {
     }
   };
 
-  const { data: projects, isLoading: isLoadingProjects } = useQuery({
+  const { data: projects } = useQuery({
     queryKey: ["projects"],
     queryFn: async () => {
       const res = await authFetch(apiUrl("/api/projects"));
@@ -74,15 +72,6 @@ export default function SettingsPage() {
   const effectiveProjectId = selectedProjectId || (projects && projects.length > 0 ? projects[0].id : null);
   const { getTabTriggerProps } = useSettingsTabPrefetch(effectiveProjectId, activeTab);
 
-  const handleProjectSelect = (id: string) => {
-    setSelectedProjectId(id);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("projectId", id);
-      window.history.replaceState(null, "", url.toString());
-    }
-  };
-
   return (
     <div className="flex w-full h-full bg-transparent overflow-x-hidden">
       <div className="flex-1 p-6 md:p-8 text-foreground max-w-4xl mx-auto space-y-8">
@@ -94,7 +83,7 @@ export default function SettingsPage() {
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure global account appearance, notification dispatchers, billing subscriptions, and workspace-wide API keys.
+            Configure global account appearance, billing subscriptions, and workspace-wide API keys.
           </p>
         </div>
 
@@ -102,9 +91,6 @@ export default function SettingsPage() {
           <TabsList className="mb-8 bg-white/[0.02] border border-white/[0.05] p-1.5 w-full flex overflow-x-auto justify-start h-12 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
             <TabsTrigger value="general" {...getTabTriggerProps("general")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Settings className="w-4 h-4 mr-2" /> General
-            </TabsTrigger>
-            <TabsTrigger value="notifications" {...getTabTriggerProps("notifications")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Bell className="w-4 h-4 mr-2" /> Notifications
             </TabsTrigger>
             <TabsTrigger value="billing" {...getTabTriggerProps("billing")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <CreditCard className="w-4 h-4 mr-2" /> Billing
@@ -177,62 +163,6 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </section>
-          </TabsContent>
-
-          <TabsContent value="notifications" className="space-y-6 mt-0">
-            {isLoadingProjects ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3 border border-border rounded-2xl bg-card/30">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Loading workspace notifications...</p>
-              </div>
-            ) : projects && projects.length > 0 ? (
-              <div className="space-y-6">
-                {projects.length > 1 && (
-                  <div className="p-4 rounded-2xl bg-card border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
-                    <div>
-                      <h3 className="text-sm font-semibold text-foreground">Project Selection</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">Select a project to view its alert notifications and event logs.</p>
-                    </div>
-                    <Select value={effectiveProjectId || ""} onValueChange={handleProjectSelect}>
-                      <SelectTrigger className="w-full sm:w-[240px] h-10 rounded-xl bg-secondary border-border text-foreground">
-                        <SelectValue placeholder="Select a project" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover border-border text-popover-foreground rounded-xl">
-                        {projects.map((p) => (
-                          <SelectItem key={p.id} value={p.id} className="rounded-lg my-0.5">
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {effectiveProjectId ? (
-                  <Notifications
-                    projectId={effectiveProjectId}
-                    onSelectTab={(tab) => {
-                      setLocation(`/projects/${effectiveProjectId}/edit?tab=${tab}`);
-                    }}
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-16 gap-4 text-center border border-dashed border-border rounded-2xl bg-card/30">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center">
-                  <Bell className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-foreground mb-1">No Projects Found</h3>
-                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                    Alert notifications are linked to projects. Create your first project to configure and view alert notifications.
-                  </p>
-                </div>
-                <Button onClick={() => setLocation("/projects/new")} className="gap-2 rounded-xl text-xs font-semibold">
-                  <Plus className="w-4 h-4" /> Create Project
-                </Button>
-              </div>
-            )}
           </TabsContent>
 
           <TabsContent value="billing" className="mt-0">

@@ -21,6 +21,7 @@ const AuthPage = lazy(() => import("./pages/auth"));
 const NotFound = lazy(() => import("./pages/not-found"));
 const ChatPage = lazy(() => import("./pages/chat"));
 const SettingsPage = lazy(() => import("./pages/settings"));
+const NotificationsPage = lazy(() => import("./pages/notifications"));
 const ProfilePage = lazy(() => import("./pages/profile"));
 const BillingPage = lazy(() => import("./pages/billing"));
 const ProjectsPage = lazy(() => import("./pages/projects"));
@@ -166,6 +167,7 @@ export default function App() {
                             </Route>
 
                             <Route path="/chat/:id?" component={ChatPage} />
+                            <Route path="/notifications" component={NotificationsPage} />
                             <Route path="/settings" component={SettingsPage} />
                             <Route path="/profile" component={ProfilePage} />
                             <Route path="/billing" component={BillingPage} />

@@ -384,7 +384,7 @@ export function useSettingsTabPrefetch(effectiveProjectId: string | null | undef
     if (!effectiveProjectId) return;
 
     const timer = setTimeout(() => {
-      ["notifications", "billing"].forEach((tab) => {
+      ["billing"].forEach((tab) => {
         if (tab !== currentTab && !prefetchedTabsRef.current.has(tab)) {
           prefetchTab(tab);
         }
