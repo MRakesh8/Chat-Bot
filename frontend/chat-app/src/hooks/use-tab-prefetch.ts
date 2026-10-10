@@ -227,18 +227,26 @@ export function useProjectTabPrefetch(projectId: string | null | undefined, curr
         case "agent-control":
           prefetchPromises.push(
             queryClient.prefetchQuery({
-              queryKey: ["agent-capabilities", projectId],
+              queryKey: ["project-executions", projectId, "all"],
               queryFn: async () => {
-                const res = await authFetch(apiUrl(`/api/agent/capabilities/${projectId}`));
-                if (!res.ok) return { capabilities: [] };
+                const res = await authFetch(apiUrl(`/api/projects/${projectId}/executions?status=all&limit=50&offset=0`));
+                if (!res.ok) return { executions: [], totalCount: 0 };
                 return res.json();
               },
             }),
             queryClient.prefetchQuery({
-              queryKey: ["agent-activity-runs", projectId],
+              queryKey: ["project-execution-stats", projectId],
               queryFn: async () => {
-                const res = await authFetch(apiUrl(`/api/projects/${projectId}/dashboard/activity?limit=50`));
-                if (!res.ok) return [];
+                const res = await authFetch(apiUrl(`/api/projects/${projectId}/executions/stats`));
+                if (!res.ok) return null;
+                return res.json();
+              },
+            }),
+            queryClient.prefetchQuery({
+              queryKey: ["agent-capabilities", projectId],
+              queryFn: async () => {
+                const res = await authFetch(apiUrl(`/api/agent/capabilities/${projectId}`));
+                if (!res.ok) return { capabilities: [] };
                 return res.json();
               },
             })

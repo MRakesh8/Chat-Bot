@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,16 +19,16 @@ import {
   Sparkles,
   AlertTriangle,
   Play,
-  Radio,
   Clock,
-  ExternalLink,
   ShieldAlert,
   Loader2,
 } from "lucide-react";
 import {
   AgentCapability,
-  AgentExecutionRun,
+  AgentExecutionRecord,
+  ExecutionStats,
   ConfirmationState,
+  ExecutionApprovalState,
   StreamConnectionState,
 } from "./types";
 import { AgentExecutionOverview } from "./AgentExecutionOverview";
@@ -37,6 +37,7 @@ import { AgentCapabilitiesManager } from "./AgentCapabilitiesManager";
 import { AgentExecutionTimeline } from "./AgentExecutionTimeline";
 import { AgentToolRunnerModal } from "./AgentToolRunnerModal";
 import { ActionConfirmationModal } from "./ActionConfirmationModal";
+import { ExecutionApprovalModal } from "./ExecutionApprovalModal";
 
 export interface AgentControlCenterProps {
   projectId: string;
@@ -51,94 +52,99 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
 
   const [activeTab, setActiveTab] = useState<"overview" | "runs" | "capabilities" | "policy">("overview");
   const [streamStatus, setStreamStatus] = useState<StreamConnectionState>("polling");
-  const [realtimeRuns, setRealtimeRuns] = useState<AgentExecutionRun[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Modals state
-  const [selectedRunForTimeline, setSelectedRunForTimeline] = useState<AgentExecutionRun | null>(null);
+  const [selectedExecutionForTimeline, setSelectedExecutionForTimeline] = useState<AgentExecutionRecord | null>(null);
   const [selectedToolToRun, setSelectedToolToRun] = useState<AgentCapability | null>(null);
-  const [activeConfirmation, setActiveConfirmation] = useState<ConfirmationState | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [activeToolConfirmation, setActiveToolConfirmation] = useState<ConfirmationState | null>(null);
+  const [activeExecutionApproval, setActiveExecutionApproval] = useState<ExecutionApprovalState | null>(null);
+
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isToolConfirming, setIsToolConfirming] = useState(false);
 
   const isDemo = projectId === "00000000-0000-4000-8000-000000000000" || projectId === "demo";
 
-  // 1. Fetch Capabilities
+  // 1. Fetch Persisted Executions from Real Phase 8A Endpoint
+  const {
+    data: executionsData,
+    isLoading: isLoadingExecutions,
+    isError: isExecutionsError,
+    refetch: refetchExecutions,
+    isFetching: isFetchingExecutions,
+  } = useQuery({
+    queryKey: ["project-executions", projectId, statusFilter],
+    queryFn: async () => {
+      const url = apiUrl(
+        `/api/projects/${projectId}/executions?status=${statusFilter}&limit=50&offset=0`
+      );
+      const res = await authFetch(url);
+      if (!res.ok) {
+        throw new Error(`Failed to load executions (HTTP ${res.status})`);
+      }
+      return res.json() as Promise<{
+        executions: AgentExecutionRecord[];
+        totalCount: number;
+        runningCount: number;
+        pendingApprovalCount: number;
+        failedCount: number;
+        completedCount: number;
+      }>;
+    },
+    enabled: !!projectId,
+    refetchInterval: 6000, // Poll fallback every 6 seconds
+  });
+
+  const executions: AgentExecutionRecord[] = useMemo(() => {
+    return executionsData?.executions || [];
+  }, [executionsData]);
+
+  // 2. Fetch Run Statistics from Real Phase 8A Stats Endpoint
+  const {
+    data: executionStats,
+    refetch: refetchStats,
+  } = useQuery<ExecutionStats>({
+    queryKey: ["project-execution-stats", projectId],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/executions/stats`));
+      if (!res.ok) {
+        return {
+          totalCount: executions.length,
+          runningCount: executions.filter((e) => e.status === "RUNNING").length,
+          pendingApprovalCount: executions.filter((e) => e.status === "PENDING_APPROVAL").length,
+          failedCount: executions.filter((e) => e.status === "FAILED").length,
+          completedCount: executions.filter((e) => e.status === "COMPLETED").length,
+        };
+      }
+      return res.json();
+    },
+    enabled: !!projectId,
+    refetchInterval: 6000,
+  });
+
+  // 3. Fetch Discovered Project Capabilities
   const {
     data: capabilitiesData,
     isLoading: isLoadingCapabilities,
-    isError: isCapabilitiesError,
     refetch: refetchCapabilities,
   } = useQuery({
     queryKey: ["agent-capabilities", projectId],
     queryFn: async () => {
       const res = await authFetch(apiUrl(`/api/agent/capabilities/${projectId}`));
       if (!res.ok) {
-        // Fallback for demo or offline mode
         return { capabilities: [] };
       }
       return res.json() as Promise<{ success: boolean; capabilities: AgentCapability[] }>;
     },
     enabled: !!projectId,
-    staleTime: 1000 * 30, // 30s
+    staleTime: 1000 * 30,
   });
 
   const capabilities: AgentCapability[] = useMemo(() => {
     return capabilitiesData?.capabilities || [];
   }, [capabilitiesData]);
 
-  // 2. Fetch Historical Tool Executions and Activity
-  const {
-    data: activityData,
-    isLoading: isLoadingActivity,
-    isError: isActivityError,
-    refetch: refetchActivity,
-    isFetching: isFetchingActivity,
-  } = useQuery({
-    queryKey: ["agent-activity-runs", projectId],
-    queryFn: async () => {
-      const res = await authFetch(apiUrl(`/api/projects/${projectId}/dashboard/activity?limit=50`));
-      if (!res.ok) {
-        return [];
-      }
-      return res.json() as Promise<any[]>;
-    },
-    enabled: !!projectId,
-    refetchInterval: 8000, // Poll fallback every 8 seconds
-  });
-
-  // Map and deduplicate raw activity items into typed AgentExecutionRuns
-  useEffect(() => {
-    if (activityData && Array.isArray(activityData)) {
-      const mappedRuns: AgentExecutionRun[] = activityData
-        .filter((act: any) => act.type === "tool_execution" || act.type === "security" || act.metadata?.actionName)
-        .map((act: any) => ({
-          id: act.id,
-          type: act.type,
-          title: act.title || `Action: ${act.metadata?.actionName || "Tool Execution"}`,
-          detail: act.detail || act.title,
-          status: act.status || "COMPLETED",
-          timestamp: act.timestamp,
-          projectId: act.projectId || projectId,
-          metadata: act.metadata || {},
-        }));
-
-      setRealtimeRuns((prev) => {
-        const map = new Map<string, AgentExecutionRun>();
-        for (const r of mappedRuns) {
-          map.set(r.id, r);
-        }
-        for (const r of prev) {
-          if (!map.has(r.id)) {
-            map.set(r.id, r);
-          }
-        }
-        return Array.from(map.values()).sort(
-          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-      });
-    }
-  }, [activityData, projectId]);
-
-  // 3. Connect to Real-time SSE Stream
+  // 4. Real-time SSE Stream Integration
   useEffect(() => {
     if (!projectId) return;
 
@@ -179,35 +185,13 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
             if (trimmed.startsWith("data: ")) {
               try {
                 const event = JSON.parse(trimmed.slice(6));
-                if (
-                  event &&
-                  event.id &&
-                  (event.type === "tool_execution" || event.type === "security" || event.metadata?.actionName)
-                ) {
-                  const newRun: AgentExecutionRun = {
-                    id: event.id,
-                    type: event.type,
-                    title: event.title,
-                    detail: event.detail,
-                    status: event.status || "COMPLETED",
-                    timestamp: event.timestamp || new Date().toISOString(),
-                    projectId: event.projectId || projectId,
-                    metadata: event.metadata || {},
-                  };
-
-                  setRealtimeRuns((prev) => {
-                    const map = new Map<string, AgentExecutionRun>();
-                    map.set(newRun.id, newRun);
-                    for (const item of prev) {
-                      if (!map.has(item.id)) map.set(item.id, item);
-                    }
-                    return Array.from(map.values()).sort(
-                      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-                  });
+                if (event && event.type === "tool_execution") {
+                  // Invalidate real executions queries upon live activity emission
+                  queryClient.invalidateQueries({ queryKey: ["project-executions", projectId] });
+                  queryClient.invalidateQueries({ queryKey: ["project-execution-stats", projectId] });
                 }
               } catch (parseErr) {
-                // Ignore parse errors on heartbeat
+                // Heartbeat / ping ignore
               }
             }
           }
@@ -215,10 +199,9 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
       } catch (err: any) {
         if (err?.name !== "AbortError" && isMounted) {
           setStreamStatus("polling");
-          // Reconnect with backoff
           retryTimeout = setTimeout(() => {
             if (isMounted) initStream();
-          }, 7000);
+          }, 8000);
         }
       }
     }
@@ -230,11 +213,120 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
       abortController.abort();
       if (retryTimeout) clearTimeout(retryTimeout);
     };
-  }, [projectId]);
+  }, [projectId, queryClient]);
 
-  // 4. Handle Cryptographic Action Confirmation
-  const handleConfirmAction = async (confirmation: ConfirmationState) => {
-    setIsConfirming(true);
+  // 5. Control: Cancel Execution
+  const handleCancelExecution = async (executionId: string) => {
+    setIsActionLoading(true);
+    try {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/executions/${executionId}/cancel`), {
+        method: "POST",
+        body: JSON.stringify({ reason: "Cancelled by workspace operator" }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Failed to cancel execution");
+      }
+
+      toast({
+        title: "Execution Cancelled",
+        description: `Run ${executionId.slice(0, 8)}... was successfully marked as CANCELLED.`,
+      });
+
+      // Update local state if timeline is open
+      if (selectedExecutionForTimeline?.id === executionId && data.execution) {
+        setSelectedExecutionForTimeline(data.execution);
+      }
+
+      refetchExecutions();
+      refetchStats();
+    } catch (err: any) {
+      toast({
+        title: "Cancellation Failed",
+        description: err.message || "Unable to cancel execution.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  // 6. Control: Retry Execution
+  const handleRetryExecution = async (executionId: string) => {
+    setIsActionLoading(true);
+    try {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/executions/${executionId}/retry`), {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Failed to retry execution");
+      }
+
+      toast({
+        title: "Execution Restarted",
+        description: `Run ${executionId.slice(0, 8)}... has restarted processing steps.`,
+      });
+
+      if (selectedExecutionForTimeline?.id === executionId && data.execution) {
+        setSelectedExecutionForTimeline(data.execution);
+      }
+
+      refetchExecutions();
+      refetchStats();
+    } catch (err: any) {
+      toast({
+        title: "Retry Rejected",
+        description: err.message || "Failed to restart execution.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  // 7. Control: Approve Execution
+  const handleApproveExecution = async (executionId: string, token?: string) => {
+    setIsActionLoading(true);
+    try {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/executions/${executionId}/approve`), {
+        method: "POST",
+        body: JSON.stringify({ approvalToken: token }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Approval rejected by server");
+      }
+
+      toast({
+        title: "Execution Approved",
+        description: `Run ${executionId.slice(0, 8)}... approved and transitioned to RUNNING.`,
+      });
+
+      setActiveExecutionApproval(null);
+      if (selectedExecutionForTimeline?.id === executionId && data.execution) {
+        setSelectedExecutionForTimeline(data.execution);
+      }
+
+      refetchExecutions();
+      refetchStats();
+    } catch (err: any) {
+      toast({
+        title: "Approval Failed",
+        description: err.message || "Token mismatch or invalid approval state.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  // 8. Control: High-Risk Tool Execution Confirmation (distinct from Execution Approval)
+  const handleConfirmToolAction = async (confirmation: ConfirmationState) => {
+    setIsToolConfirming(true);
     try {
       const res = await authFetch(apiUrl("/api/agent/process"), {
         method: "POST",
@@ -254,21 +346,22 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
       }
 
       toast({
-        title: "Action Confirmed & Executed",
+        title: "Tool Action Confirmed & Executed",
         description: data.data?.response || `Successfully executed ${confirmation.actionName}.`,
       });
 
-      setActiveConfirmation(null);
-      refetchActivity();
+      setActiveToolConfirmation(null);
+      refetchExecutions();
+      refetchStats();
       refetchCapabilities();
     } catch (err: any) {
       toast({
-        title: "Confirmation Failed",
-        description: err.message || "Failed to validate cryptographic token.",
+        title: "Tool Confirmation Failed",
+        description: err.message || "Failed to validate cryptographic confirmation token.",
         variant: "destructive",
       });
     } finally {
-      setIsConfirming(false);
+      setIsToolConfirming(false);
     }
   };
 
@@ -284,7 +377,7 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
                 Demo Sandbox Environment
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Tool executions in the demo project are safely isolated. Real production mutations are simulated without external side-effects.
+                Executions in the demo project are safely isolated. Real production mutations are simulated with deterministic governance records.
               </p>
             </div>
           </div>
@@ -308,11 +401,11 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
               variant="outline"
               className="text-xs font-semibold px-2.5 py-0.5 bg-primary/10 text-primary border-primary/25"
             >
-              Phase 8B
+              Phase 8B Integrated
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Authoritative execution oversight, real-time run telemetry, and cryptographic risk guardrails.
+            Authoritative execution oversight, persisted governance records, and cryptographic risk guardrails.
           </p>
         </div>
 
@@ -349,14 +442,15 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
             variant="outline"
             size="sm"
             onClick={() => {
-              refetchActivity();
+              refetchExecutions();
+              refetchStats();
               refetchCapabilities();
             }}
-            disabled={isFetchingActivity}
+            disabled={isFetchingExecutions}
             className="h-8 px-2.5 rounded-xl border-border text-xs gap-1.5"
-            title="Refresh state"
+            title="Sync execution state"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetchingActivity ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetchingExecutions ? "animate-spin" : ""}`} />
             <span className="hidden sm:inline">Sync</span>
           </Button>
         </div>
@@ -382,7 +476,7 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
             className="flex-1 min-w-[120px] rounded-lg text-xs font-semibold data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
           >
             <Clock className="w-3.5 h-3.5 mr-1.5" />
-            <span>Run History ({realtimeRuns.length})</span>
+            <span>Run History ({executions.length})</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -405,24 +499,39 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         {/* Tab 1: Overview */}
         <TabsContent value="overview" className="space-y-6 mt-0">
           <AgentExecutionOverview
+            stats={executionStats || null}
             capabilities={capabilities}
-            runs={realtimeRuns}
+            executions={executions}
             onTriggerTestModal={() => {
               const execTool = capabilities.find((c) => c.status === "EXECUTABLE");
               setSelectedToolToRun(execTool || capabilities[0] || null);
             }}
             onNavigateToRuns={() => setActiveTab("runs")}
             onNavigateToTools={() => setActiveTab("capabilities")}
+            onInspectRun={(exec) => setSelectedExecutionForTimeline(exec)}
           />
         </TabsContent>
 
         {/* Tab 2: Run History */}
         <TabsContent value="runs" className="space-y-6 mt-0">
           <AgentRunHistory
-            runs={realtimeRuns}
-            isLoading={isLoadingActivity}
-            onRefresh={refetchActivity}
-            onInspectRun={(run) => setSelectedRunForTimeline(run)}
+            executions={executions}
+            isLoading={isLoadingExecutions}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            onRefresh={refetchExecutions}
+            onInspect={(exec) => setSelectedExecutionForTimeline(exec)}
+            onCancel={handleCancelExecution}
+            onRetry={handleRetryExecution}
+            onApprove={(exec) => {
+              setActiveExecutionApproval({
+                executionId: exec.id,
+                title: exec.title,
+                agentType: exec.agentType,
+                requiresToken: !!exec.approvalToken,
+              });
+            }}
+            isActionLoading={isActionLoading}
           />
         </TabsContent>
 
@@ -525,13 +634,35 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         </TabsContent>
       </Tabs>
 
-      {/* Execution Timeline Inspect Drawer/Modal */}
+      {/* Execution Timeline Inspect Drawer/Modal with real controls */}
       <AgentExecutionTimeline
-        run={selectedRunForTimeline}
-        open={!!selectedRunForTimeline}
+        execution={selectedExecutionForTimeline}
+        open={!!selectedExecutionForTimeline}
         onOpenChange={(open) => {
-          if (!open) setSelectedRunForTimeline(null);
+          if (!open) setSelectedExecutionForTimeline(null);
         }}
+        onCancel={handleCancelExecution}
+        onRetry={handleRetryExecution}
+        onApprove={(exec) => {
+          setActiveExecutionApproval({
+            executionId: exec.id,
+            title: exec.title,
+            agentType: exec.agentType,
+            requiresToken: !!exec.approvalToken,
+          });
+        }}
+        isActionLoading={isActionLoading}
+      />
+
+      {/* Execution Approval Dialog for PENDING_APPROVAL runs */}
+      <ExecutionApprovalModal
+        open={!!activeExecutionApproval}
+        onOpenChange={(open) => {
+          if (!open) setActiveExecutionApproval(null);
+        }}
+        approvalState={activeExecutionApproval}
+        onApprove={handleApproveExecution}
+        isSubmitting={isActionLoading}
       />
 
       {/* Test Tool Runner Modal */}
@@ -543,22 +674,23 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
           if (!open) setSelectedToolToRun(null);
         }}
         onRequestConfirmation={(conf) => {
-          setActiveConfirmation(conf);
+          setActiveToolConfirmation(conf);
         }}
         onExecutionSuccess={() => {
-          refetchActivity();
+          refetchExecutions();
+          refetchStats();
         }}
       />
 
-      {/* High-Risk Action Confirmation Dialog */}
+      {/* Separate High-Risk Tool Execution Confirmation Dialog */}
       <ActionConfirmationModal
-        open={!!activeConfirmation}
+        open={!!activeToolConfirmation}
         onOpenChange={(open) => {
-          if (!open) setActiveConfirmation(null);
+          if (!open) setActiveToolConfirmation(null);
         }}
-        confirmation={activeConfirmation}
-        onConfirm={handleConfirmAction}
-        isConfirming={isConfirming}
+        confirmation={activeToolConfirmation}
+        onConfirm={handleConfirmToolAction}
+        isConfirming={isToolConfirming}
       />
     </div>
   );

@@ -17,34 +17,38 @@ import {
   Play,
   Layers,
   Sparkles,
+  Clock,
+  RotateCcw,
 } from "lucide-react";
-import { AgentCapability, AgentExecutionRun } from "./types";
+import { AgentCapability, AgentExecutionRecord, ExecutionStats } from "./types";
 
 interface AgentExecutionOverviewProps {
+  stats: ExecutionStats | null;
   capabilities: AgentCapability[];
-  runs: AgentExecutionRun[];
+  executions: AgentExecutionRecord[];
   onTriggerTestModal?: () => void;
   onNavigateToRuns?: () => void;
   onNavigateToTools?: () => void;
+  onInspectRun?: (execution: AgentExecutionRecord) => void;
 }
 
 export function AgentExecutionOverview({
+  stats,
   capabilities,
-  runs,
+  executions,
   onTriggerTestModal,
   onNavigateToRuns,
   onNavigateToTools,
+  onInspectRun,
 }: AgentExecutionOverviewProps) {
-  const totalRuns = runs.length;
-  const successfulRuns = runs.filter(
-    (r) => r.status === "SUCCESS" || r.status === "COMPLETED"
-  ).length;
-  const successRate = totalRuns > 0 ? Math.round((successfulRuns / totalRuns) * 100) : 100;
+  const totalCount = stats?.totalCount ?? executions.length;
+  const runningCount = stats?.runningCount ?? executions.filter((e) => e.status === "RUNNING").length;
+  const pendingApprovalCount = stats?.pendingApprovalCount ?? executions.filter((e) => e.status === "PENDING_APPROVAL").length;
+  const completedCount = stats?.completedCount ?? executions.filter((e) => e.status === "COMPLETED").length;
+  const failedCount = stats?.failedCount ?? executions.filter((e) => e.status === "FAILED").length;
 
+  const successRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 100;
   const executableTools = capabilities.filter((c) => c.status === "EXECUTABLE").length;
-  const highRiskTools = capabilities.filter(
-    (c) => c.riskLevel === "HIGH_RISK_WRITE" || c.riskLevel === "IRREVERSIBLE"
-  ).length;
 
   const pipelineSteps = [
     { num: 1, name: "Intent Analysis", desc: "Extract action & parameters", icon: Sparkles },
@@ -60,7 +64,7 @@ export function AgentExecutionOverview({
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards Grid */}
+      {/* KPI Cards Grid from Real Persisted Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Runs */}
         <Card className="bg-card/70 border-border shadow-xs backdrop-blur-sm">
@@ -73,62 +77,65 @@ export function AgentExecutionOverview({
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-extrabold text-foreground">{totalRuns}</div>
-            <p className="text-xs text-muted-foreground mt-1">Recorded audit events</p>
+            <div className="text-2xl font-extrabold text-foreground">{totalCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">Persisted execution records</p>
           </CardContent>
         </Card>
 
-        {/* Success Rate */}
+        {/* Active & Running */}
         <Card className="bg-card/70 border-border shadow-xs backdrop-blur-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Verification Rate
+              Active Running
+            </CardTitle>
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+              <Cpu className={`w-4 h-4 ${runningCount > 0 ? "animate-spin" : ""}`} />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-extrabold text-foreground flex items-center gap-2">
+              <span>{runningCount}</span>
+              {runningCount > 0 && (
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-ping inline-block" />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Currently processing steps</p>
+          </CardContent>
+        </Card>
+
+        {/* Pending Approval */}
+        <Card className="bg-card/70 border-border shadow-xs backdrop-blur-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Pending Approval
+            </CardTitle>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-extrabold text-foreground">{pendingApprovalCount}</div>
+            <p className="text-xs text-amber-400 mt-1 font-medium">
+              {pendingApprovalCount > 0 ? "Requires operator action" : "Zero pending blockers"}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Completed & Success Rate */}
+        <Card className="bg-card/70 border-border shadow-xs backdrop-blur-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Completed ({successRate}%)
             </CardTitle>
             <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
               <TrendingUp className="w-4 h-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-extrabold text-foreground">{successRate}%</div>
+            <div className="text-2xl font-extrabold text-foreground">{completedCount}</div>
             <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{successfulRuns} completed verified</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Executable Tools */}
-        <Card className="bg-card/70 border-border shadow-xs backdrop-blur-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Executable Tools
-            </CardTitle>
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
-              <Cpu className="w-4 h-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-extrabold text-foreground">{executableTools}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Of {capabilities.length} total discovered
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Risk Guardrails */}
-        <Card className="bg-card/70 border-border shadow-xs backdrop-blur-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              High-Risk Gated
-            </CardTitle>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-extrabold text-foreground">{highRiskTools}</div>
-            <p className="text-xs text-amber-400 mt-1 font-medium">
-              Requires cryptographic token
+              <span>{failedCount} failed / retryable</span>
             </p>
           </CardContent>
         </Card>
@@ -154,7 +161,7 @@ export function AgentExecutionOverview({
                 onClick={onNavigateToTools}
                 className="text-xs rounded-xl h-8 gap-1.5"
               >
-                <span>View Capabilities</span>
+                <span>View Capabilities ({executableTools})</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Button>
             )}
@@ -190,7 +197,7 @@ export function AgentExecutionOverview({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold text-foreground">Recent Agent Runs</h4>
+            <h4 className="text-sm font-bold text-foreground">Recent Persisted Runs</h4>
             {onNavigateToRuns && (
               <Button
                 variant="ghost"
@@ -204,7 +211,7 @@ export function AgentExecutionOverview({
             )}
           </div>
 
-          {runs.length === 0 ? (
+          {executions.length === 0 ? (
             <div className="p-8 text-center rounded-2xl bg-muted/30 border border-border space-y-2">
               <Activity className="w-8 h-8 text-muted-foreground mx-auto" />
               <h5 className="text-xs font-bold text-foreground">No Executions Recorded Yet</h5>
@@ -214,45 +221,56 @@ export function AgentExecutionOverview({
             </div>
           ) : (
             <div className="space-y-2.5">
-              {runs.slice(0, 5).map((run) => (
-                <div
-                  key={run.id}
-                  className="p-3.5 rounded-xl bg-card border border-border/80 flex items-center justify-between gap-4 hover:border-primary/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
-                        run.status === "SUCCESS" || run.status === "COMPLETED"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                          : run.status === "PENDING_CONFIRMATION"
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                          : "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                      }`}
-                    >
-                      {run.status === "SUCCESS" || run.status === "COMPLETED" ? (
-                        <CheckCircle2 className="w-4 h-4" />
-                      ) : run.status === "PENDING_CONFIRMATION" ? (
-                        <AlertTriangle className="w-4 h-4" />
-                      ) : (
-                        <Cpu className="w-4 h-4" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-foreground truncate">{run.title}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">{run.detail}</p>
-                    </div>
-                  </div>
+              {executions.slice(0, 5).map((exec) => {
+                const isCompleted = exec.status === "COMPLETED";
+                const isPending = exec.status === "PENDING_APPROVAL";
+                const isRunning = exec.status === "RUNNING";
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant="outline" className="text-[10px] font-mono">
-                      {run.status}
-                    </Badge>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {new Date(run.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
+                return (
+                  <div
+                    key={exec.id}
+                    onClick={() => onInspectRun && onInspectRun(exec)}
+                    className="p-3.5 rounded-xl bg-card border border-border/80 flex items-center justify-between gap-4 hover:border-primary/40 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                          isCompleted
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                            : isRunning
+                            ? "bg-primary/10 text-primary border-primary/30"
+                            : isPending
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                            : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                        }`}
+                      >
+                        {isCompleted ? (
+                          <CheckCircle2 className="w-4 h-4" />
+                        ) : isPending ? (
+                          <AlertTriangle className="w-4 h-4" />
+                        ) : (
+                          <Cpu className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{exec.title}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono truncate">
+                          Agent: {exec.agentType}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className="text-[10px] font-mono">
+                        {exec.status}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {new Date(exec.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

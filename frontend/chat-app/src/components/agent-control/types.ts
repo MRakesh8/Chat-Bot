@@ -12,31 +12,56 @@ export interface AgentCapability {
   parameters?: Record<string, any>;
 }
 
-export type ExecutionStatus = "SUCCESS" | "COMPLETED" | "FAILED" | "PENDING_CONFIRMATION" | "FORBIDDEN" | "RUNNING";
+export type ExecutionStatus =
+  | "PENDING"
+  | "RUNNING"
+  | "PENDING_APPROVAL"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED";
 
-export interface AgentExecutionRun {
-  id: string;
-  type: "tool_execution" | "security" | "action" | string;
-  title: string;
-  detail: string;
-  status: string;
-  timestamp: string;
-  projectId: string;
-  metadata?: {
-    durationMs?: number;
-    riskLevel?: RiskLevel;
-    status?: string;
-    providerName?: string;
-    toolId?: string;
-    actionName?: string;
-    userId?: string;
-    error?: string;
-    rawResult?: any;
-    parameters?: any;
-    [key: string]: any;
-  };
+export interface ExecutionStep {
+  name: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "PENDING_APPROVAL" | string;
+  detail?: string;
+  timestamp?: string;
+  error?: string;
 }
 
+export interface AgentExecutionRecord {
+  id: string;
+  projectId: string;
+  organizationId?: string | null;
+  userId?: string | null;
+  sessionId?: string | null;
+  agentType: string;
+  title: string;
+  status: ExecutionStatus;
+  inputPayload: Record<string, any>;
+  outputData: Record<string, any>;
+  error?: string | null;
+  steps: ExecutionStep[];
+  retryCount: number;
+  maxRetries: number;
+  approvalToken?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExecutionStats {
+  totalCount: number;
+  runningCount: number;
+  pendingApprovalCount: number;
+  failedCount: number;
+  completedCount: number;
+}
+
+/**
+ * Kept separate: Cryptographic action confirmation for internal server tool execution
+ * (e.g. high-risk write actions via /api/agent/process or tools execute).
+ */
 export interface ConfirmationState {
   actionId: string;
   actionName: string;
@@ -45,6 +70,16 @@ export interface ConfirmationState {
   expiresAt?: string;
   message?: string;
   parameters?: any;
+}
+
+/**
+ * Dedicated approval request state for persisted executions in PENDING_APPROVAL status.
+ */
+export interface ExecutionApprovalState {
+  executionId: string;
+  title: string;
+  agentType: string;
+  requiresToken: boolean;
 }
 
 export type StreamConnectionState = "connected" | "reconnecting" | "polling" | "disconnected";
