@@ -87,8 +87,15 @@ export default function SettingsPage() {
     <div className="flex w-full h-full bg-transparent overflow-x-hidden">
       <div className="flex-1 p-6 md:p-8 text-foreground max-w-4xl mx-auto space-y-8">
         <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs px-2.5 py-0.5 rounded-full font-semibold">
+              Global Account Scope
+            </Badge>
+          </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Workspace Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage workspace appearance, language preferences, billing, API keys, and notifications.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Configure global account appearance, notification dispatchers, billing subscriptions, and workspace-wide API keys.
+          </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">

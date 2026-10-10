@@ -703,9 +703,14 @@ export default function ProjectEditPage() {
           <TabsContent value="settings">
             <Card className="bg-card border-border text-card-foreground mt-8">
               <CardHeader>
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-xs px-2.5 py-0.5 rounded-full font-semibold">
+                    Project Scope: {project?.name || "Current Project"}
+                  </Badge>
+                </div>
                 <CardTitle>Project Settings</CardTitle>
                 <CardDescription className="text-muted-foreground">
-                  Configure your chatbot's identity and core instructions.
+                  Configure this chatbot's persona, system instructions, and identity. Global account options (theme, billing, global API keys) are managed under Workspace Settings.
                 </CardDescription>
               </CardHeader>
               <CardContent>
