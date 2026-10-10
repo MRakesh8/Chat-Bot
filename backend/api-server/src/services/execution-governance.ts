@@ -258,6 +258,25 @@ export function isExecutionCancelled(executionId: string): boolean {
   return activeCancellations.has(executionId);
 }
 
+export async function isExecutionCancelledAsync(executionId: string): Promise<boolean> {
+  if (activeCancellations.has(executionId)) {
+    return true;
+  }
+  try {
+    const [row] = await db
+      .select({ status: agentExecutions.status })
+      .from(agentExecutions)
+      .where(eq(agentExecutions.id, executionId));
+    if (row && row.status === "CANCELLED") {
+      activeCancellations.add(executionId);
+      return true;
+    }
+  } catch (err) {
+    logger.error({ err, executionId }, "Error checking cancellation state in DB");
+  }
+  return false;
+}
+
 export function clearExecutionCancellation(executionId: string): void {
   activeCancellations.delete(executionId);
 }
@@ -397,7 +416,10 @@ export async function retryExecution(projectId: string, organizationId: string, 
           projectId,
           userId: existing.userId || "public_visitor",
           sessionId: existing.sessionId || "temp_session",
-          payload: existing.inputPayload || {},
+          payload: {
+            ...((existing.inputPayload as any) || {}),
+            executionId,
+          },
         }).then(async (result) => {
           const resAny = result as any;
           const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
@@ -505,6 +527,7 @@ export async function approveExecution(
             actionId,
             actionName,
             confirmationToken: tokenToUse,
+            executionId,
           },
         }).then(async (result) => {
           const resAny = result as any;

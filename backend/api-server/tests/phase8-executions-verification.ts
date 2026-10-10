@@ -13,6 +13,8 @@ import {
   approveExecution,
   sanitizePayload,
   isExecutionCancelled,
+  isExecutionCancelledAsync,
+  clearExecutionCancellation,
 } from "../src/services/execution-governance";
 
 async function runPhase8Tests() {
@@ -169,6 +171,15 @@ async function runPhase8Tests() {
       assert(cancelRes.execution?.status === "CANCELLED", "Verify status updated to CANCELLED");
       assert(cancelRes.execution?.error === "User clicked stop", "Verify cancellation reason stored");
       assert(isExecutionCancelled(cancelExecId) === true, "Verify active cancellation registry updated");
+
+      // Simulate process restart or memory clearance
+      clearExecutionCancellation(cancelExecId);
+      assert(isExecutionCancelled(cancelExecId) === false, "Verify in-memory state cleared on eviction simulation");
+
+      // DB-backed asynchronous check detects cancellation from PostgreSQL and restores memory state
+      const dbCancelled = await isExecutionCancelledAsync(cancelExecId);
+      assert(dbCancelled === true, "DB-backed fallback detects CANCELLED status in PostgreSQL database");
+      assert(isExecutionCancelled(cancelExecId) === true, "Memory state restored from DB fallback check");
 
       // Attempt second cancellation on already cancelled run
       const repeatCancel = await cancelExecution(testProjectA, testOrgA, cancelExecId, "Cancel again");

@@ -27,6 +27,7 @@ import { logger } from "../lib/logger";
 import { isDemoProjectId } from "./demo-project";
 import { emitActivityEvent } from "./activity";
 import { createNotification } from "./notifications";
+import { isExecutionCancelled, isExecutionCancelledAsync } from "./execution-governance";
 
 export interface CustomerContext {
   customerId?: string;
@@ -89,8 +90,7 @@ export async function executeServerTool(
   const executionStart = Date.now();
 
   if (executionId) {
-    const { isExecutionCancelled } = require("./execution-governance");
-    if (isExecutionCancelled(executionId)) {
+    if (isExecutionCancelled(executionId) || (await isExecutionCancelledAsync(executionId))) {
       return {
         success: false,
         status: "EXECUTION_FAILED",

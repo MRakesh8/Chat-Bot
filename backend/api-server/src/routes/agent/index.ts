@@ -122,6 +122,7 @@ router.post("/process", async (req: Request, res: Response): Promise<any> => {
         message,
         confirmationToken,
         actionId,
+        executionId: execRecord?.id,
       },
     });
 
