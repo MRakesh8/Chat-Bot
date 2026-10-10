@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, AlertCircle, RefreshCw, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
@@ -224,7 +224,63 @@ export default function ProjectEditPage() {
       return res.json();
     },
     enabled: !!projectId && !isNew,
+    refetchInterval: (query) => {
+      const s = query.state.data?.discoveryStatus;
+      return (s === "PENDING" || s === "ANALYZING") ? 2500 : false;
+    },
   });
+
+  const [isStartingAnalysis, setIsStartingAnalysis] = useState(false);
+
+  const handleStartAnalysis = async () => {
+    if (!projectId || projectId === "new") return;
+    if (isDemo) {
+      toast({
+        title: "Demo Project (Read-Only)",
+        description: "Website analysis is simulated in demo mode and already complete.",
+      });
+      handleTabChange("overview");
+      return;
+    }
+
+    const targetUrl = project?.websiteUrl || readinessData?.productionWebsiteUrl;
+    if (!targetUrl) {
+      toast({
+        title: "No Website Connected",
+        description: "Please connect your website URL first before running AI analysis.",
+        variant: "destructive",
+      });
+      handleTabChange("settings");
+      return;
+    }
+
+    setIsStartingAnalysis(true);
+    try {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/discovery/start`), {
+        method: "POST",
+        body: JSON.stringify({ url: targetUrl }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to start website analysis");
+      }
+      toast({
+        title: "AI Analysis Started 🚀",
+        description: `NOVA AI is discovering pages, business identity, and capabilities from ${targetUrl}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["discovery-status", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard", projectId] });
+      handleTabChange("overview");
+    } catch (e: any) {
+      toast({
+        title: "Analysis Failed to Start",
+        description: e.message || "Unable to start analysis. Please check your website URL.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsStartingAnalysis(false);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string; systemPrompt: string }) => {
@@ -434,12 +490,14 @@ export default function ProjectEditPage() {
           const isLocalDev = !storedUrl || storedUrl.includes("localhost") || storedUrl.includes("127.0.0.1");
           const isLive = !!storedUrl && !isLocalDev && (project?.isActive || project?.status === "active" || readinessData?.environment === "PRODUCTION");
           
+          const isDiscoveryReady = discoveryData?.discoveryStatus === "READY" || discoveryData?.discoveryStatus === "COMPLETED";
+          const isDiscoveryFailed = discoveryData?.discoveryStatus === "FAILED";
+          const isAnalyzing = discoveryData?.discoveryStatus === "ANALYZING" || discoveryData?.discoveryStatus === "PENDING" || isStartingAnalysis;
+
           let setupPercent = 25;
           if (storedUrl) setupPercent += 25;
-          if (discoveryData?.discoveryStatus === "READY") setupPercent += 25;
+          if (isDiscoveryReady) setupPercent += 25;
           if (isLive || project?.isActive) setupPercent += 25;
-
-          const isAnalyzing = discoveryData?.discoveryStatus === "ANALYZING" || discoveryData?.discoveryStatus === "PENDING";
 
           return (
             <div className="space-y-6 mb-8">
@@ -550,32 +608,82 @@ export default function ProjectEditPage() {
                   </button>
 
                   {/* Step 2: AI Analysis */}
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange("guide")}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
-                      discoveryData?.discoveryStatus === "READY"
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
-                        : isAnalyzing
-                        ? "bg-primary/15 border-primary/30 text-primary"
-                        : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
-                    }`}
-                  >
-                    {discoveryData?.discoveryStatus === "READY" ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : isAnalyzing ? (
-                      <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-                    ) : (
-                      <Brain className="w-4 h-4 shrink-0 opacity-60" />
-                    )}
-                    <span className="truncate">
-                      {discoveryData?.discoveryStatus === "READY"
-                        ? "AI Analysis Ready"
-                        : isAnalyzing
-                        ? "AI Analyzing..."
-                        : "AI Analysis"}
-                    </span>
-                  </button>
+                  {(() => {
+                    const handleStep2Click = () => {
+                      if (isDiscoveryReady) {
+                        handleTabChange("overview");
+                        toast({
+                          title: "Website Intelligence Ready",
+                          description: "Viewing discovered business identity and capabilities.",
+                        });
+                      } else if (isAnalyzing) {
+                        handleTabChange("overview");
+                        toast({
+                          title: "Analysis in Progress",
+                          description: "NOVA AI is currently discovering your website content.",
+                        });
+                      } else if (isDiscoveryFailed || storedUrl) {
+                        handleStartAnalysis();
+                      } else {
+                        toast({
+                          title: "Connect Website First",
+                          description: "Connect your website URL to begin AI analysis.",
+                        });
+                        handleTabChange("settings");
+                      }
+                    };
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={handleStep2Click}
+                        disabled={isStartingAnalysis}
+                        title={
+                          isDiscoveryReady
+                            ? "AI Analysis Ready — Click to view Website Intelligence"
+                            : isAnalyzing
+                            ? "AI Analyzing — Discovery in progress"
+                            : isDiscoveryFailed
+                            ? "Analysis Failed — Click to retry"
+                            : storedUrl
+                            ? "Click to start AI analysis on connected website"
+                            : "Connect a website first to run AI analysis"
+                        }
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
+                          isDiscoveryReady
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/15"
+                            : isAnalyzing
+                            ? "bg-primary/15 border-primary/30 text-primary"
+                            : isDiscoveryFailed
+                            ? "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/15"
+                            : storedUrl
+                            ? "bg-primary/10 border-primary/20 text-primary hover:bg-primary/20"
+                            : "bg-muted/40 border-border/60 text-muted-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        {isDiscoveryReady ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : isAnalyzing ? (
+                          <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+                        ) : isDiscoveryFailed ? (
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        ) : (
+                          <Brain className="w-4 h-4 shrink-0 opacity-75" />
+                        )}
+                        <span className="truncate">
+                          {isDiscoveryReady
+                            ? "AI Analysis Ready"
+                            : isAnalyzing
+                            ? "AI Analyzing..."
+                            : isDiscoveryFailed
+                            ? "Retry Analysis"
+                            : storedUrl
+                            ? "Start AI Analysis"
+                            : "AI Analysis"}
+                        </span>
+                      </button>
+                    );
+                  })()}
 
                   {/* Step 3: Knowledge Ready */}
                   <button
@@ -661,7 +769,9 @@ export default function ProjectEditPage() {
                     if (isLive && storedUrl) {
                       window.open(storedUrl, "_blank");
                     } else if (isAnalyzing) {
-                      handleTabChange("guide");
+                      handleTabChange("overview");
+                    } else if (!isDiscoveryReady && storedUrl) {
+                      handleStartAnalysis();
                     } else {
                       handleTabChange("deployment");
                     }
@@ -675,6 +785,8 @@ export default function ProjectEditPage() {
                       ? "Visit Site"
                       : readinessData?.isReady
                       ? "Verify & Launch"
+                      : !isDiscoveryReady && storedUrl
+                      ? "Start Analysis"
                       : "Get Code"}
                   </span>
                   <ArrowRight className="w-3.5 h-3.5" />
