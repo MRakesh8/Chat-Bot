@@ -175,56 +175,141 @@
   --chart-5: 39 52% 92%;
 }
 
+.theme-natural-light, .theme-forest-light {
+  /* NOVA Natural — Light */
+  --background: 51 26% 95%;         /* #F6F5EF (Warm neutral) */
+  --foreground: 162 21% 16%;        /* #20312C (Deep forest ink) */
+  
+  --card: 40 100% 98%;              /* #FFFCF6 (Warm paper card) */
+  --card-foreground: 162 21% 16%;   /* #20312C */
+  --card-border: 52 20% 84%;        /* #DEDCCF */
+  
+  --popover: 40 100% 98%;
+  --popover-foreground: 162 21% 16%;
+  --popover-border: 52 20% 84%;
+  
+  --primary: 13 57% 50%;            /* #C95738 (Coral/Rust CTA) */
+  --primary-foreground: 0 0% 100%;
+  
+  --secondary: 143 24% 93%;         /* #EAF2ED (Subtle sage tint) */
+  --secondary-foreground: 162 21% 16%;
+  
+  --muted: 143 24% 93%;             /* #EAF2ED */
+  --muted-foreground: 37 10% 36%;   /* #665F54 (Warm grey) */
+  
+  --accent: 174 69% 94%;            /* Light teal tint */
+  --accent-foreground: 174 69% 28%; /* #16796F (Deep teal accent) */
+  
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 154 55% 31%;           /* #237A55 */
+  --success-foreground: 0 0% 100%;
+
+  --highlight: 42 77% 60%;          /* #E8B849 (Muted Marigold) */
+  
+  --border: 52 20% 84%;             /* #DEDCCF */
+  --input: 52 20% 84%;
+  --ring: 13 57% 50%;
+
+  --sidebar: 42 20% 91%;            /* #EFECE3 */
+  --sidebar-foreground: 162 21% 16%;
+  --sidebar-border: 52 20% 84%;
+  --sidebar-primary: 13 57% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 143 24% 93%;
+  --sidebar-accent-foreground: 162 21% 16%;
+  --sidebar-ring: 13 57% 50%;
+
+  --chart-1: 13 57% 50%;
+  --chart-2: 174 69% 28%;
+  --chart-3: 42 77% 60%;
+  --chart-4: 154 55% 31%;
+  --chart-5: 162 21% 16%;
+}
+
+.theme-natural-dark, .theme-forest-dark {
+  /* NOVA Natural — Dark */
+  --background: 144 10% 10%;        /* #171C19 (Warm charcoal forest) */
+  --foreground: 40 43% 93%;         /* #F5F0E6 (Warm cream text) */
+  
+  --card: 143 11% 14%;              /* #202823 (Main surface card) */
+  --card-foreground: 40 43% 93%;    /* #F5F0E6 */
+  --card-border: 138 10% 25%;       /* #3A473E */
+  
+  --popover: 143 11% 14%;
+  --popover-foreground: 40 43% 93%;
+  --popover-border: 138 10% 25%;
+  
+  --primary: 14 74% 61%;            /* #E47755 (Soft Coral CTA) */
+  --primary-foreground: 144 10% 10%;
+  
+  --secondary: 142 12% 18%;         /* #29342D (Raised secondary) */
+  --secondary-foreground: 40 43% 93%;
+  
+  --muted: 142 12% 18%;             /* #29342D */
+  --muted-foreground: 98 10% 76%;   /* #C1C8BD (Secondary text) */
+  
+  --accent: 170 30% 18%;
+  --accent-foreground: 170 40% 52%; /* #55B6A5 (Readable teal) */
+  
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 148 49% 55%;           /* #55C58A */
+  --success-foreground: 144 10% 10%;
+
+  --highlight: 42 77% 60%;          /* #E8B849 (Muted Marigold) */
+  
+  --border: 138 10% 25%;            /* #3A473E */
+  --input: 138 10% 25%;
+  --ring: 14 74% 61%;
+
+  --sidebar: 144 11% 8%;            /* #131815 */
+  --sidebar-foreground: 40 43% 93%;
+  --sidebar-border: 138 10% 25%;
+  --sidebar-primary: 14 74% 61%;
+  --sidebar-primary-foreground: 144 10% 10%;
+  --sidebar-accent: 142 12% 18%;
+  --sidebar-accent-foreground: 40 43% 93%;
+  --sidebar-ring: 14 74% 61%;
+
+  --chart-1: 14 74% 61%;
+  --chart-2: 170 40% 52%;
+  --chart-3: 42 77% 60%;
+}
+
 .theme-evergreen {
-  /* Light Cream */
-  --background: 33 50% 96%;
-  /* Deep Bluish */
-  --foreground: 173 63% 14%;
-  
+  /* Legacy Evergreen mapped to Forest & Marigold Light */
+  --background: 140 12% 96%;
+  --foreground: 170 45% 13%;
   --card: 0 0% 100%;
-  --card-foreground: 173 63% 14%;
-  --card-border: 90 9% 80%;
-  
+  --card-foreground: 170 45% 13%;
+  --card-border: 147 15% 85%;
   --popover: 0 0% 100%;
-  --popover-foreground: 173 63% 14%;
-  --popover-border: 90 9% 80%;
-  
-  /* Moderate Green */
-  --primary: 164 43% 27%;
-  --primary-foreground: 33 50% 96%;
-  
-  /* Laurel Green */
-  --secondary: 90 9% 85%;
-  --secondary-foreground: 173 63% 14%;
-  
-  --muted: 90 9% 90%;
-  --muted-foreground: 173 30% 40%;
-  
-  --accent: 90 9% 85%;
-  --accent-foreground: 173 63% 14%;
-  
+  --popover-foreground: 170 45% 13%;
+  --popover-border: 147 15% 85%;
+  --primary: 174 77% 26%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 144 14% 91%;
+  --secondary-foreground: 170 45% 13%;
+  --muted: 144 14% 91%;
+  --muted-foreground: 167 20% 35%;
+  --accent: 40 90% 93%;
+  --accent-foreground: 174 77% 20%;
   --destructive: 350 85% 60%;
   --destructive-foreground: 0 0% 100%;
-  
-  --border: 90 9% 80%;
-  --input: 90 9% 80%;
-  /* Moderate Green */
-  --ring: 164 43% 27%;
-
-  --sidebar: 173 63% 14%;
-  --sidebar-foreground: 33 50% 96%;
-  --sidebar-border: 90 9% 80%;
-  --sidebar-primary: 164 43% 27%;
-  --sidebar-primary-foreground: 33 50% 96%;
-  --sidebar-accent: 173 50% 25%;
-  --sidebar-accent-foreground: 33 50% 96%;
-  --sidebar-ring: 164 43% 27%;
-
-  --chart-1: 173 63% 14%; /* Deep Bluish */
-  --chart-2: 164 43% 27%; /* Moderate Green */
-  --chart-3: 90 9% 69%;   /* Laurel Green */
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+  --border: 147 15% 85%;
+  --input: 147 15% 85%;
+  --ring: 174 77% 26%;
+  --sidebar: 140 12% 94%;
+  --sidebar-foreground: 170 45% 13%;
+  --sidebar-border: 147 15% 85%;
+  --sidebar-primary: 174 77% 26%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 144 14% 88%;
+  --sidebar-accent-foreground: 170 45% 13%;
+  --sidebar-ring: 174 77% 26%;
 }
 
 @layer base {

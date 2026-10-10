@@ -19,7 +19,7 @@ type Project = {
 };
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useTheme();
+  const { palette, setPalette, mode, setMode, theme, setTheme } = useTheme();
   const [, setLocation] = useLocation();
   const authFetch = useAuthFetch();
 
@@ -101,27 +101,109 @@ export default function SettingsPage() {
           </TabsList>
 
           <TabsContent value="general" className="space-y-8 mt-0">
-            {/* Appearance */}
+            {/* Appearance & Named Palettes */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 border-b border-border/60 pb-3">
                 <Palette className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-semibold text-foreground">Appearance</h2>
+                <h2 className="text-xl font-semibold text-foreground font-serif">Appearance & Theme Palettes</h2>
               </div>
+              
+              {/* Palette Cards */}
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                  Select Color Palette
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Palette 1: Warm Paper */}
+                  <button
+                    type="button"
+                    onClick={() => setPalette("warm-paper")}
+                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                      palette === "warm-paper"
+                        ? "bg-card border-primary ring-2 ring-primary/30 shadow-xs"
+                        : "bg-card/50 border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm text-foreground">Warm Paper</span>
+                        {palette === "warm-paper" && (
+                          <span className="text-[10px] font-semibold bg-primary/15 text-primary px-2 py-0.5 rounded-full">Active</span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground mt-0.5 block">Standalone Cream, Coral & Emerald identity</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <span className="w-4 h-4 rounded-full bg-[#FBF6EE] border border-border" title="Cream" />
+                      <span className="w-4 h-4 rounded-full bg-[#FF6A3D]" title="Coral" />
+                      <span className="w-4 h-4 rounded-full bg-[#1F6F5C]" title="Emerald" />
+                    </div>
+                  </button>
+
+                  {/* Palette 2: NOVA Natural */}
+                  <button
+                    type="button"
+                    onClick={() => setPalette("nova-natural")}
+                    className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                      palette === "nova-natural"
+                        ? "bg-card border-primary ring-2 ring-primary/30 shadow-xs"
+                        : "bg-card/50 border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm text-foreground">NOVA Natural</span>
+                        {palette === "nova-natural" && (
+                          <span className="text-[10px] font-semibold bg-primary/15 text-primary px-2 py-0.5 rounded-full">Active</span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground mt-0.5 block">Warm Paper surface, Forest Ink, Coral CTA & Teal accent</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <span className="w-4 h-4 rounded-full bg-[#F6F5EF] border border-border" title="Warm Neutral" />
+                      <span className="w-4 h-4 rounded-full bg-[#20312C]" title="Forest Ink" />
+                      <span className="w-4 h-4 rounded-full bg-[#C95738]" title="Coral CTA" />
+                      <span className="w-4 h-4 rounded-full bg-[#16796F]" title="Deep Teal" />
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Mode Control */}
               <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="font-medium text-base text-foreground">Theme Mode</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Customize the visual theme of NOVA AI across sessions.</p>
+                  <h3 className="font-semibold text-sm text-foreground">Appearance Mode</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Switch between Light, Dark, or automatic System mode.</p>
                 </div>
-                <select 
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value as any)}
-                  className="w-full sm:w-auto bg-secondary border border-border rounded-xl px-4 py-2 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 hover:bg-secondary/80 transition-colors cursor-pointer"
-                >
-                  <option value="system">System Default</option>
-                  <option value="dark">Dark Theme</option>
-                  <option value="light">Light Theme</option>
-                  <option value="evergreen">Evergreen Theme</option>
-                </select>
+                <div className="flex items-center gap-1.5 bg-secondary/60 p-1 rounded-xl border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setMode("light")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      mode === "light" ? "bg-primary text-primary-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode("dark")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      mode === "dark" ? "bg-primary text-primary-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Dark
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode("system")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      mode === "system" ? "bg-primary text-primary-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    System
+                  </button>
+                </div>
               </div>
             </section>
 
