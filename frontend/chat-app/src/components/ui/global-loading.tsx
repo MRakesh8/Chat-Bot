@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react"
+import { NovaBrand } from "@/components/ui/nova-brand"
 
 export function GlobalLoadingScreen() {
   return (
@@ -8,13 +8,11 @@ export function GlobalLoadingScreen() {
           <div className="absolute inset-0 rounded-full border-t-2 border-primary animate-spin" />
           <div className="absolute inset-2 rounded-full border-r-2 border-primary/70 animate-spin animation-delay-150" />
           <div className="absolute inset-4 rounded-full border-b-2 border-primary/40 animate-spin animation-delay-300" />
-          <Loader2 className="w-8 h-8 text-primary animate-pulse" />
+          <NovaBrand variant="mark" theme="auto" height={32} className="animate-pulse" />
         </div>
-        <div className="text-center space-y-1">
-          <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
-            NOVA Business AI
-          </h2>
-          <p className="text-sm text-muted-foreground animate-pulse">
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <NovaBrand variant="full" theme="auto" height={26} />
+          <p className="text-xs text-muted-foreground animate-pulse">
             Loading your experience...
           </p>
         </div>

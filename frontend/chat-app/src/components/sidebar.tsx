@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
+import { NovaBrand } from "@/components/ui/nova-brand";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
 import { useToast } from "@/hooks/use-toast";
@@ -347,16 +348,8 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       {/* Brand Header */}
       <div className="p-4 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <Link href="/projects" onClick={() => onClose?.()} className="flex items-center gap-2.5 px-1 group cursor-pointer">
-            <div className="bg-primary/10 p-1.5 rounded-xl border border-primary/20 shadow-xs flex items-center justify-center transition-transform group-hover:scale-105">
-               <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-5 h-5" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-sm text-sidebar-foreground tracking-tight flex items-center gap-1">
-                NOVA <span className="text-primary text-xs font-semibold">AI</span>
-              </span>
-              <span className="text-[10px] text-muted-foreground leading-none font-medium">Business Agent</span>
-            </div>
+          <Link href="/projects" onClick={() => onClose?.()} className="flex items-center px-1 group cursor-pointer transition-opacity hover:opacity-90">
+            <NovaBrand variant="full" theme="dark" height={26} />
           </Link>
           <div className="flex items-center gap-1">
             {onClose && (

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { Loader2, MessageSquare, Database, Search, Bot } from "lucide-react";
+import { NovaBrand } from "@/components/ui/nova-brand";
 
 const features = [
   { icon: MessageSquare, text: "AI Chat" },
@@ -99,13 +100,7 @@ export default function AuthPage() {
             className="flex flex-col gap-6"
           >
             <div className="flex items-center gap-3 cursor-default group">
-              <motion.div 
-                whileHover={{ scale: 1.05 }}
-                className="relative flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_20px_rgba(99,102,241,0.4)] group-hover:shadow-[0_0_30px_rgba(99,102,241,0.6)] transition-all"
-              >
-                <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-7 h-7 brightness-0 invert" />
-              </motion.div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">NOVA Business AI</h1>
+              <NovaBrand variant="full" theme="dark" height={42} />
             </div>
 
             <div className="mt-12 max-w-md">
@@ -207,11 +202,8 @@ export default function AuthPage() {
               >
                 {/* Mobile branding */}
                 <div className="lg:hidden flex flex-col items-center mb-8">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_20px_rgba(99,102,241,0.4)] mb-4">
-                    <img src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/logo.svg`} alt="NOVA Business AI" className="w-7 h-7 brightness-0 invert" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-white tracking-tight">NOVA Business AI</h2>
-                  <p className="text-sm text-slate-400 mt-1">Your Intelligent Workspace</p>
+                  <NovaBrand variant="full" theme="dark" height={36} className="mb-2" />
+                  <p className="text-xs text-slate-400">Your Intelligent Workspace</p>
                 </div>
 
                 <div className="text-center lg:text-left mb-8">

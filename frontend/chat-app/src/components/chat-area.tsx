@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { NovaBrand } from "@/components/ui/nova-brand";
 import {
   ArrowLeft,
   ChevronDown,
@@ -1060,7 +1061,7 @@ export function ChatArea() {
                   {streamingContent ? (
                     <>
                       <div className="mb-2 flex items-center gap-2">
-                        <img src={`${basePath}/logo.svg`} alt="NOVA AI" className="h-5 w-5 animate-pulse" />
+                        <NovaBrand variant="mark" theme="auto" height={20} className="animate-pulse" />
                         <span className="text-xs font-medium text-primary">NOVA AI is typing...</span>
                       </div>
                       <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:border prose-pre:border-border prose-pre:bg-muted relative">
@@ -1116,7 +1117,7 @@ export function ChatArea() {
                     </>
                   ) : (
                     <div className="flex items-center gap-3">
-                      <img src={`${basePath}/logo.svg`} alt="NOVA AI" className="h-5 w-5 animate-pulse" />
+                      <NovaBrand variant="mark" theme="auto" height={20} className="animate-pulse" />
                       <div className="flex items-center gap-1 text-primary">
                         <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                         <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></span>

@@ -12,6 +12,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useSEO } from "@/hooks/use-seo";
+import { NovaBrand } from "@/components/ui/nova-brand";
 
 interface DemoScenario {
   id: string;
@@ -201,14 +202,9 @@ export default function Home() {
       {/* ── Navigation ── */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#0b0a12]/80 border-b border-white/[0.08] transition-all">
         <div className="max-w-[1140px] mx-auto px-5 sm:px-6 h-16 flex items-center justify-between">
-          {/* Logo with Conic Orb */}
-          <a href="#" className="flex items-center gap-2.5 font-semibold tracking-tight text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b7bff] rounded-lg">
-            <span className="relative w-7 h-7 rounded-full bg-[conic-gradient(from_200deg,#ff8a4c,#8b7bff,#37d6c4,#ff8a4c)] shadow-[0_0_18px_rgba(139,123,255,0.35)] flex items-center justify-center shrink-0">
-              <span className="w-3.5 h-3.5 rounded-full bg-[#0b0a12]" />
-            </span>
-            <span className="text-base font-bold tracking-tight">
-              NOVA <span className="text-[#a09db4] font-normal">Business AI</span>
-            </span>
+          {/* Official NOVA Brand Logo */}
+          <a href="#" className="flex items-center transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b7bff] rounded-lg">
+            <NovaBrand variant="full" theme="dark" height={32} />
           </a>
 
           {/* Desktop Nav Links */}
@@ -981,11 +977,8 @@ export default function Home() {
       {/* ── Section J: Footer ── */}
       <footer className="relative z-10 border-t border-white/[0.08] bg-[#0b0a12] py-12 px-5 sm:px-6 text-xs text-[#a09db4]">
         <div className="max-w-[1140px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
-            <span className="relative w-6 h-6 rounded-full bg-[conic-gradient(from_200deg,#ff8a4c,#8b7bff,#37d6c4,#ff8a4c)] flex items-center justify-center shrink-0 shadow-sm">
-              <span className="w-3 h-3 rounded-full bg-[#0b0a12]" />
-            </span>
-            <span className="text-sm font-bold text-white tracking-tight">NOVA Business AI</span>
+          <div className="flex items-center gap-3">
+            <NovaBrand variant="full" theme="dark" height={26} />
             <span className="text-white/20">|</span>
             <span className="text-[11px] text-[#a09db4]">From Conversations to Business Actions</span>
           </div>
