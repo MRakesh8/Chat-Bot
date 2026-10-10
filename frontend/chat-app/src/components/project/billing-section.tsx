@@ -40,6 +40,8 @@ export function BillingSection({ projectId: initialProjectId }: BillingSectionPr
   const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjectId || "");
   const [utr, setUtr] = useState("");
   const [method, setMethod] = useState("UPI");
+  const [screenshotUrl, setScreenshotUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const authFetch = async (url: string, options: RequestInit = {}) => {
     const token = session?.access_token;
@@ -87,7 +89,7 @@ export function BillingSection({ projectId: initialProjectId }: BillingSectionPr
 
   // 3. Submit Manual Payment (UTR Reference)
   const manualPaymentMutation = useMutation({
-    mutationFn: async (data: { projectId: string; utrTransactionId: string; method: string; screenshotUrl: string }) => {
+    mutationFn: async (data: { projectId: string; utrTransactionId: string; method: string; screenshotUrl: string; planId?: string }) => {
       const res = await authFetch(apiUrl("/api/payments/manual"), {
         method: "POST",
         body: JSON.stringify(data),
@@ -108,6 +110,7 @@ export function BillingSection({ projectId: initialProjectId }: BillingSectionPr
         });
       }
       setUtr("");
+      setScreenshotUrl("");
       refetch();
       queryClient.invalidateQueries({ queryKey: ["project", activeProjectId] });
     },
@@ -170,7 +173,8 @@ export function BillingSection({ projectId: initialProjectId }: BillingSectionPr
       projectId: activeProjectId,
       utrTransactionId: utr.trim(),
       method,
-      screenshotUrl: "",
+      screenshotUrl,
+      planId: "00000000-0000-0000-0000-000000000002",
     });
   };
 
@@ -360,9 +364,51 @@ export function BillingSection({ projectId: initialProjectId }: BillingSectionPr
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-[11px] text-muted-foreground font-medium block">Upload Receipt Screenshot (Optional)</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    disabled={isUploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsUploading(true);
+                      try {
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("storagePath", `payments/receipt_${Date.now()}.${file.name.split(".").pop()}`);
+                        const token = session?.access_token;
+                        const res = await fetch(apiUrl("/api/files/upload-public"), {
+                          method: "POST",
+                          headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          body: formData,
+                        });
+                        if (!res.ok) throw new Error("File upload failed");
+                        const data = await res.json();
+                        setScreenshotUrl(data.publicUrl);
+                        toast({ title: "Receipt Uploaded", description: "Payment screenshot attached successfully." });
+                      } catch (err: any) {
+                        toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+                      } finally {
+                        setIsUploading(false);
+                      }
+                    }}
+                    className="h-9 text-xs bg-background border-border cursor-pointer flex-1"
+                  />
+                  {isUploading && <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />}
+                </div>
+                {screenshotUrl && (
+                  <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Receipt screenshot attached
+                  </p>
+                )}
+              </div>
+
               <Button
                 type="submit"
-                disabled={manualPaymentMutation.isPending || !utr.trim() || !activeProjectId}
+                disabled={manualPaymentMutation.isPending || isUploading || !utr.trim() || !activeProjectId}
                 className="w-full sm:w-auto h-9 px-5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-2 font-medium"
               >
                 {manualPaymentMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}

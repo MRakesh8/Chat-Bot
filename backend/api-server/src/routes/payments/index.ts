@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, projects, payments, projectLicenses, paymentLogs, globalSettings, plans, projectEntitlements, withBypassRLS, withTenantContext } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import Razorpay from "razorpay";
 import crypto from "crypto";
@@ -19,9 +19,10 @@ if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
 
 const manualPaymentSchema = z.object({
   projectId: z.string(),
-  utrTransactionId: z.string(),
+  utrTransactionId: z.string().min(3, "UTR / Reference ID must be at least 3 characters"),
   method: z.string(),
-  screenshotUrl: z.string(),
+  screenshotUrl: z.string().optional().default(""),
+  planId: z.string().optional(),
 });
 
 // POST /api/payments/manual
@@ -33,7 +34,7 @@ router.post("/manual", async (req, res) => {
       return;
     }
 
-    const { projectId, utrTransactionId, method, screenshotUrl } = parsed.data;
+    const { projectId, utrTransactionId, method, screenshotUrl, planId } = parsed.data;
     const userId = (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
@@ -55,7 +56,38 @@ router.post("/manual", async (req, res) => {
       return;
     }
 
-    // Check if already paid/pending
+    // Check for duplicate UTR transaction ID (excluding failed/rejected)
+    const trimmedUtr = utrTransactionId.trim();
+    const existingUtr = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.utrTransactionId, trimmedUtr),
+          sql`LOWER(${payments.status}) IN ('pending', 'verified')`
+        )
+      );
+
+    if (existingUtr.length > 0) {
+      res.status(400).json({
+        error: "This UTR / Transaction Reference ID has already been submitted and is currently pending or verified."
+      });
+      return;
+    }
+
+    // Determine price dynamically based on planId if provided
+    let amount = DEPLOYMENT_PRICE_PAISE;
+    if (planId) {
+      const [targetPlan] = await db
+        .select()
+        .from(plans)
+        .where(eq(plans.id, planId));
+      if (targetPlan && typeof targetPlan.price === "number" && targetPlan.price > 0) {
+        amount = targetPlan.price;
+      }
+    }
+
+    // Check if license is already paid
     const [existingLicense] = await db
       .select()
       .from(projectLicenses)
@@ -70,12 +102,13 @@ router.post("/manual", async (req, res) => {
     if (!existingLicense) {
       await db.insert(projectLicenses).values({
         projectId,
+        planId: planId || null,
         licenseStatus: "inactive",
         paymentStatus: "pending",
       });
     } else {
       await db.update(projectLicenses)
-        .set({ paymentStatus: "pending", updatedAt: new Date() })
+        .set({ paymentStatus: "pending", planId: planId || existingLicense.planId, updatedAt: new Date() })
         .where(eq(projectLicenses.projectId, projectId));
     }
 
@@ -83,12 +116,13 @@ router.post("/manual", async (req, res) => {
     const [paymentRecord] = await db.insert(payments).values({
       userId,
       projectId,
-      amount: DEPLOYMENT_PRICE_PAISE,
+      amount,
       currency: "INR",
       status: "pending",
       method,
-      utrTransactionId,
+      utrTransactionId: trimmedUtr,
       screenshotUrl,
+      metadata: planId ? { planId } : {},
     }).returning();
 
     // 3. Log the payment submission
@@ -96,7 +130,7 @@ router.post("/manual", async (req, res) => {
       paymentId: paymentRecord.id,
       action: "submitted",
       performedBy: userId,
-      notes: "User submitted manual payment",
+      notes: `User submitted manual payment for ${planId ? 'selected plan' : 'Pro deployment'}`,
     });
 
     res.json({ success: true, paymentId: paymentRecord.id });

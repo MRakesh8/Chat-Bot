@@ -1,7 +1,7 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { db, withBypassRLS } from "@workspace/db";
-import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs, projectEntitlements } from "@workspace/db";
+import { users, projects, globalSettings, systemErrors, payments, projectLicenses, paymentLogs, projectEntitlements, notifications } from "@workspace/db";
 import { logSecurityEvent } from "../../security/middleware";
 import { z } from "zod";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -16,6 +16,180 @@ router.use((req, res, next) => {
     return;
   }
   next();
+});
+
+// POST /api/super-admin/payments/:id/approve
+router.post("/payments/:id/approve", async (req, res) => {
+  try {
+    const paymentId = req.params.id;
+    const adminId = (req as any).auth?.userId;
+
+    const result = await withBypassRLS(async (tx: any) => {
+      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId));
+      if (!payment) {
+        throw new Error("Payment not found");
+      }
+
+      if (payment.status === "verified") {
+        return { success: true, message: "Payment already verified" };
+      }
+
+      const [project] = await tx.select().from(projects).where(eq(projects.id, payment.projectId));
+
+      // 1. Update payment status
+      await tx.update(payments).set({ status: "verified" }).where(eq(payments.id, paymentId));
+
+      // 2. Log action
+      await tx.insert(paymentLogs).values({
+        paymentId: paymentId,
+        action: "verified",
+        performedBy: adminId,
+        notes: "Approved manually by Super Admin",
+      });
+
+      // 3. Update project license to active
+      await tx.update(projectLicenses)
+        .set({ 
+          licenseStatus: "active", 
+          paymentStatus: "paid", 
+          approvedBy: adminId, 
+          approvedAt: new Date(),
+          paymentDate: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(projectLicenses.projectId, payment.projectId));
+
+      // 4. Sync to projectEntitlements & update project deploymentPaid
+      const now = new Date();
+      await tx
+        .insert(projectEntitlements)
+        .values({
+          projectId: payment.projectId,
+          subscriptionStatus: "active",
+          entitlementStatus: "SUBSCRIPTION_ACTIVE",
+          subscriptionStartedAt: now,
+          subscriptionEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: projectEntitlements.projectId,
+          set: {
+            subscriptionStatus: "active",
+            entitlementStatus: "SUBSCRIPTION_ACTIVE",
+            subscriptionStartedAt: now,
+            subscriptionEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+            updatedAt: now,
+          }
+        });
+
+      await tx
+        .update(projects)
+        .set({ deploymentPaid: true })
+        .where(eq(projects.id, payment.projectId));
+
+      // 5. Dispatch Notification Alert
+      await tx.insert(notifications).values({
+        organizationId: project?.organizationId || "global",
+        projectId: payment.projectId,
+        type: "billing",
+        severity: "info",
+        title: "Payment Verified! 🎉",
+        message: `Your manual payment reference (${payment.utrTransactionId || "UPI"}) has been verified. 30 days of Pro access has been activated for project "${project?.name || 'Workspace'}".`,
+        createdAt: now,
+      });
+
+      return { success: true };
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    req.log.error({ err }, "Error approving payment");
+    if (err.message === "Payment not found") {
+      res.status(404).json({ error: "Payment not found" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+});
+
+// POST /api/super-admin/payments/:id/reject
+router.post("/payments/:id/reject", async (req, res) => {
+  try {
+    const paymentId = req.params.id;
+    const adminId = (req as any).auth?.userId;
+    const { reason } = req.body;
+
+    if (!reason || typeof reason !== "string" || !reason.trim()) {
+      res.status(400).json({ error: "Rejection reason is mandatory when rejecting a payment." });
+      return;
+    }
+
+    const trimmedReason = reason.trim();
+
+    const result = await withBypassRLS(async (tx: any) => {
+      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId));
+      if (!payment) {
+        throw new Error("Payment not found");
+      }
+
+      if (payment.status === "rejected") {
+        return { success: true, message: "Payment already rejected" };
+      }
+
+      const [project] = await tx.select().from(projects).where(eq(projects.id, payment.projectId));
+
+      // 1. Update payment status
+      await tx.update(payments).set({ status: "rejected" }).where(eq(payments.id, paymentId));
+
+      // 2. Log action
+      await tx.insert(paymentLogs).values({
+        paymentId: paymentId,
+        action: "rejected",
+        performedBy: adminId,
+        notes: trimmedReason,
+      });
+
+      // 3. Update project license to failed (if currently pending)
+      await tx.update(projectLicenses)
+        .set({ 
+          paymentStatus: "failed", 
+          updatedAt: new Date()
+        })
+        .where(and(eq(projectLicenses.projectId, payment.projectId), eq(projectLicenses.paymentStatus, "pending")));
+
+      // 4. Sync status to projectEntitlements as inactive subscription
+      await tx
+        .update(projectEntitlements)
+        .set({
+          subscriptionStatus: "inactive",
+          updatedAt: new Date(),
+        })
+        .where(eq(projectEntitlements.projectId, payment.projectId));
+
+      // 5. Dispatch Notification Alert
+      await tx.insert(notifications).values({
+        organizationId: project?.organizationId || "global",
+        projectId: payment.projectId,
+        type: "billing",
+        severity: "warning",
+        title: "Payment Reference Rejected",
+        message: `Your manual payment reference (${payment.utrTransactionId || "UPI"}) was rejected. Reason: ${trimmedReason}`,
+        createdAt: new Date(),
+      });
+
+      return { success: true };
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    req.log.error({ err }, "Error rejecting payment");
+    if (err.message === "Payment not found") {
+      res.status(404).json({ error: "Payment not found" });
+    } else {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
 });
 
 // GET /api/super-admin/users
@@ -396,129 +570,7 @@ router.get("/payments", async (req, res) => {
   }
 });
 
-// POST /api/super-admin/payments/:id/approve
-router.post("/payments/:id/approve", async (req, res) => {
-  try {
-    const paymentId = req.params.id;
-    const adminId = (req as any).auth?.userId;
 
-    await withBypassRLS(async (tx: any) => {
-      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId));
-      if (!payment) {
-        throw new Error("Payment not found");
-      }
-
-      // 1. Update payment status
-      await tx.update(payments).set({ status: "verified" }).where(eq(payments.id, paymentId));
-
-      // 2. Log action
-      await tx.insert(paymentLogs).values({
-        paymentId: paymentId,
-        action: "verified",
-        performedBy: adminId,
-        notes: "Approved manually by Super Admin",
-      });
-
-      // 3. Update project license to active
-      await tx.update(projectLicenses)
-        .set({ 
-          licenseStatus: "active", 
-          paymentStatus: "paid", 
-          approvedBy: adminId, 
-          approvedAt: new Date(),
-          paymentDate: new Date(),
-          updatedAt: new Date()
-        })
-        .where(eq(projectLicenses.projectId, payment.projectId));
-
-      // 4. Sync to projectEntitlements
-      const now = new Date();
-      await tx
-        .insert(projectEntitlements)
-        .values({
-          projectId: payment.projectId,
-          subscriptionStatus: "active",
-          entitlementStatus: "SUBSCRIPTION_ACTIVE",
-          subscriptionStartedAt: now,
-          subscriptionEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: projectEntitlements.projectId,
-          set: {
-            subscriptionStatus: "active",
-            entitlementStatus: "SUBSCRIPTION_ACTIVE",
-            subscriptionStartedAt: now,
-            subscriptionEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
-            updatedAt: now,
-          }
-        });
-    });
-
-    res.json({ success: true });
-  } catch (err: any) {
-    req.log.error({ err }, "Error approving payment");
-    if (err.message === "Payment not found") {
-      res.status(404).json({ error: "Payment not found" });
-    } else {
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-});
-
-// POST /api/super-admin/payments/:id/reject
-router.post("/payments/:id/reject", async (req, res) => {
-  try {
-    const paymentId = req.params.id;
-    const adminId = (req as any).auth?.userId;
-    const { reason } = req.body;
-
-    await withBypassRLS(async (tx: any) => {
-      const [payment] = await tx.select().from(payments).where(eq(payments.id, paymentId));
-      if (!payment) {
-        throw new Error("Payment not found");
-      }
-
-      // 1. Update payment status
-      await tx.update(payments).set({ status: "rejected" }).where(eq(payments.id, paymentId));
-
-      // 2. Log action
-      await tx.insert(paymentLogs).values({
-        paymentId: paymentId,
-        action: "rejected",
-        performedBy: adminId,
-        notes: reason || "Rejected manually by Super Admin",
-      });
-
-      // 3. Update project license to failed (if currently pending)
-      await tx.update(projectLicenses)
-        .set({ 
-          paymentStatus: "failed", 
-          updatedAt: new Date()
-        })
-        .where(and(eq(projectLicenses.projectId, payment.projectId), eq(projectLicenses.paymentStatus, "pending")));
-
-      // 4. Sync status to projectEntitlements as inactive subscription
-      await tx
-        .update(projectEntitlements)
-        .set({
-          subscriptionStatus: "inactive",
-          updatedAt: new Date(),
-        })
-        .where(eq(projectEntitlements.projectId, payment.projectId));
-    });
-
-    res.json({ success: true });
-  } catch (err: any) {
-    req.log.error({ err }, "Error rejecting payment");
-    if (err.message === "Payment not found") {
-      res.status(404).json({ error: "Payment not found" });
-    } else {
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-});
 
 // PATCH /api/super-admin/projects/:id/trial
 // Admin-only endpoint to configure custom trial duration or override entitlement status

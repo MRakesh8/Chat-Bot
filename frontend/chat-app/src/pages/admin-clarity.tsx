@@ -98,6 +98,8 @@ export default function AdminConsolePage() {
   
   // Subscriptions & Payments state
   const [viewingScreenshotUrl, setViewingScreenshotUrl] = useState<string | null>(null);
+  const [rejectingPayment, setRejectingPayment] = useState<any>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState<string>("");
   const [subFilter, setSubFilter] = useState<string>("");
   const [editingTrialProjectId, setEditingTrialProjectId] = useState<string | null>(null);
   const [editingTrialDaysInput, setEditingTrialDaysInput] = useState<string>("");
@@ -675,7 +677,10 @@ export default function AdminConsolePage() {
                                 variant="destructive"
                                 className="h-8 text-xs font-semibold gap-1"
                                 disabled={rejectPaymentMutation.isPending}
-                                onClick={() => rejectPaymentMutation.mutate({ id: p.id })}
+                                onClick={() => {
+                                  setRejectingPayment(p);
+                                  setRejectionReasonInput("");
+                                }}
                               >
                                 <X className="w-3.5 h-3.5" /> Reject
                               </Button>
@@ -1436,6 +1441,51 @@ export default function AdminConsolePage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewingScreenshotUrl(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mandatory Rejection Reason Modal */}
+      <Dialog open={!!rejectingPayment} onOpenChange={(open) => !open && setRejectingPayment(null)}>
+        <DialogContent className="sm:max-w-[450px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" /> Reject Payment Reference
+            </DialogTitle>
+            <DialogDescription>
+              Specify a mandatory reason for rejecting UTR reference <strong>{rejectingPayment?.utrTransactionId || "N/A"}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase">Reason for Rejection *</label>
+            <Textarea
+              placeholder="e.g. UTR reference not found in bank statement, duplicate submission, or incorrect amount paid..."
+              value={rejectionReasonInput}
+              onChange={(e) => setRejectionReasonInput(e.target.value)}
+              className="min-h-[100px] text-xs bg-background border-border"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRejectingPayment(null); setRejectionReasonInput(""); }}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={!rejectionReasonInput.trim() || rejectPaymentMutation.isPending}
+              onClick={() => {
+                if (rejectingPayment && rejectionReasonInput.trim()) {
+                  rejectPaymentMutation.mutate(
+                    { id: rejectingPayment.id, reason: rejectionReasonInput.trim() },
+                    {
+                      onSuccess: () => {
+                        setRejectingPayment(null);
+                        setRejectionReasonInput("");
+                      },
+                    }
+                  );
+                }
+              }}
+            >
+              {rejectPaymentMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm Rejection"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
