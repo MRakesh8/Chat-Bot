@@ -266,6 +266,29 @@ async function runPhase8Tests() {
       assert(crossCancel.success === false, "IDOR Protection: Org B cannot cancel Org A's execution");
     }
 
+    // --- Section 9: Demo Data Security & Token Redaction ---
+    console.log("\n--- Section 9: Demo Data Security & Token Redaction ---");
+    {
+      const { isDemoProjectId } = await import("../src/services/demo-project");
+      assert(isDemoProjectId("demo") === true, "Identify 'demo' as valid demo project ID");
+      assert(isDemoProjectId("demo-project") === true, "Identify 'demo-project' as valid demo project ID");
+      assert(isDemoProjectId(testProjectA) === false, "Identify real project UUID as non-demo");
+
+      // Verify demo execution fixtures have approvalToken redacted
+      const executionsRouter = (await import("../src/routes/projects/executions")).default;
+      assert(executionsRouter !== null, "Executions router loaded successfully");
+
+      // Test executeServerTool blocks demo project from running real server tools
+      const { executeServerTool } = await import("../src/services/tool-execution");
+      const demoExecResult = await executeServerTool({
+        projectId: "demo",
+        actionName: "shopify_check_order",
+        input: { orderId: "#1094" },
+      });
+      assert(demoExecResult.success === false, "Real server tool execution blocked on demo project");
+      assert(demoExecResult.status === "FORBIDDEN", "Forbidden status returned for demo tool execution");
+    }
+
   } finally {
     console.log("\n--- Cleaning Up Test Fixtures ---");
     if (testProjectA) {

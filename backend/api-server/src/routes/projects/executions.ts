@@ -51,7 +51,7 @@ function getDemoExecutions() {
         inputPayload: { actionName: "shopify_check_order", orderId: "#1094" },
         outputData: {},
         steps: [{ name: "Request User Approval for Write Action", status: "PENDING_APPROVAL" }],
-        approvalToken: "demo-token-12345",
+        approvalToken: null,
         retryCount: 0,
         maxRetries: 3,
         createdAt: now,
@@ -204,6 +204,28 @@ router.post("/", async (req: any, res: Response): Promise<any> => {
     return res.status(400).json({ error: "Title is required" });
   }
 
+  if (isDemoProjectId(projectId)) {
+    const now = new Date().toISOString();
+    return res.status(201).json({
+      success: true,
+      execution: {
+        id: `demo-exec-${Date.now()}`,
+        projectId: "demo-project",
+        organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
+        agentType: agentType || "business_agent",
+        title: title ? String(title).slice(0, 150) : "Demo Execution",
+        status: status || "RUNNING",
+        inputPayload: inputPayload || {},
+        outputData: {},
+        steps: steps || [],
+        retryCount: 0,
+        maxRetries: maxRetries || 3,
+        createdAt: now,
+        startedAt: now,
+      },
+    });
+  }
+
   let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
@@ -247,6 +269,21 @@ router.post("/:executionId/cancel", async (req: any, res: Response): Promise<any
   const { projectId, executionId } = req.params;
   const { reason } = req.body || {};
 
+  if (isDemoProjectId(projectId)) {
+    const now = new Date().toISOString();
+    return res.json({
+      success: true,
+      execution: {
+        id: executionId,
+        projectId,
+        status: "CANCELLED",
+        error: reason || "Cancelled in demo mode",
+        completedAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+
   let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
 
@@ -277,6 +314,21 @@ router.post("/:executionId/cancel", async (req: any, res: Response): Promise<any
  */
 router.post("/:executionId/retry", async (req: any, res: Response): Promise<any> => {
   const { projectId, executionId } = req.params;
+
+  if (isDemoProjectId(projectId)) {
+    const now = new Date().toISOString();
+    return res.json({
+      success: true,
+      execution: {
+        id: executionId,
+        projectId,
+        status: "RUNNING",
+        retryCount: 1,
+        startedAt: now,
+        updatedAt: now,
+      },
+    });
+  }
 
   let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
@@ -309,6 +361,20 @@ router.post("/:executionId/retry", async (req: any, res: Response): Promise<any>
 router.post("/:executionId/approve", async (req: any, res: Response): Promise<any> => {
   const { projectId, executionId } = req.params;
   const { approvalToken } = req.body || {};
+
+  if (isDemoProjectId(projectId)) {
+    const now = new Date().toISOString();
+    return res.json({
+      success: true,
+      execution: {
+        id: executionId,
+        projectId,
+        status: "RUNNING",
+        startedAt: now,
+        updatedAt: now,
+      },
+    });
+  }
 
   let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
   if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];

@@ -3,7 +3,7 @@ export const DEMO_SHARE_TOKEN = "demo_share_token_apex_dynamics";
 
 export function isDemoProjectId(projectId?: string | null): boolean {
   if (!projectId) return false;
-  return projectId === "demo" || projectId === DEMO_PROJECT_ID;
+  return projectId === "demo" || projectId === "demo-project" || projectId === DEMO_PROJECT_ID;
 }
 
 export function isDemoShareToken(token?: string | null): boolean {
