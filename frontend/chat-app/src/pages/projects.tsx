@@ -14,20 +14,15 @@ import {
   Loader2,
   Search,
   MoreVertical,
-  ExternalLink,
-  PowerOff,
-  Power,
-  Sparkles,
   ArrowRight,
   Globe,
   Laptop,
   CheckCircle2,
   Activity,
-  Layers,
-  LayoutDashboard,
-  ShieldCheck,
-  Compass,
+  Sparkles,
   AlertCircle,
+  FolderPlus,
+  Compass,
 } from "lucide-react";
 import {
   Dialog,
@@ -150,7 +145,7 @@ export default function ProjectsPage() {
       }
       return { previous };
     },
-    onError: (err, id, context) => {
+    onError: (_err, _id, context) => {
       if (context?.previous) {
         queryClient.setQueryData(["projects"], context.previous);
       }
@@ -183,7 +178,7 @@ export default function ProjectsPage() {
       }
       return { previous };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(["projects"], context.previous);
       }
@@ -243,7 +238,6 @@ export default function ProjectsPage() {
     const isLiveUrl = !!project.websiteUrl && !project.websiteUrl.includes("localhost") && !project.websiteUrl.includes("127.0.0.1");
     const isLive = isLiveUrl && (project.isActive || project.status === "active" || project.status === "live");
 
-    // Calculate real setup progress
     let percent = 25; // Base project creation
     if (project.websiteUrl) percent += 25;
     if ((project.knowledgeCount || 0) > 0) percent += 25;
@@ -259,28 +253,28 @@ export default function ProjectsPage() {
 
   return (
     <>
-      <div className="max-w-6xl mx-auto px-6 py-10 text-foreground">
+      <div className="max-w-6xl mx-auto px-6 py-8 text-foreground space-y-8">
         
         {/* Loading State */}
         {isLoading ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
-              <div className="h-10 w-48 bg-card/60 animate-pulse rounded-xl" />
-              <div className="h-10 w-32 bg-card/60 animate-pulse rounded-xl" />
+              <div className="h-10 w-48 bg-card animate-pulse rounded-xl" />
+              <div className="h-10 w-32 bg-card animate-pulse rounded-xl" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {Array.from({ length: 4 }).map((_, i) => (
                 <CardSkeleton key={i} />
               ))}
             </div>
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center border border-dashed border-red-500/20 rounded-3xl bg-red-500/5">
-            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 text-red-400" />
+          <div className="flex flex-col items-center justify-center py-20 gap-4 text-center border border-destructive/20 rounded-2xl bg-destructive/5 p-8">
+            <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+              <AlertCircle className="w-7 h-7 text-destructive" />
             </div>
             <div>
-              <p className="text-foreground font-semibold mb-1">Failed to load projects</p>
+              <p className="text-foreground font-semibold text-lg mb-1">Failed to load projects</p>
               <p className="text-muted-foreground text-sm max-w-sm">
                 {(error as Error)?.message || "Could not connect to the server."}
               </p>
@@ -289,7 +283,7 @@ export default function ProjectsPage() {
               variant="outline"
               onClick={() => refetch()}
               disabled={isFetching}
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 gap-2 rounded-xl"
             >
               <Loader2 className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
               Retry
@@ -298,100 +292,84 @@ export default function ProjectsPage() {
         ) : !projectList || projectList.length === 0 ? (
 
           /* ============================================================ */
-          /* 2. NEW DEFAULT LANDING SCREEN — ZERO PROJECTS (FIRST-TIME)   */
+          /* ZERO PROJECTS (FIRST-TIME USER LANDING)                     */
           /* ============================================================ */
-          <div className="flex flex-col items-center justify-center min-h-[70vh] text-center max-w-3xl mx-auto py-12 px-4 space-y-12">
+          <div className="flex flex-col items-center justify-center min-h-[65vh] text-center max-w-3xl mx-auto py-8 px-4 space-y-10">
             
-            {/* Header Hero */}
-            <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
-              <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-xs font-semibold px-4 py-1.5 rounded-full shadow-xs">
+            {/* Hero Header */}
+            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
+              <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-xs font-semibold px-3.5 py-1.5 rounded-full">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
-                <span>Welcome to NOVA AI</span>
+                <span>Welcome to NOVA Business AI</span>
               </div>
 
-              <h1 className="text-4xl md:text-6xl font-extrabold text-foreground tracking-tight leading-[1.15]">
+              <h1 className="font-serif text-4xl md:text-5xl font-bold text-foreground tracking-tight leading-tight">
                 Build. Understand. Launch.
               </h1>
 
-              <p className="text-xl md:text-2xl text-muted-foreground max-w-xl mx-auto font-normal leading-relaxed">
-                Turn your business website into an intelligent AI assistant.
+              <p className="text-lg md:text-xl text-muted-foreground max-w-lg mx-auto font-normal leading-relaxed">
+                Turn your business website into an intelligent, autonomous AI assistant in minutes.
               </p>
 
-              <div className="pt-4">
+              <div className="pt-2">
                 <Button
                   size="lg"
                   onClick={() => setLocation("/projects/new")}
                   disabled={!canCreate}
-                  className="h-14 px-10 text-lg font-bold bg-gradient-to-r from-primary via-indigo-600 to-purple-600 hover:from-primary/90 hover:to-purple-500 text-primary-foreground border-0 shadow-[0_0_40px_-5px_rgba(99,102,241,0.5)] rounded-2xl gap-3 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98]"
+                  className="h-12 px-8 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl gap-2.5 shadow-sm transition-all hover:translate-y-[-1px]"
                 >
-                  <Plus className="w-6 h-6" />
+                  <Plus className="w-5 h-5" />
                   Create Your First Project
                 </Button>
               </div>
             </div>
 
-            {/* Simple Visual Journey Flow */}
-            <div className="w-full pt-8 border-t border-border/60">
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-8">
-                Visual Journey
+            {/* Visual Journey Steps */}
+            <div className="w-full pt-6 border-t border-border/70">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80 mb-6">
+                How NOVA AI Works
               </p>
 
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4 max-w-4xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 max-w-4xl mx-auto">
                 
-                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Globe className="w-6 h-6" />
+                <div className="flex flex-col items-center p-4 rounded-xl bg-card border border-border/80 text-center">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2.5">
+                    <Globe className="w-5 h-5" />
                   </div>
-                  <h4 className="font-bold text-sm text-foreground">Website</h4>
-                  <p className="text-xs text-muted-foreground mt-1">Live URL or Localhost</p>
+                  <h4 className="font-semibold text-xs text-foreground">1. Website URL</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Live or Localhost</p>
                 </div>
 
-                <div className="text-muted-foreground md:rotate-0 rotate-90">
-                  <ArrowRight className="w-5 h-5 text-primary/70" />
-                </div>
-
-                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
-                  <div className="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Activity className="w-6 h-6" />
+                <div className="flex flex-col items-center p-4 rounded-xl bg-card border border-border/80 text-center">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2.5">
+                    <Activity className="w-5 h-5" />
                   </div>
-                  <h4 className="font-bold text-sm text-foreground">AI understands</h4>
-                  <p className="text-xs text-muted-foreground mt-1">Automatic Business Discovery</p>
+                  <h4 className="font-semibold text-xs text-foreground">2. Discovery</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Automated Scraping</p>
                 </div>
 
-                <div className="text-muted-foreground md:rotate-0 rotate-90">
-                  <ArrowRight className="w-5 h-5 text-primary/70" />
-                </div>
-
-                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Sparkles className="w-6 h-6" />
+                <div className="flex flex-col items-center p-4 rounded-xl bg-card border border-border/80 text-center">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-2.5">
+                    <Sparkles className="w-5 h-5" />
                   </div>
-                  <h4 className="font-bold text-sm text-foreground">Knowledge + AI Assistant</h4>
-                  <p className="text-xs text-muted-foreground mt-1">RAG & Business Context</p>
+                  <h4 className="font-semibold text-xs text-foreground">3. Knowledge</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">RAG & Training</p>
                 </div>
 
-                <div className="text-muted-foreground md:rotate-0 rotate-90">
-                  <ArrowRight className="w-5 h-5 text-primary/70" />
-                </div>
-
-                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
-                  <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Copy className="w-6 h-6" />
+                <div className="flex flex-col items-center p-4 rounded-xl bg-card border border-border/80 text-center">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2.5">
+                    <Copy className="w-5 h-5" />
                   </div>
-                  <h4 className="font-bold text-sm text-foreground">Install</h4>
-                  <p className="text-xs text-muted-foreground mt-1">Copy Script Snippet</p>
+                  <h4 className="font-semibold text-xs text-foreground">4. Embed Snippet</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">1-Line Script</p>
                 </div>
 
-                <div className="text-muted-foreground md:rotate-0 rotate-90">
-                  <ArrowRight className="w-5 h-5 text-primary/70" />
-                </div>
-
-                <div className="flex flex-col items-center p-5 rounded-2xl bg-card border border-border shadow-sm flex-1 w-full text-center group hover:border-primary/50 transition-all">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <CheckCircle2 className="w-6 h-6" />
+                <div className="flex flex-col items-center p-4 rounded-xl bg-card border border-border/80 text-center sm:col-span-2 md:col-span-1">
+                  <div className="w-10 h-10 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center mb-2.5">
+                    <CheckCircle2 className="w-5 h-5" />
                   </div>
-                  <h4 className="font-bold text-sm text-foreground">Launch</h4>
-                  <p className="text-xs text-muted-foreground mt-1">Live Business Assistant</p>
+                  <h4 className="font-semibold text-xs text-foreground">5. Launch</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Live Assistant</p>
                 </div>
 
               </div>
@@ -402,58 +380,58 @@ export default function ProjectsPage() {
         ) : (
 
           /* ============================================================ */
-          /* 3. EXISTING USER — USEFUL PROJECT HOME                       */
+          /* EXISTING USER PROJECTS VIEW                                  */
           /* ============================================================ */
-          <div className="space-y-8 animate-in fade-in duration-300">
+          <div className="space-y-6 animate-in fade-in duration-200">
             
-            {/* Greeting Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border/80">
               <div>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
-                  {greeting} 👋
+                <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground">
+                  {greeting}
                 </h1>
-                <p className="text-muted-foreground text-lg mt-1 font-medium">
-                  Welcome back to NOVA AI
+                <p className="text-muted-foreground text-sm mt-1 font-medium">
+                  Manage and monitor your NOVA AI business assistants
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <Button
                   variant="outline"
                   onClick={() => setIsExploreOpen(true)}
-                  className="border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 text-primary gap-2 h-12 px-5 rounded-2xl font-semibold shadow-xs"
+                  className="border-border hover:bg-accent text-foreground gap-2 h-10 px-4 rounded-xl font-medium text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Sparkles className="w-4 h-4 text-primary" />
+                  <Compass className="w-4 h-4 text-primary" />
                   Explore Demo
                 </Button>
                 <Button
                   onClick={() => setLocation("/projects/new")}
                   disabled={!canCreate}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 px-6 rounded-2xl gap-2 shadow-lg"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-10 px-4 rounded-xl gap-2 shadow-xs text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <Plus className="w-5 h-5" />
+                  <FolderPlus className="w-4 h-4" />
                   New Project
                 </Button>
               </div>
             </div>
 
             {/* Toolbar: Search & Sort */}
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1 group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                 <Input
                   placeholder="Search projects by name, URL..."
-                  className="pl-11 h-12 rounded-2xl bg-card border-border text-foreground transition-all duration-300"
+                  className="pl-10 h-10 rounded-xl bg-card border-border/80 text-foreground placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </div>
-              <div className="w-full sm:w-[220px]">
+              <div className="w-full sm:w-[200px]">
                 <Select value={sortBy} onValueChange={handleSortChange}>
-                  <SelectTrigger className="h-12 rounded-2xl bg-card border-border text-foreground">
+                  <SelectTrigger className="h-10 rounded-xl bg-card border-border/80 text-foreground text-sm focus-visible:ring-2 focus-visible:ring-ring">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover border border-border text-popover-foreground rounded-2xl shadow-xl">
+                  <SelectContent className="bg-popover border border-border text-popover-foreground rounded-xl shadow-lg">
                     <SelectItem value="newest">Newest First</SelectItem>
                     <SelectItem value="oldest">Oldest First</SelectItem>
                     <SelectItem value="alpha">Alphabetical</SelectItem>
@@ -464,117 +442,114 @@ export default function ProjectsPage() {
             </div>
 
             {/* Projects Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {paginatedProjects.map((project) => {
                 const state = getProjectState(project);
                 return (
                   <div
                     key={project.id}
-                    className="group flex flex-col justify-between rounded-3xl bg-card border border-border hover:border-primary/40 shadow-xs hover:shadow-xl transition-all duration-300 p-7 relative overflow-hidden"
+                    className="group flex flex-col justify-between rounded-2xl bg-card border border-border/80 hover:border-primary/50 shadow-xs hover:shadow-md transition-all duration-200 p-6 relative overflow-hidden"
                   >
-                    <div className="space-y-4 relative z-10">
+                    <div className="space-y-3.5 relative z-10">
                       
-                      {/* Top Badges */}
+                      {/* Status Badges & Menu */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           {state.isLive ? (
-                            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold px-3 py-1 gap-1.5 rounded-full">
-                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                              ● Live
+                            <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-semibold px-2.5 py-0.5 gap-1.5 rounded-full text-xs">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              Live
                             </Badge>
                           ) : (
-                            <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/30 font-bold px-3 py-1 gap-1.5 rounded-full">
-                              <Laptop className="w-3.5 h-3.5" />
-                              ● Local Development
+                            <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border font-medium px-2.5 py-0.5 gap-1.5 rounded-full text-xs">
+                              <Laptop className="w-3 h-3 text-muted-foreground" />
+                              Development
                             </Badge>
                           )}
 
                           {state.isLive && (
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 font-semibold px-2.5 py-0.5 text-xs">
-                              AI Ready
+                            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-medium px-2 py-0.5 text-[11px] rounded-full">
+                              AI Connected
                             </Badge>
                           )}
                         </div>
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-foreground/10">
-                              <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                            <Button variant="ghost" size="icon" aria-label="Project actions" className="h-8 w-8 rounded-lg hover:bg-accent text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                              <MoreVertical className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48 bg-popover border border-border text-popover-foreground rounded-2xl shadow-xl">
-                            <DropdownMenuItem className="rounded-xl my-0.5 cursor-pointer" onClick={() => setLocation(`/projects/${project.id}/edit`)}>
-                              <Pencil className="w-4 h-4 mr-2" /> Edit Project
+                          <DropdownMenuContent align="end" className="w-48 bg-popover border border-border text-popover-foreground rounded-xl shadow-lg">
+                            <DropdownMenuItem className="rounded-lg my-0.5 cursor-pointer text-xs" onClick={() => setLocation(`/projects/${project.id}/edit`)}>
+                              <Pencil className="w-3.5 h-3.5 mr-2 text-muted-foreground" /> Edit Project
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="rounded-xl my-0.5 cursor-pointer" onClick={() => copyShareLink(project.shareToken)}>
-                              <Copy className="w-4 h-4 mr-2" /> Copy Preview Link
+                            <DropdownMenuItem className="rounded-lg my-0.5 cursor-pointer text-xs" onClick={() => copyShareLink(project.shareToken)}>
+                              <Copy className="w-3.5 h-3.5 mr-2 text-muted-foreground" /> Copy Preview Link
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              className="rounded-xl my-0.5 cursor-pointer"
+                              className="rounded-lg my-0.5 cursor-pointer text-xs"
                               onClick={() => toggleMutation.mutate({ id: project.id, isActive: !project.isActive })}
                             >
-                              {project.isActive ? (
-                                <><PowerOff className="w-4 h-4 mr-2 text-muted-foreground" /> Deactivate</>
-                              ) : (
-                                <><Power className="w-4 h-4 mr-2 text-emerald-400" /> Activate</>
-                              )}
+                              {project.isActive ? "Deactivate Assistant" : "Activate Assistant"}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              className="text-red-400 hover:bg-red-500/10 rounded-xl my-0.5 cursor-pointer"
+                              className="text-destructive hover:bg-destructive/10 rounded-lg my-0.5 cursor-pointer text-xs"
                               onClick={() => setDeletingId(project.id)}
                             >
-                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                              <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Project
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
 
-                      {/* Title & URL */}
+                      {/* Title & Website URL */}
                       <div>
-                        <h3 className="text-2xl font-bold text-foreground tracking-tight truncate group-hover:text-primary transition-colors">
+                        <h3 className="font-sans text-xl font-semibold text-foreground tracking-tight truncate group-hover:text-primary transition-colors">
                           {project.name}
                         </h3>
-                        <p className="text-xs font-mono text-muted-foreground mt-1 truncate">
-                          {state.displayUrl}
+                        <p className="text-xs font-mono text-muted-foreground/80 mt-1 truncate flex items-center gap-1.5">
+                          <Globe className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          <span>{state.displayUrl}</span>
                         </p>
                       </div>
 
-                      {/* Description or Knowledge Sources */}
-                      <p className="text-muted-foreground text-sm line-clamp-2 leading-relaxed">
+                      {/* Description */}
+                      <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed">
                         {project.description || project.systemPrompt}
                       </p>
                     </div>
 
                     {/* Footer / CTA */}
-                    <div className="pt-6 mt-6 border-t border-border/60 flex items-center justify-between gap-4 relative z-10">
-                      {!state.isLive && (
+                    <div className="pt-4 mt-4 border-t border-border/60 flex items-center justify-between gap-3 relative z-10">
+                      {!state.isLive ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-medium">Progress:</span>
-                          <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
-                            Setup {state.setupPercent}%
+                          <span className="text-[11px] text-muted-foreground font-medium">Setup:</span>
+                          <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
+                            {state.setupPercent}% Complete
                           </span>
                         </div>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground font-medium">
+                          {project.knowledgeCount || 0} Knowledge Sources
+                        </span>
                       )}
 
                       <div className="flex items-center gap-2 ml-auto">
-                        {state.isLive ? (
-                          <Button
-                            onClick={() => setLocation(`/projects/${project.id}/edit`)}
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-2xl gap-2 h-10 px-6 shadow-md"
-                          >
-                            Open Project <ArrowRight className="w-4 h-4" />
-                          </Button>
-                        ) : (
-                          <Button
-                            onClick={() => setLocation(`/projects/${project.id}/edit`)}
-                            variant="outline"
-                            className="border-primary/40 text-primary hover:bg-primary/10 font-bold rounded-2xl gap-2 h-10 px-6"
-                          >
-                            Continue <ArrowRight className="w-4 h-4" />
-                          </Button>
-                        )}
+                        <Button
+                          onClick={() => setLocation(`/projects/${project.id}/edit`)}
+                          variant={state.isLive ? "default" : "outline"}
+                          className={`h-9 px-4 rounded-xl font-semibold text-xs gap-1.5 ${
+                            state.isLive
+                              ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs"
+                              : "border-border text-foreground hover:bg-accent hover:text-foreground"
+                          }`}
+                        >
+                          {state.isLive ? "Open Dashboard" : "Continue Setup"}
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -584,8 +559,8 @@ export default function ProjectsPage() {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-4">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex items-center justify-between pt-3">
+                <p className="text-xs text-muted-foreground">
                   Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedProjects.length)} of {filteredAndSortedProjects.length} projects
                 </p>
                 <div className="flex gap-2">
@@ -594,7 +569,7 @@ export default function ProjectsPage() {
                     size="sm"
                     disabled={currentPage === 1}
                     onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                    className="rounded-xl"
+                    className="rounded-lg h-8 text-xs"
                   >
                     Previous
                   </Button>
@@ -603,7 +578,7 @@ export default function ProjectsPage() {
                     size="sm"
                     disabled={currentPage === totalPages}
                     onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
-                    className="rounded-xl"
+                    className="rounded-lg h-8 text-xs"
                   >
                     Next
                   </Button>
@@ -618,22 +593,22 @@ export default function ProjectsPage() {
 
       {/* Delete Dialog */}
       <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
-        <AlertDialogContent className="bg-card border border-border">
+        <AlertDialogContent className="bg-card border border-border rounded-2xl max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-foreground">Delete project?</AlertDialogTitle>
-            <AlertDialogDescription className="text-muted-foreground">
-              This will permanently delete this project and all associated configurations.
+            <AlertDialogTitle className="text-foreground text-lg">Delete project?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground text-sm">
+              This will permanently delete this project and all associated configuration and chat history.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-border">Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel className="border-border rounded-xl h-9 text-xs">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground border-0"
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground border-0 rounded-xl h-9 text-xs"
               onClick={() => {
                 if (deletingId) deleteMutation.mutate(deletingId);
               }}
             >
-              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete Project"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -641,42 +616,45 @@ export default function ProjectsPage() {
 
       {/* Interactive Demo Dialog */}
       <Dialog open={isExploreOpen} onOpenChange={setIsExploreOpen}>
-        <DialogContent className="max-w-2xl bg-card border border-border text-foreground p-8 rounded-3xl shadow-2xl">
-          <DialogHeader className="space-y-2">
-            <DialogTitle className="text-2xl font-bold tracking-tight">
+        <DialogContent className="max-w-xl bg-card border border-border text-foreground p-6 rounded-2xl shadow-xl">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="font-serif text-xl font-bold tracking-tight">
               Explore NOVA Business AI
             </DialogTitle>
-            <DialogDescription className="text-muted-foreground text-sm">
+            <DialogDescription className="text-muted-foreground text-xs">
               See what a complete NOVA project looks like before connecting your own website.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-4 p-5 rounded-2xl bg-foreground/[0.02] border border-border space-y-4">
-            <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="mt-3 p-4 rounded-xl bg-muted/40 border border-border space-y-3">
+            <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
               <div>
-                <span className="font-bold text-lg">Apex Dynamics — Demo</span>
+                <span className="font-semibold text-sm text-foreground">Apex Dynamics — Sandbox Demo</span>
                 <p className="text-xs text-muted-foreground">Enterprise Business Consulting</p>
               </div>
-              <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-xs">
-                🧪 Demo Mode
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-[11px]">
+                Demo Mode
               </Badge>
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Explore business intelligence, RAG knowledge sources, live widget customization, and agent control in a safe sandbox.
+              Explore business intelligence, RAG knowledge sources, live widget customization, and agent control in a safe sandbox environment.
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
-            <Button variant="ghost" onClick={() => setIsExploreOpen(false)}>Close</Button>
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border/60">
+            <Button variant="ghost" size="sm" onClick={() => setIsExploreOpen(false)} className="rounded-lg text-xs">
+              Close
+            </Button>
             <Button
+              size="sm"
               onClick={() => {
                 setIsExploreOpen(false);
                 setLocation("/projects/00000000-0000-4000-8000-000000000000/edit");
               }}
-              className="bg-primary text-primary-foreground font-semibold gap-2"
+              className="bg-primary text-primary-foreground font-semibold rounded-xl gap-1.5 text-xs"
             >
-              Open Demo Project <ArrowRight className="w-4 h-4" />
+              Open Demo Project <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           </div>
         </DialogContent>
