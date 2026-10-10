@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Github, Linkedin, ExternalLink, Copy, Edit2, Trash2, 
   MoreVertical, Plus, Box, Database, BarChart3, LineChart, 
-  Search, Play, Globe, ChevronDown, ChevronUp, Zap, 
-  ShieldCheck, Layers, Sparkles, Activity
+  Search, Play, Globe, ChevronDown, ChevronUp, Sparkles, Activity
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -229,39 +228,6 @@ export default function ConnectedServicesPage() {
                 <ServiceForm onSubmit={(d) => addMutation.mutate(d)} isPending={addMutation.isPending} />
               </DialogContent>
             </Dialog>
-          </div>
-
-          {/* Benefits Feature Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-border/50">
-            <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border/80 shadow-2xs">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                <Zap className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-foreground">Quick & Easy Setup</h4>
-                <p className="text-[11px] text-muted-foreground">Instant API & webhook access</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border/80 shadow-2xs">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-foreground">Secure Connections</h4>
-                <p className="text-[11px] text-muted-foreground">Encrypted token credentials</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border/80 shadow-2xs">
-              <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-foreground">More Capabilities</h4>
-                <p className="text-[11px] text-muted-foreground">Automated workflow triggers</p>
-              </div>
-            </div>
           </div>
         </div>
 
