@@ -723,7 +723,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         
         Categories:
         - ACTION_REQUEST: The user is explicitly asking you to DO something or perform a transactional operation on the website (e.g., "Create a client", "Click the Add button", "Fill the form", "Navigate to dashboard", "Delete the invoice", "Update my profile", "Cancel order").
-        - KNOWLEDGE_QUESTION: The user is asking for information, profile, skills, services, projects, FAQs, pricing, or help that requires an explanation (e.g., "Who is Rakesh?", "What projects has he built?", "What are his skills?", "How do I create a client?", "What is your refund policy?").
+        - KNOWLEDGE_QUESTION: The user is asking for information, profile, team, services, projects, products, FAQs, pricing, or help that requires an explanation (e.g., "Who founded this company?", "What features does this service offer?", "What are the pricing tiers?", "How do I create a client?", "What is your return policy?").
         - GENERAL_QUESTION: Conversational chat, greetings, or generic questions.
         
         Output ONLY a JSON object with the format: {"intent": "CATEGORY_NAME"}`;

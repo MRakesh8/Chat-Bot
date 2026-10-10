@@ -497,6 +497,25 @@ Return strictly valid JSON:
   };
 }
 
+/**
+ * Sanitizes retrieved website & knowledge base content to neutralize prompt injection tokens
+ * and delimiter spoofing attempts.
+ */
+export function sanitizeRetrievedText(text: string): string {
+  if (!text) return "";
+  return text
+    // Neutralize prompt boundary delimiter tags that attackers might embed in web pages
+    .replace(/\[\/?(BEGIN|END)\s+[^\]]+\]/gi, "")
+    .replace(/\[\/?(SYSTEM|INSTRUCTION|ASSISTANT|ADMIN|USER|PROMPT)[^\]]*\]/gi, "")
+    .replace(/<\/?(?:system|instruction|prompt)[^>]*>/gi, "")
+    .replace(/<<<[^>]+>>>/g, "")
+    // Defang markdown image exfiltration URLs
+    .replace(/!\[([^\]]*)\]\((https?:\/\/[^\)]+)\)/gi, "[Image: $1]")
+    // Neutralize common adversarial prompt injection directives
+    .replace(/(?:^|\n)\s*(?:system\s*override|ignore\s+(?:all\s+)?previous\s+instructions|disregard\s+all\s+(?:rules|instructions)|you\s+are\s+now\s+in\s+developer\s+mode|reveal\s+(?:your\s+)?(?:system\s+prompt|api\s*key|credentials|secret))[\s\S]*?(?=\n|$)/gi, "\n[Notice: Redacted untrusted directive from external source]\n")
+    .trim();
+}
+
 export async function searchProjectKnowledge(params: {
   projectIds: string[];
   userId: string | null;
@@ -548,30 +567,30 @@ export async function searchProjectKnowledge(params: {
     .split(/\s+/)
     .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
 
-  // Query Expansion for high-frequency intent domains
+  // Query Expansion for high-frequency intent domains (domain-generic)
   const expandedTerms = new Set<string>(rawWords);
   const lowerQuery = params.query.toLowerCase();
 
   if (lowerQuery.match(/\b(skills?|tech(nology|nologies)?|stack|frameworks?|languages?|expertise|proficienc(y|ies))\b/i)) {
-    ["skills", "technologies", "specializes", "stack", "tools", "languages", "frameworks", "developer", "html", "react", "node", "postgresql"].forEach(t => expandedTerms.add(t));
+    ["skills", "technologies", "specializes", "stack", "tools", "languages", "frameworks", "expertise", "capabilities"].forEach(t => expandedTerms.add(t));
   }
-  if (lowerQuery.match(/\b(projects?|built|builds|portfolio|created|develop(ed|ment)?|apps?|solutions?)\b/i)) {
-    ["projects", "built", "completed", "features", "platform", "website", "chatbot", "psychology", "farm"].forEach(t => expandedTerms.add(t));
+  if (lowerQuery.match(/\b(projects?|built|builds|portfolio|created|develop(ed|ment)?|apps?|solutions?|case\s*stud(y|ies))\b/i)) {
+    ["projects", "built", "completed", "features", "platform", "website", "portfolio", "solutions", "work"].forEach(t => expandedTerms.add(t));
   }
-  if (lowerQuery.match(/\b(educat(ion|ed)?|degree|undergraduate|study|college|university|background)\b/i)) {
-    ["education", "undergraduate", "developer", "degree", "profile", "rakesh"].forEach(t => expandedTerms.add(t));
+  if (lowerQuery.match(/\b(educat(ion|ed)?|degree|undergraduate|study|college|university|background|qualificat(ion|ions))\b/i)) {
+    ["education", "degree", "qualifications", "background", "certifications", "training", "academic"].forEach(t => expandedTerms.add(t));
   }
   if (lowerQuery.match(/\b(services?|offer(s|ing)?|solutions?|capabilities|consult(ing|ation)?)\b/i)) {
-    ["services", "specializes", "development", "websites", "chatbots", "custom software", "api"].forEach(t => expandedTerms.add(t));
+    ["services", "specializes", "development", "solutions", "offerings", "capabilities"].forEach(t => expandedTerms.add(t));
   }
-  if (lowerQuery.match(/\b(contact|reach|email|phone|whatsapp|call|talk|discuss|hire|hire me|connect)\b/i)) {
-    ["contact", "whatsapp", "phone", "email", "discussion", "quotation", "planning"].forEach(t => expandedTerms.add(t));
+  if (lowerQuery.match(/\b(contact|reach|email|phone|whatsapp|call|talk|discuss|hire|hire me|connect|location|address)\b/i)) {
+    ["contact", "whatsapp", "phone", "email", "discussion", "quotation", "support", "location"].forEach(t => expandedTerms.add(t));
   }
-  if (lowerQuery.match(/\b(who|about|profile|bio|background|rakesh)\b/i)) {
-    ["rakesh", "profile", "about", "developer", "undergraduate", "specializes"].forEach(t => expandedTerms.add(t));
+  if (lowerQuery.match(/\b(who|about|profile|bio|background|team|founder|creator|leadership)\b/i)) {
+    ["profile", "about", "team", "founder", "creator", "experience", "leadership", "bio"].forEach(t => expandedTerms.add(t));
   }
   if (lowerQuery.match(/\b(cost|price|pricing|rates?|quote|quotation|charge|fee)\b/i)) {
-    ["pricing", "contact", "cost", "quotation", "discussion", "scope", "estimate"].forEach(t => expandedTerms.add(t));
+    ["pricing", "plans", "cost", "quotation", "rates", "scope", "estimate"].forEach(t => expandedTerms.add(t));
   }
 
   const words = uniqueStrings(Array.from(expandedTerms), 15);
@@ -756,13 +775,14 @@ export async function searchProjectKnowledge(params: {
   // 3. Sorting and Anti-Pollution Guard
   scoredCandidates.sort((a, b) => b.retrievalScore - a.retrievalScore);
   
-  let topCandidates = scoredCandidates;
+  // Require minimum relevance score floor to prevent retrieving noise when no evidence exists
+  const MIN_RELEVANCE_SCORE = 60;
+  let topCandidates = scoredCandidates.filter(c => c.retrievalScore >= MIN_RELEVANCE_SCORE);
+
   if (topCandidates.length > 0) {
     const topScore = topCandidates[0].retrievalScore;
-    // Anti-Pollution Guard: Discard candidates with score < 40% of top score unless top score is low
-    if (topScore > 100) {
-      topCandidates = topCandidates.filter(c => c.retrievalScore >= topScore * 0.4);
-    }
+    // Anti-Pollution Guard: Discard tail candidates with score < 45% of top score
+    topCandidates = topCandidates.filter(c => c.retrievalScore >= Math.max(MIN_RELEVANCE_SCORE, topScore * 0.45));
   }
   
   topCandidates = topCandidates.slice(0, params.limit ?? 5);
@@ -774,7 +794,7 @@ export async function searchProjectKnowledge(params: {
   });
   logger.info(`[Retrieval Ranking]\n${debugLog.trim()}`);
 
-  // 5. Context Formatting — Clean signal without noisy internal tags
+  // 5. Context Formatting — Clean signal without noisy internal tags, sanitized against prompt injection
   const MAX_CHARS = 10000;
   let currentChars = 0;
 
@@ -783,7 +803,10 @@ export async function searchProjectKnowledge(params: {
 
   for (const candidate of topCandidates) {
     const titleLabel = candidate.title && candidate.title !== "null" ? candidate.title : (candidate.categoryName && candidate.categoryName !== "Uncategorized" ? candidate.categoryName : "Knowledge Base Reference");
-    let itemStr = `[Knowledge Reference: ${titleLabel}]\n${candidate.contentText.trim()}`;
+    const cleanContent = sanitizeRetrievedText(candidate.contentText.trim());
+    if (!cleanContent) continue;
+
+    let itemStr = `[Knowledge Reference: ${titleLabel}]\n${cleanContent}`;
     
     if (candidate.sourceUrl && candidate.sourceUrl !== "null" && candidate.sourceUrl.startsWith("http")) {
       itemStr += `\nReference URL: ${candidate.sourceUrl}`;

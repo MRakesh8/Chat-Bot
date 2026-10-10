@@ -18,7 +18,7 @@ import type {
   DialogContext,
   ChartContext,
 } from "./types";
-import { searchProjectKnowledge } from "../knowledge";
+import { searchProjectKnowledge, sanitizeRetrievedText } from "../knowledge";
 import { intentClassifier } from "./intent-classifier";
 import { redactSensitiveContext } from "../../security";
 
@@ -485,10 +485,12 @@ export class ContextFuser {
 
     if (ctx) {
       if (ctx.page?.type && ctx.page.type !== "unknown") {
-        signals.push(ctx.page.type);
+        const cleanType = sanitizeRetrievedText(ctx.page.type).replace(/[\[\]]/g, "").trim();
+        if (cleanType) signals.push(cleanType);
       }
       if (ctx.page?.heading) {
-        signals.push(ctx.page.heading);
+        const cleanHeading = sanitizeRetrievedText(ctx.page.heading).replace(/[\[\]]/g, "").trim();
+        if (cleanHeading) signals.push(cleanHeading);
       }
       if (ctx.state?.visibleErrors?.length) {
         signals.push("error");
@@ -504,8 +506,9 @@ export class ContextFuser {
         // Find last assistant or user message
         const lastTurn = conversationHistory[conversationHistory.length - 1];
         if (lastTurn && lastTurn.content) {
-          // Extract notable nouns or titles
-          const candidateLines = lastTurn.content
+          // Extract notable nouns or titles, defanged from any prompt injection
+          const sanitizedLastTurn = sanitizeRetrievedText(lastTurn.content).replace(/[\[\]]/g, "");
+          const candidateLines = sanitizedLastTurn
             .split(/\r?\n/)
             .filter(l => l.trim().length > 0 && !l.startsWith("http"))
             .slice(0, 3)
