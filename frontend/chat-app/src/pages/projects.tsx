@@ -64,6 +64,7 @@ import {
 import { apiUrl } from "@/lib/api-url";
 import { useAuthFetch } from "@/hooks/use-auth-fetch";
 import { getProjectsFilterState, saveProjectsFilterState } from "@/lib/workspace-continuity";
+import { useLocalGreeting } from "@/hooks/use-local-greeting";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -89,6 +90,7 @@ export default function ProjectsPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const greeting = useLocalGreeting();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isExploreOpen, setIsExploreOpen] = useState(false);
 
@@ -304,7 +306,7 @@ export default function ProjectsPage() {
             <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
               <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary text-xs font-semibold px-4 py-1.5 rounded-full shadow-xs">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
-                <span>✨ Welcome to NOVA AI</span>
+                <span>Welcome to NOVA AI</span>
               </div>
 
               <h1 className="text-4xl md:text-6xl font-extrabold text-foreground tracking-tight leading-[1.15]">
@@ -323,7 +325,7 @@ export default function ProjectsPage() {
                   className="h-14 px-10 text-lg font-bold bg-gradient-to-r from-primary via-indigo-600 to-purple-600 hover:from-primary/90 hover:to-purple-500 text-primary-foreground border-0 shadow-[0_0_40px_-5px_rgba(99,102,241,0.5)] rounded-2xl gap-3 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98]"
                 >
                   <Plus className="w-6 h-6" />
-                  + Create Your First Project
+                  Create Your First Project
                 </Button>
               </div>
             </div>
@@ -408,7 +410,7 @@ export default function ProjectsPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border">
               <div>
                 <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
-                  Good morning 👋
+                  {greeting} 👋
                 </h1>
                 <p className="text-muted-foreground text-lg mt-1 font-medium">
                   Welcome back to NOVA AI
@@ -422,7 +424,7 @@ export default function ProjectsPage() {
                   className="border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 text-primary gap-2 h-12 px-5 rounded-2xl font-semibold shadow-xs"
                 >
                   <Sparkles className="w-4 h-4 text-primary" />
-                  ✨ Explore Demo
+                  Explore Demo
                 </Button>
                 <Button
                   onClick={() => setLocation("/projects/new")}
@@ -430,7 +432,7 @@ export default function ProjectsPage() {
                   className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 px-6 rounded-2xl gap-2 shadow-lg"
                 >
                   <Plus className="w-5 h-5" />
-                  + New Project
+                  New Project
                 </Button>
               </div>
             </div>
