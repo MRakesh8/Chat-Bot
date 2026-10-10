@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
@@ -23,11 +23,79 @@ import { Notifications } from "../components/project/notifications";
 import { ProjectGuide } from "../components/project/project-guide";
 import { AgentControlCenter } from "../components/agent-control/AgentControlCenter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getSavedProjectTab, saveProjectTab } from "@/lib/workspace-continuity";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiUrl } from "@/lib/api-url";
 import { useProjectTabPrefetch } from "@/hooks/use-tab-prefetch";
+
+type NavGroup = {
+  id: string;
+  title: string;
+  description: string;
+  icon: any;
+  items: {
+    id: string;
+    label: string;
+    icon: any;
+  }[];
+};
+
+const PROJECT_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "workspace",
+    title: "Workspace",
+    description: "Overview & Setup Guide",
+    icon: LayoutDashboard,
+    items: [
+      { id: "overview", label: "Overview", icon: LayoutDashboard },
+      { id: "guide", label: "Project Guide", icon: Compass },
+    ],
+  },
+  {
+    id: "knowledge-ai",
+    title: "Knowledge & AI",
+    description: "Bot Testing, Knowledge & Context",
+    icon: Brain,
+    items: [
+      { id: "chat", label: "Test Chat", icon: MessageSquare },
+      { id: "knowledge", label: "Knowledge Base", icon: Database },
+      { id: "context-engine", label: "Context Engine", icon: Brain },
+    ],
+  },
+  {
+    id: "website-experience",
+    title: "Website Experience",
+    description: "Widget Studio, Channels & Launch",
+    icon: Paintbrush,
+    items: [
+      { id: "widget-studio", label: "Widget Studio", icon: Paintbrush },
+      { id: "channels", label: "Channels", icon: Smartphone },
+      { id: "deployment", label: "Deployment", icon: Rocket },
+    ],
+  },
+  {
+    id: "operations",
+    title: "Operations",
+    description: "API Keys, Control, Analytics & Settings",
+    icon: Wrench,
+    items: [
+      { id: "api-keys", label: "API Keys", icon: Key },
+      { id: "reports", label: "Reports", icon: FileText },
+      { id: "analytics", label: "Analytics", icon: LayoutDashboard },
+      { id: "notifications", label: "Notifications", icon: AlertTriangle },
+      { id: "integrations", label: "Integrations", icon: Sparkles },
+      { id: "agent-control", label: "Agent Control", icon: Cpu },
+      { id: "settings", label: "Settings", icon: Settings },
+    ],
+  },
+];
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -549,53 +617,114 @@ export default function ProjectEditPage() {
         })()}
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="mb-8 bg-muted/60 border border-border p-1.5 w-full flex overflow-x-auto justify-start h-14 rounded-2xl backdrop-blur-xl no-scrollbar scroll-smooth">
-            <TabsTrigger value="overview" {...getTabTriggerProps("overview")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <LayoutDashboard className="w-4 h-4 mr-2" /> Overview
-            </TabsTrigger>
-            <TabsTrigger value="guide" {...getTabTriggerProps("guide")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Compass className="w-4 h-4 mr-2 text-primary" /> Project Guide
-            </TabsTrigger>
-            <TabsTrigger value="chat" className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <MessageSquare className="w-4 h-4 mr-2" /> Test Chat
-            </TabsTrigger>
-            <TabsTrigger value="knowledge" {...getTabTriggerProps("knowledge")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Database className="w-4 h-4 mr-2" /> Knowledge Base
-            </TabsTrigger>
-            <TabsTrigger value="reports" {...getTabTriggerProps("reports")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <FileText className="w-4 h-4 mr-2" /> Reports
-            </TabsTrigger>
-            <TabsTrigger value="settings" {...getTabTriggerProps("settings")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Settings className="w-4 h-4 mr-2" /> Settings
-            </TabsTrigger>
-            <TabsTrigger value="context-engine" {...getTabTriggerProps("context-engine")} className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Brain className="w-4 h-4 mr-2" /> Context Engine
-            </TabsTrigger>
-            <TabsTrigger value="widget-studio" {...getTabTriggerProps("widget-studio")} className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Paintbrush className="w-4 h-4 mr-2" /> Widget Studio
-            </TabsTrigger>
-            <TabsTrigger value="channels" {...getTabTriggerProps("channels")} className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Smartphone className="w-4 h-4 mr-2" /> Channels
-            </TabsTrigger>
-            <TabsTrigger value="deployment" {...getTabTriggerProps("deployment")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Rocket className="w-4 h-4 mr-2" /> Deployment
-            </TabsTrigger>
-            <TabsTrigger value="api-keys" {...getTabTriggerProps("api-keys")} className="shrink-0 flex-1 min-w-[120px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Key className="w-4 h-4 mr-2" /> API Keys
-            </TabsTrigger>
-            <TabsTrigger value="analytics" {...getTabTriggerProps("analytics")} className="shrink-0 flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <LayoutDashboard className="w-4 h-4 mr-2" /> Analytics
-            </TabsTrigger>
-            <TabsTrigger value="notifications" {...getTabTriggerProps("notifications")} className="shrink-0 flex-1 min-w-[130px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <AlertTriangle className="w-4 h-4 mr-2" /> Notifications
-            </TabsTrigger>
-            <TabsTrigger value="integrations" {...getTabTriggerProps("integrations")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Sparkles className="w-4 h-4 mr-2" /> Integrations
-            </TabsTrigger>
-            <TabsTrigger value="agent-control" {...getTabTriggerProps("agent-control")} className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
-              <Cpu className="w-4 h-4 mr-2 text-violet-400" /> Agent Control
-            </TabsTrigger>
-          </TabsList>
+          {/* Grouped Navigation Header */}
+          <div className="space-y-4 mb-6">
+            {/* Category Group Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {PROJECT_NAV_GROUPS.map((group) => {
+                const GroupIcon = group.icon;
+                const isGroupActive = group.items.some((item) => item.id === activeTab);
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => {
+                      if (!isGroupActive) {
+                        handleTabChange(group.items[0].id);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      isGroupActive
+                        ? "bg-primary/15 border-primary/40 shadow-xs text-foreground"
+                        : "bg-card/50 border-border/60 hover:bg-card/80 hover:border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      isGroupActive ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+                    }`}>
+                      <GroupIcon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold truncate">{group.title}</span>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.2 rounded-full font-mono shrink-0">
+                          {group.items.length}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                        {group.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sub-Tab Navigation Bar for Active Category */}
+            {(() => {
+              const activeGroup = PROJECT_NAV_GROUPS.find((g) => g.items.some((item) => item.id === activeTab)) || PROJECT_NAV_GROUPS[0];
+              return (
+                <div className="bg-card/80 border border-border p-1.5 rounded-2xl backdrop-blur-xl shadow-xs flex items-center justify-between gap-2">
+                  <TabsList className="bg-transparent border-0 p-0 h-auto flex flex-wrap sm:flex-nowrap gap-1.5 w-full justify-start no-scrollbar">
+                    {activeGroup.items.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <TabsTrigger
+                          key={item.id}
+                          value={item.id}
+                          {...getTabTriggerProps(item.id)}
+                          className="px-3.5 py-2 rounded-xl text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all gap-2 shrink-0"
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                          <span>{item.label}</span>
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+
+                  {/* Dropdown Menu to jump to any tab directly */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground rounded-xl gap-1.5 shrink-0 border border-border/50 bg-secondary/30">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+                        <span className="hidden sm:inline font-medium">All Navigation</span>
+                        <ChevronDown className="w-3 h-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64 p-2 rounded-2xl bg-popover border-border z-50 max-h-96 overflow-y-auto">
+                      {PROJECT_NAV_GROUPS.map((group) => (
+                        <div key={group.id} className="py-1">
+                          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 border-b border-border/40 mb-1">
+                            <group.icon className="w-3 h-3 text-primary" />
+                            <span>{group.title}</span>
+                          </div>
+                          {group.items.map((item) => {
+                            const ItemIcon = item.icon;
+                            const isSelected = activeTab === item.id;
+                            return (
+                              <DropdownMenuItem
+                                key={item.id}
+                                onClick={() => handleTabChange(item.id)}
+                                className={`cursor-pointer rounded-xl text-xs py-2 px-2.5 flex items-center justify-between gap-2 my-0.5 ${
+                                  isSelected ? "bg-primary/15 text-primary font-semibold" : ""
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <ItemIcon className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                                  <span>{item.label}</span>
+                                </div>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            })()}
+          </div>
 
           <TabsContent value="overview">
             <Card className="bg-card border-border text-card-foreground mt-8">
