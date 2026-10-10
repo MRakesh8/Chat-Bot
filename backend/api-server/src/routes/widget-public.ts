@@ -381,7 +381,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         const [createdSession] = await db.insert(chatSessions).values({
           id: newSessionId,
           projectId: projectId,
-          userId: userId,
+          userId: null, // Website widget visitor sessions belong to projectId (not personal user sessions)
           title: lastUserMessage ? (lastUserMessage.slice(0, 50) + (lastUserMessage.length > 50 ? "..." : "")) : "Website Visitor Chat",
           expiresAt: new Date(Date.now() + 30 * 60 * 1000)
         }).returning();

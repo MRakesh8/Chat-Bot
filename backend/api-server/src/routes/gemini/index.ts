@@ -3,7 +3,7 @@
  * @description Routes for processing chat sessions and messaging with the Gemini model. Handles context (RAG) loading, chat logs, history limits, and feedback loops.
  */
 import { Router } from "express";
-import { and, eq, desc, like, inArray, or, isNull, gt, lt } from "drizzle-orm";
+import { and, eq, desc, like, inArray, or, isNull, gt, lt, ne } from "drizzle-orm";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import {
   isKnowledgeSaveCommand,
@@ -65,7 +65,13 @@ router.get("/conversations/search", async (req, res) => {
     const results = await db
       .select()
       .from(chatSessions)
-      .where(and(like(chatSessions.title, `%${q}%`), eq(chatSessions.userId, userId)))
+      .where(
+        and(
+          like(chatSessions.title, `%${q}%`),
+          eq(chatSessions.userId, userId),
+          ne(chatSessions.title, "Website Visitor Chat")
+        )
+      )
       .orderBy(desc(chatSessions.createdAt))
       .limit(20);
     res.json(results.map(serializeConversation));
@@ -101,6 +107,7 @@ router.get("/conversations", async (req, res) => {
       .where(
         and(
           eq(chatSessions.userId, userId),
+          ne(chatSessions.title, "Website Visitor Chat"),
           or(isNull(chatSessions.expiresAt), gt(chatSessions.expiresAt, new Date()))
         )
       )

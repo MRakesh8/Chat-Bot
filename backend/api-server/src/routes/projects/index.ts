@@ -1379,6 +1379,63 @@ router.get("/:projectId/capabilities", async (req: any, res: any): Promise<any> 
   }
 });
 
+router.get("/:projectId/conversations", async (req: any, res: any): Promise<any> => {
+  const { projectId } = req.params;
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
+
+  try {
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      return res.status(404).json({ error: "Project not found or access denied" });
+    }
+
+    const visitorConversations = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.projectId, projectId))
+      .orderBy(desc(chatSessions.createdAt));
+
+    return res.json(visitorConversations);
+  } catch (error: any) {
+    req.log.error({ error, projectId }, "Error fetching project visitor conversations");
+    return res.status(500).json({ error: "Failed to fetch project visitor conversations" });
+  }
+});
+
+router.get("/:projectId/conversations/:convId", async (req: any, res: any): Promise<any> => {
+  const { projectId, convId } = req.params;
+  let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
+  if (Array.isArray(rawOrgId)) rawOrgId = rawOrgId[0];
+
+  try {
+    const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
+    if (!resolved) {
+      return res.status(404).json({ error: "Project not found or access denied" });
+    }
+
+    const [conv] = await db
+      .select()
+      .from(chatSessions)
+      .where(and(eq(chatSessions.id, convId as any), eq(chatSessions.projectId, projectId)));
+
+    if (!conv) {
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+
+    const msgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.sessionId, convId as any))
+      .orderBy(messages.createdAt);
+
+    return res.json({ ...conv, messages: msgs.map(serializeMessage) });
+  } catch (error: any) {
+    req.log.error({ error, projectId, convId }, "Error fetching conversation details");
+    return res.status(500).json({ error: "Failed to fetch conversation details" });
+  }
+});
+
 import whatsappRouter from './whatsapp-config';
 import integrationsRouter from './integrations';
 import toolsRouter from './tools';
