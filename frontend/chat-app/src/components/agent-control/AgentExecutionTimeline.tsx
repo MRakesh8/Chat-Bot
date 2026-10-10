@@ -174,7 +174,11 @@ export function AgentExecutionTimeline({
                   onClick={() => onApprove(execution)}
                   className="h-8 px-3 text-xs font-bold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {isActionLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
                   <span>Approve Run</span>
                 </Button>
               )}
@@ -187,7 +191,11 @@ export function AgentExecutionTimeline({
                   onClick={() => onRetry(execution.id)}
                   className="h-8 px-3 text-xs font-semibold gap-1.5 border-border rounded-xl"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  {isActionLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  )}
                   <span>Retry ({execution.retryCount}/{execution.maxRetries})</span>
                 </Button>
               )}
@@ -200,7 +208,11 @@ export function AgentExecutionTimeline({
                   onClick={() => onCancel(execution.id)}
                   className="h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl"
                 >
-                  <Ban className="w-3.5 h-3.5" />
+                  {isActionLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Ban className="w-3.5 h-3.5" />
+                  )}
                   <span>Cancel Run</span>
                 </Button>
               )}

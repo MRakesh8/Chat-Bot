@@ -99,6 +99,20 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
     return executionsData?.executions || [];
   }, [executionsData]);
 
+  // Keep open execution timeline in sync with background SSE/polling updates
+  useEffect(() => {
+    if (selectedExecutionForTimeline) {
+      const updated = executions.find((e) => e.id === selectedExecutionForTimeline.id);
+      if (
+        updated &&
+        (updated.updatedAt !== selectedExecutionForTimeline.updatedAt ||
+          updated.status !== selectedExecutionForTimeline.status)
+      ) {
+        setSelectedExecutionForTimeline(updated);
+      }
+    }
+  }, [executions, selectedExecutionForTimeline]);
+
   // 2. Fetch Run Statistics from Real Phase 8A Stats Endpoint
   const {
     data: executionStats,
@@ -239,6 +253,8 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         setSelectedExecutionForTimeline(data.execution);
       }
 
+      queryClient.invalidateQueries({ queryKey: ["project-executions", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-execution-stats", projectId] });
       refetchExecutions();
       refetchStats();
     } catch (err: any) {
@@ -274,6 +290,8 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         setSelectedExecutionForTimeline(data.execution);
       }
 
+      queryClient.invalidateQueries({ queryKey: ["project-executions", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-execution-stats", projectId] });
       refetchExecutions();
       refetchStats();
     } catch (err: any) {
@@ -311,6 +329,8 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         setSelectedExecutionForTimeline(data.execution);
       }
 
+      queryClient.invalidateQueries({ queryKey: ["project-executions", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-execution-stats", projectId] });
       refetchExecutions();
       refetchStats();
     } catch (err: any) {

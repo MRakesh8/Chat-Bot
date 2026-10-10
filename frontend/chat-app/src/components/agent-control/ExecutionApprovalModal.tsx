@@ -32,6 +32,11 @@ export function ExecutionApprovalModal({
   const [tokenInput, setTokenInput] = useState("");
   const [showToken, setShowToken] = useState(false);
 
+  React.useEffect(() => {
+    setTokenInput("");
+    setShowToken(false);
+  }, [approvalState?.executionId, open]);
+
   if (!approvalState) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {

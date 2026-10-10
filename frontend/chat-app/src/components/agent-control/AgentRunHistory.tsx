@@ -23,6 +23,7 @@ import {
   Ban,
   Layers,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { AgentExecutionRecord, ExecutionStatus } from "./types";
 
@@ -298,7 +299,11 @@ export function AgentRunHistory({
                         className="h-8 px-2.5 text-xs font-bold gap-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl"
                         title="Approve Run"
                       >
-                        <CheckCircle2 className="w-3 h-3" />
+                        {isActionLoading ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-3 h-3" />
+                        )}
                         <span>Approve</span>
                       </Button>
                     )}
@@ -312,7 +317,11 @@ export function AgentRunHistory({
                         className="h-8 px-2.5 text-xs font-semibold gap-1 border-border rounded-xl"
                         title="Retry Run"
                       >
-                        <RotateCcw className="w-3 h-3" />
+                        {isActionLoading ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-3 h-3" />
+                        )}
                         <span>Retry</span>
                       </Button>
                     )}
@@ -326,7 +335,11 @@ export function AgentRunHistory({
                         className="h-8 px-2 text-xs font-semibold text-rose-400 border-rose-500/30 hover:bg-rose-500/10 rounded-xl"
                         title="Cancel Run"
                       >
-                        <Ban className="w-3 h-3" />
+                        {isActionLoading ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Ban className="w-3 h-3" />
+                        )}
                         <span>Cancel</span>
                       </Button>
                     )}
