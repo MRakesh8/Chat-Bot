@@ -224,6 +224,27 @@ export function useProjectTabPrefetch(projectId: string | null | undefined, curr
           );
           break;
 
+        case "agent-control":
+          prefetchPromises.push(
+            queryClient.prefetchQuery({
+              queryKey: ["agent-capabilities", projectId],
+              queryFn: async () => {
+                const res = await authFetch(apiUrl(`/api/agent/capabilities/${projectId}`));
+                if (!res.ok) return { capabilities: [] };
+                return res.json();
+              },
+            }),
+            queryClient.prefetchQuery({
+              queryKey: ["agent-activity-runs", projectId],
+              queryFn: async () => {
+                const res = await authFetch(apiUrl(`/api/projects/${projectId}/dashboard/activity?limit=50`));
+                if (!res.ok) return [];
+                return res.json();
+              },
+            })
+          );
+          break;
+
         default:
           break;
       }

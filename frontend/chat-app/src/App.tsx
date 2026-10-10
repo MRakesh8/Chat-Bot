@@ -29,6 +29,7 @@ const SharedChatPage = lazy(() => import("./pages/shared-chat"));
 const AdminClarityPage = lazy(() => import("./pages/admin-clarity"));
 const ConnectedServicesPage = lazy(() => import("./pages/connected-services"));
 const ApiCenterPage = lazy(() => import("./pages/api-center"));
+const AgentControlPage = lazy(() => import("./pages/agent-control"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -170,6 +171,8 @@ export default function App() {
                             <Route path="/billing" component={BillingPage} />
                             <Route path="/services" component={ConnectedServicesPage} />
                             <Route path="/api-center" component={ApiCenterPage} />
+                            <Route path="/agent-control" component={AgentControlPage} />
+                            <Route path="/agent-control/:projectId" component={AgentControlPage} />
 
                             {/* Platform Super Admin Administration */}
                             <Route path="/admin/clarity">

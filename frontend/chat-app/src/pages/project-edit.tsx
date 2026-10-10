@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
@@ -21,6 +21,7 @@ import { IntegrationsList } from "../components/project/integrations/Integration
 import { BillingSection } from "../components/project/billing-section";
 import { Notifications } from "../components/project/notifications";
 import { ProjectGuide } from "../components/project/project-guide";
+import { AgentControlCenter } from "../components/agent-control/AgentControlCenter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSavedProjectTab, saveProjectTab } from "@/lib/workspace-continuity";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -591,6 +592,9 @@ export default function ProjectEditPage() {
             <TabsTrigger value="integrations" {...getTabTriggerProps("integrations")} className="shrink-0 flex-1 min-w-[140px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
               <Sparkles className="w-4 h-4 mr-2" /> Integrations
             </TabsTrigger>
+            <TabsTrigger value="agent-control" {...getTabTriggerProps("agent-control")} className="shrink-0 flex-1 min-w-[150px] rounded-xl data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300">
+              <Cpu className="w-4 h-4 mr-2 text-violet-400" /> Agent Control
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -816,6 +820,14 @@ export default function ProjectEditPage() {
             {projectId && (
               <div className="mt-8">
                 <IntegrationsList projectId={projectId} />
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="agent-control">
+            {projectId && (
+              <div className="mt-8">
+                <AgentControlCenter projectId={projectId} onSelectTab={handleTabChange} />
               </div>
             )}
           </TabsContent>
