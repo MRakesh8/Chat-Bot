@@ -202,28 +202,28 @@ export default function ConnectedServicesPage() {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs px-2.5 py-0.5 rounded-full font-semibold">
-                  Platform Integrations
-                </Badge>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="font-hand text-base font-semibold text-amber-800 dark:text-amber-300 bg-[#FFD75E]/40 dark:bg-[#FFD75E]/20 px-2.5 py-0.5 rounded-md tracking-wide">
+                  Integrations
+                </span>
               </div>
               <h1 className="font-serif text-3xl md:text-4xl font-bold tracking-tight text-foreground">
                 Connected Services
               </h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1 font-medium">
                 Integrate your favorite tools and platforms to extend NOVA AI's capabilities.
               </p>
             </div>
 
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
               <DialogTrigger asChild>
-                <Button className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground h-10 px-5 font-semibold text-xs shadow-md transition-all">
+                <Button className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground h-10 px-5 font-semibold text-xs shadow-xs transition-all">
                   <Plus className="w-4 h-4" /> Add Service
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                  <DialogTitle>Add Connected Service</DialogTitle>
+                  <DialogTitle className="font-serif text-lg font-bold">Add Connected Service</DialogTitle>
                 </DialogHeader>
                 <ServiceForm onSubmit={(d) => addMutation.mutate(d)} isPending={addMutation.isPending} />
               </DialogContent>

@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield } from "lucide-react";
+import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, Globe } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -367,14 +367,14 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       </div>
 
       {/* Primary Navigation Section */}
-      <div className="px-3 py-2 space-y-0.5 border-b border-border/40">
+      <div className="px-3 py-2 space-y-1 border-b border-border/40">
         <Link
           href="/projects"
           onClick={() => onClose?.()}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150",
             location === "/projects" || location === "/"
-              ? "bg-primary/15 text-primary shadow-2xs font-bold"
+              ? "bg-primary/10 text-primary font-bold shadow-2xs"
               : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
           )}
         >
@@ -386,13 +386,13 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           href="/chat"
           onClick={() => onClose?.()}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150",
             location.startsWith("/chat")
-              ? "bg-primary/15 text-primary shadow-2xs font-bold"
+              ? "bg-primary/10 text-primary font-bold shadow-2xs"
               : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
           )}
         >
-          <MessageSquare className="w-4 h-4 text-indigo-400" />
+          <MessageSquare className="w-4 h-4 text-primary" />
           <span>NOVA Chat</span>
         </Link>
 
@@ -400,13 +400,13 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           href="/services"
           onClick={() => onClose?.()}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150",
             location.startsWith("/services")
-              ? "bg-primary/15 text-primary shadow-2xs"
+              ? "bg-primary/10 text-primary font-bold shadow-2xs"
               : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
           )}
         >
-          <Heart className="w-4 h-4 text-pink-400" />
+          <Globe className="w-4 h-4 text-primary" />
           <span>Connected Services</span>
         </Link>
 
@@ -414,13 +414,13 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
           href="/settings"
           onClick={() => onClose?.()}
           className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-150",
             location.startsWith("/settings")
-              ? "bg-primary/15 text-primary shadow-2xs"
+              ? "bg-primary/10 text-primary font-bold shadow-2xs"
               : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-foreground/5"
           )}
         >
-          <Settings className="w-4 h-4 text-slate-400" />
+          <Settings className="w-4 h-4 text-primary" />
           <span>Settings</span>
         </Link>
       </div>
@@ -430,7 +430,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
         <div className="flex gap-2">
           <Button 
             onClick={handleNewChat}
-            className="flex-1 justify-center gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-primary-foreground border-0 h-9 rounded-xl font-medium text-xs shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-[0.99]"
+            className="flex-1 justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground h-9 rounded-xl font-semibold text-xs shadow-xs transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
