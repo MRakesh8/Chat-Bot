@@ -14,7 +14,7 @@ import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { searchProjectKnowledge } from "../../services/knowledge";
 import { llmResponseCache } from "../../services/cache-provider";
 import { checkProjectEntitlement, logAdminBypassIfNecessary } from "../../security";
-import { isDemoProjectId, isDemoShareToken, getDemoProjectMeta, getDemoKnowledgeSources, getDemoKnowledgeChunks, getDemoDashboardData, getDemoWidgetSettings } from "../../services/demo-project";
+import { isDemoProjectId, isDemoShareToken, getDemoProjectMeta, getDemoKnowledgeSources, getDemoKnowledgeChunks, getDemoDashboardData, getDemoWidgetSettings, getDemoVisitorConversations, getDemoVisitorConversationDetail } from "../../services/demo-project";
 import { authorizeMembership } from "../../middlewares/authorizeMembership";
 import { UniversalRouterService } from "../../services/ai-router";
 import { z } from "zod";
@@ -634,6 +634,8 @@ function serializeMessage(message: typeof messages.$inferSelect) {
     content: message.content,
     fileIds: null,
     createdAt: message.createdAt,
+    sourceTransparency: (message as any).sourceTransparency || null,
+    confidence: (message as any).confidence || null,
   };
 }
 
@@ -1390,13 +1392,39 @@ router.get("/:projectId/conversations", async (req: any, res: any): Promise<any>
       return res.status(404).json({ error: "Project not found or access denied" });
     }
 
+    if (isDemoProjectId(projectId)) {
+      return res.json(getDemoVisitorConversations());
+    }
+
     const visitorConversations = await db
       .select()
       .from(chatSessions)
       .where(eq(chatSessions.projectId, projectId))
       .orderBy(desc(chatSessions.createdAt));
 
-    return res.json(visitorConversations);
+    if (visitorConversations.length > 0) {
+      const sessionIds = visitorConversations.map((s: any) => s.id);
+      const allMessages = await db
+        .select()
+        .from(messages)
+        .where(inArray(messages.sessionId, sessionIds))
+        .orderBy(desc(messages.createdAt));
+
+      const enriched = visitorConversations.map((conv: any) => {
+        const convMsgs = allMessages.filter((m: any) => m.sessionId === conv.id);
+        const lastMsg = convMsgs[0];
+        return {
+          ...conv,
+          messageCount: convMsgs.length,
+          lastMessage: lastMsg ? lastMsg.content.slice(0, 140) : null,
+          lastMessageRole: lastMsg ? (lastMsg.sender === "user" ? "user" : "assistant") : null,
+          updatedAt: lastMsg ? lastMsg.createdAt : conv.createdAt,
+        };
+      });
+      return res.json(enriched);
+    }
+
+    return res.json([]);
   } catch (error: any) {
     req.log.error({ error, projectId }, "Error fetching project visitor conversations");
     return res.status(500).json({ error: "Failed to fetch project visitor conversations" });
@@ -1412,6 +1440,14 @@ router.get("/:projectId/conversations/:convId", async (req: any, res: any): Prom
     const resolved = await resolveAuthorizedProjectOrg(req, projectId, rawOrgId);
     if (!resolved) {
       return res.status(404).json({ error: "Project not found or access denied" });
+    }
+
+    if (isDemoProjectId(projectId)) {
+      const demoConv = getDemoVisitorConversationDetail(convId);
+      if (!demoConv) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      return res.json(demoConv);
     }
 
     const [conv] = await db

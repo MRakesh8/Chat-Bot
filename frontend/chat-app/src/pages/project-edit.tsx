@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
+import { VisitorInboxTab } from "../components/project/visitor-inbox-tab";
 import { ChannelsManager } from "../components/project/channels-manager";
 import { Deployment } from "../components/project/deployment";
 import { ApiKeys } from "../components/project/api-keys";
@@ -75,6 +76,7 @@ const PROJECT_NAV_GROUPS: NavGroup[] = [
     description: "Widget Studio, Channels & Launch",
     icon: Paintbrush,
     items: [
+      { id: "conversations", label: "Visitor Inbox", icon: Inbox },
       { id: "widget-studio", label: "Widget Studio", icon: Paintbrush },
       { id: "channels", label: "Channels", icon: Smartphone },
       { id: "deployment", label: "Deployment", icon: Rocket },
@@ -898,6 +900,14 @@ export default function ProjectEditPage() {
                 ) : (
                   <ContextSettings projectId={projectId} />
                 )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="conversations">
+            {projectId && (
+              <div className="mt-8">
+                <VisitorInboxTab projectId={projectId} onSelectTab={handleTabChange} />
               </div>
             )}
           </TabsContent>

@@ -126,6 +126,31 @@ async function runConversationsIsolationTests() {
       "Tenant Isolation: Cross-project visitor conversation queries do not leak across projects"
     );
 
+    // Test 5: Demo project visitor conversations resolution
+    const { getDemoVisitorConversations, getDemoVisitorConversationDetail, isDemoProjectId } = await import("../src/services/demo-project");
+    assert(isDemoProjectId("demo") === true, "Demo project ID 'demo' recognized");
+    assert(isDemoProjectId("00000000-0000-4000-8000-000000000000") === true, "Demo UUID recognized");
+
+    const demoConvs = getDemoVisitorConversations();
+    assert(
+      Array.isArray(demoConvs) && demoConvs.length >= 3,
+      "Demo project returns sample visitor conversations for interactive safe preview"
+    );
+    assert(
+      demoConvs.every(c => c.userId === null && c.messageCount !== undefined),
+      "Demo visitor conversations have userId: null and messageCount defined"
+    );
+
+    const demoDetail = getDemoVisitorConversationDetail("demo-session-vis-1");
+    assert(
+      demoDetail && demoDetail.messages.length >= 2,
+      "Demo visitor conversation detail returns complete ordered messages"
+    );
+    assert(
+      demoDetail.messages.some(m => m.role === "assistant" && m.sourceTransparency !== undefined),
+      "Demo AI response messages include sourceTransparency metadata"
+    );
+
     // Clean up test records
     await db.delete(chatSessions).where(eq(chatSessions.id, directSessionId as any));
     await db.delete(chatSessions).where(eq(chatSessions.id, widgetSessionId as any));
