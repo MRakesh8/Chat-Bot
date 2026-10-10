@@ -188,7 +188,7 @@
   --popover-foreground: 162 21% 16%;
   --popover-border: 52 20% 84%;
   
-  --primary: 13 57% 50%;            /* #C95738 (Coral/Rust CTA) */
+  --primary: 13 61% 46%;            /* #BC4C2D (Coral/Rust CTA - WCAG AA 4.97:1) */
   --primary-foreground: 0 0% 100%;
   
   --secondary: 143 24% 93%;         /* #EAF2ED (Subtle sage tint) */
@@ -210,18 +210,18 @@
   
   --border: 52 20% 84%;             /* #DEDCCF */
   --input: 52 20% 84%;
-  --ring: 13 57% 50%;
+  --ring: 13 61% 46%;
 
   --sidebar: 42 20% 91%;            /* #EFECE3 */
   --sidebar-foreground: 162 21% 16%;
   --sidebar-border: 52 20% 84%;
-  --sidebar-primary: 13 57% 50%;
+  --sidebar-primary: 13 61% 46%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 143 24% 93%;
   --sidebar-accent-foreground: 162 21% 16%;
-  --sidebar-ring: 13 57% 50%;
+  --sidebar-ring: 13 61% 46%;
 
-  --chart-1: 13 57% 50%;
+  --chart-1: 13 61% 46%;
   --chart-2: 174 69% 28%;
   --chart-3: 42 77% 60%;
   --chart-4: 154 55% 31%;
