@@ -651,6 +651,35 @@ export const consumedConfirmations = pgTable("consumed_confirmations", {
   consumedAt: timestamp("consumed_at").defaultNow().notNull(),
 });
 
+// Execution Governance - Persistent Agent Execution Runs
+export const agentExecutions = pgTable("agent_executions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  sessionId: uuid("session_id").references(() => chatSessions.id, { onDelete: "set null" }),
+  agentType: varchar("agent_type", { length: 100 }).default("business_agent").notNull(),
+  title: text("title").notNull(),
+  status: varchar("status", { length: 50 }).default("PENDING").notNull(), // PENDING, RUNNING, PENDING_APPROVAL, COMPLETED, FAILED, CANCELLED
+  inputPayload: jsonb("input_payload").default({}).notNull(),
+  outputData: jsonb("output_data").default({}).notNull(),
+  error: text("error"),
+  steps: jsonb("steps").$type<any[]>().default([]).notNull(),
+  retryCount: integer("retry_count").default(0).notNull(),
+  maxRetries: integer("max_retries").default(3).notNull(),
+  approvalToken: varchar("approval_token", { length: 255 }),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("agent_executions_project_id_idx").on(table.projectId),
+  orgIdIdx: index("agent_executions_org_id_idx").on(table.organizationId),
+  userIdIdx: index("agent_executions_user_id_idx").on(table.userId),
+  statusIdx: index("agent_executions_status_idx").on(table.projectId, table.status),
+  createdIdx: index("agent_executions_created_idx").on(table.projectId, table.createdAt),
+}));
+
 // Aria AI v2 - Relations
 export const websiteMemoryRelations = relations(websiteMemory, ({ one }) => ({
   session: one(chatSessions, { fields: [websiteMemory.sessionId], references: [chatSessions.id] }),
@@ -674,6 +703,12 @@ export const enterpriseAuditLogsRelations = relations(enterpriseAuditLogs, ({ on
 
 export const websitePermissionsRelations = relations(websitePermissions, ({ one }) => ({
   project: one(projects, { fields: [websitePermissions.projectId], references: [projects.id] }),
+}));
+
+export const agentExecutionsRelations = relations(agentExecutions, ({ one }) => ({
+  project: one(projects, { fields: [agentExecutions.projectId], references: [projects.id] }),
+  user: one(users, { fields: [agentExecutions.userId], references: [users.id] }),
+  session: one(chatSessions, { fields: [agentExecutions.sessionId], references: [chatSessions.id] }),
 }));
 
 // Aria AI v2 - True Website Agent Executions

@@ -102,6 +102,18 @@ router.post("/process", async (req: Request, res: Response): Promise<any> => {
       });
     }
 
+    // Create persistent execution record
+    const { createExecution, updateExecutionProgress } = await import("../../services/execution-governance");
+    const execRecord = await createExecution({
+      projectId,
+      userId,
+      sessionId,
+      agentType: "business_agent",
+      title: message ? `Process Message: ${message.slice(0, 50)}` : "Execute Business Agent Action",
+      status: "RUNNING",
+      inputPayload: { message, confirmationToken, actionId },
+    });
+
     const result = await businessAgent.execute({
       projectId,
       userId,
@@ -112,6 +124,17 @@ router.post("/process", async (req: Request, res: Response): Promise<any> => {
         actionId,
       },
     });
+
+    if (execRecord && execRecord.organizationId) {
+      const resAny = result as any;
+      const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+      await updateExecutionProgress(projectId, execRecord.organizationId, execRecord.id, {
+        status: finalStatus,
+        outputData: result.data || { response: resAny.response },
+        error: result.error || null,
+        steps: resAny.steps || [],
+      });
+    }
 
     return res.json(result);
   } catch (err: any) {
