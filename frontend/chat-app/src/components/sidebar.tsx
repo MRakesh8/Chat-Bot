@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, User, CreditCard } from "lucide-react";
+import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -562,38 +562,14 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               </p>
               <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
             </div>
-            <DropdownMenuItem 
-              onClick={() => { setLocation("/profile"); onClose?.(); }}
-              className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
-            >
-              <User className="w-4 h-4 text-primary shrink-0" />
-              <span>Profile & Account</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => { setLocation("/billing"); onClose?.(); }}
-              className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
-            >
-              <CreditCard className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span>Billing & Subscription</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => { setLocation("/settings"); onClose?.(); }}
-              className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
-            >
-              <Settings className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>Workspace Settings</span>
-            </DropdownMenuItem>
             {dbUser?.role === "super_admin" && (
-              <>
-                <DropdownMenuSeparator className="my-1 bg-border/60" />
-                <DropdownMenuItem 
-                  onClick={() => { setLocation("/admin/clarity"); onClose?.(); }}
-                  className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent text-amber-500 font-medium flex items-center gap-2.5 transition-colors"
-                >
-                  <Shield className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span>Admin Console</span>
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem 
+                onClick={() => { setLocation("/admin/clarity"); onClose?.(); }}
+                className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent text-amber-500 font-medium flex items-center gap-2.5 transition-colors"
+              >
+                <Shield className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Admin Console</span>
+              </DropdownMenuItem>
             )}
             <DropdownMenuSeparator className="my-1 bg-border/60" />
             <DropdownMenuItem 
