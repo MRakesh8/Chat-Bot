@@ -177,6 +177,9 @@ export default function App() {
                             <Route path="/agent-control/:projectId" component={AgentControlPage} />
 
                             {/* Platform Super Admin Administration */}
+                            <Route path="/admin">
+                              <Redirect to="/admin/clarity" replace />
+                            </Route>
                             <Route path="/admin/clarity">
                               <SuperAdminRoute><AdminClarityPage /></SuperAdminRoute>
                             </Route>

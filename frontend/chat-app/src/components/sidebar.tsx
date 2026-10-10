@@ -1,14 +1,14 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
-import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, User } from "lucide-react";
+import { MessageSquare, Home, Plus, Settings, LogOut, Search, Trash2, Edit2, MoreVertical, Check, X, FolderKanban, Heart, FolderPlus, RotateCcw, PanelLeftClose, ArrowLeft, Loader2, Shield, User, CreditCard } from "lucide-react";
 import { useListGeminiConversations, useDeleteGeminiConversation, useUpdateGeminiConversation, getListGeminiConversationsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/api-url";
@@ -555,19 +555,53 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={8} className="w-48 bg-popover border-border text-popover-foreground mb-1 rounded-xl shadow-xl p-1 z-50">
-            <div className="px-2.5 py-1.5 border-b border-border/50 mb-1">
+          <DropdownMenuContent align="end" sideOffset={8} className="w-56 bg-popover border-border text-popover-foreground mb-1 rounded-2xl shadow-xl p-1.5 z-50">
+            <div className="px-2.5 py-2 border-b border-border/50 mb-1">
               <p className="text-xs font-semibold text-foreground truncate">
                 {user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : "User")}
               </p>
               <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
             </div>
             <DropdownMenuItem 
-              onClick={() => signOut()}
-              className="cursor-pointer text-rose-500 hover:bg-rose-500/10 hover:text-rose-600 focus:bg-rose-500/10 focus:text-rose-600 rounded-lg py-1.5 text-xs transition-colors font-medium flex items-center gap-2"
+              onClick={() => { setLocation("/profile"); onClose?.(); }}
+              className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
+              <User className="w-4 h-4 text-primary shrink-0" />
+              <span>Profile & Account</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => { setLocation("/billing"); onClose?.(); }}
+              className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>Billing & Subscription</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => { setLocation("/settings"); onClose?.(); }}
+              className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
+            >
+              <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>Workspace Settings</span>
+            </DropdownMenuItem>
+            {dbUser?.role === "super_admin" && (
+              <>
+                <DropdownMenuSeparator className="my-1 bg-border/60" />
+                <DropdownMenuItem 
+                  onClick={() => { setLocation("/admin/clarity"); onClose?.(); }}
+                  className="cursor-pointer rounded-xl text-xs py-2 hover:bg-accent focus:bg-accent text-amber-500 font-medium flex items-center gap-2.5 transition-colors"
+                >
+                  <Shield className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>Admin Console</span>
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator className="my-1 bg-border/60" />
+            <DropdownMenuItem 
+              onClick={() => signOut()}
+              className="cursor-pointer rounded-xl text-xs py-2 text-rose-500 hover:bg-rose-500/10 focus:bg-rose-500/10 focus:text-rose-600 flex items-center gap-2.5 transition-colors font-medium"
+            >
+              <LogOut className="w-4 h-4 shrink-0" />
+              <span>Sign Out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
