@@ -75,6 +75,52 @@
         // Strictly enforce cookieless tracking to resolve Lighthouse third-party cookie warnings
         window.clarity("consent", false);
     </script>
+    <!-- Early theme initialization to prevent flash of unstyled theme -->
+    <script>
+      (function() {
+        try {
+          var savedPalette = localStorage.getItem("ui-palette");
+          var savedMode = localStorage.getItem("ui-mode");
+          var legacyTheme = localStorage.getItem("ui-theme");
+
+          var palette = "nova-natural";
+          if (savedPalette === "warm-paper") palette = "warm-paper";
+          else if (savedPalette === "nova-natural") palette = "nova-natural";
+          else if (legacyTheme === "warm-paper") palette = "warm-paper";
+
+          var mode = "dark";
+          if (savedMode === "light" || savedMode === "dark" || savedMode === "system") {
+            mode = savedMode;
+          } else if (legacyTheme === "light" || legacyTheme === "evergreen" || legacyTheme === "forest-marigold") {
+            mode = "light";
+          } else if (legacyTheme === "dark" || legacyTheme === "midnight-espresso") {
+            mode = "dark";
+          } else if (legacyTheme === "system") {
+            mode = "system";
+          }
+
+          var effectiveMode = mode;
+          if (mode === "system") {
+            effectiveMode = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+
+          var root = document.documentElement;
+          if (palette === "nova-natural") {
+            if (effectiveMode === "dark") {
+              root.classList.add("dark", "theme-natural-dark");
+            } else {
+              root.classList.add("theme-natural-light", "theme-evergreen");
+            }
+          } else {
+            if (effectiveMode === "dark") {
+              root.classList.add("dark");
+            } else {
+              root.classList.add("light");
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

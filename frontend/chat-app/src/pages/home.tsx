@@ -1,13 +1,18 @@
 import React, { useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { NovaBrand } from "@/components/ui/nova-brand";
 import { useSEO } from "@/hooks/use-seo";
+import { Sun, Moon } from "lucide-react";
 import "./home-landing.css";
 
 export default function Home() {
   const { user } = useAuth();
+  const { theme, setTheme, mode } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const isDark = theme === "dark" || mode === "dark";
 
   // SEO configuration
   useSEO({
@@ -36,6 +41,21 @@ export default function Home() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Theme Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+              className="theme-toggle-btn"
+              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDark ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4 text-indigo-500" />
+              )}
+            </button>
+
             <Link
               href={authTarget}
               className="btn p"
@@ -50,7 +70,7 @@ export default function Home() {
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="btn"
-              style={{ padding: "8px 12px", display: "none" }}
+              style={{ padding: "8px 12px" }}
               id="mobile-nav-toggle"
               aria-expanded={mobileMenuOpen}
               aria-label="Toggle navigation menu"
@@ -84,6 +104,33 @@ export default function Home() {
             <a href="#faq" onClick={() => setMobileMenuOpen(false)} style={{ color: "var(--tx)", textDecoration: "none" }}>
               Questions
             </a>
+            <div style={{ paddingTop: "6px", borderTop: "1px solid var(--line)" }}>
+              <button
+                type="button"
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  background: "transparent",
+                  border: "1px solid var(--line)",
+                  borderRadius: "10px",
+                  padding: "10px 14px",
+                  color: "var(--tx)",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+                aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                <span>Appearance</span>
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
+                  <span>{isDark ? "Light mode" : "Dark mode"}</span>
+                </span>
+              </button>
+            </div>
             <Link
               href={authTarget}
               onClick={() => setMobileMenuOpen(false)}

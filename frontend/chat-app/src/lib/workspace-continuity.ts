@@ -45,16 +45,34 @@ export function saveProjectTab(projectId: string, tab: string): void {
 
 /**
  * Chat Draft Continuity (Keyed by conversation ID or 'new')
+ * Backed by sessionStorage with in-memory fallback to survive recovery reloads.
  */
 export function getSavedChatDraft(convId: string): string {
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    try {
+      const stored = sessionStorage.getItem(`nova_chat_draft_${convId}`);
+      if (stored !== null) return stored;
+    } catch {}
+  }
   return chatDraftsMap.get(`draft_${convId}`) || "";
 }
 
 export function saveChatDraft(convId: string, text: string): void {
-  if (text.trim()) {
+  const trimmed = text.trim();
+  if (trimmed) {
     chatDraftsMap.set(`draft_${convId}`, text);
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        sessionStorage.setItem(`nova_chat_draft_${convId}`, text);
+      } catch {}
+    }
   } else {
     chatDraftsMap.delete(`draft_${convId}`);
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        sessionStorage.removeItem(`nova_chat_draft_${convId}`);
+      } catch {}
+    }
   }
 }
 
@@ -88,4 +106,16 @@ export function clearAllContinuityState() {
   projectTabsMap.clear();
   chatDraftsMap.clear();
   projectsFilterState = { searchQuery: "", sortBy: "newest", currentPage: 1 };
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith("nova_chat_draft_")) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+    } catch {}
+  }
 }

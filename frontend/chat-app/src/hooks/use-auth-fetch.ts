@@ -1,6 +1,31 @@
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 
+// Shared in-flight token refresh promise across all concurrent requests
+let activeRefreshPromise: Promise<string | null> | null = null;
+
+async function getSharedRefreshedToken(): Promise<string | null> {
+  if (activeRefreshPromise) {
+    return activeRefreshPromise;
+  }
+
+  activeRefreshPromise = (async () => {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (!error && data?.session?.access_token) {
+        return data.session.access_token;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      activeRefreshPromise = null;
+    }
+  })();
+
+  return activeRefreshPromise;
+}
+
 export function useAuthFetch() {
   const { session, activeOrganizationId } = useAuth();
   
@@ -34,26 +59,53 @@ export function useAuthFetch() {
         ...(options.headers as Record<string, string> ?? {}),
       };
     };
-    
-    let res = await fetch(url, {
-      ...options,
-      credentials: "include",
-      headers: buildHeaders(token),
-    });
 
-    // 3. Self-healing token refresh on 401 Unauthorized
+    // 3. Request execution with bounded default timeout if caller didn't pass one
+    let timeoutId: any;
+    let signal = options.signal;
+    if (!signal && typeof AbortController !== "undefined") {
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 25000); // 25s bounded network timeout
+      signal = controller.signal;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...options,
+        signal,
+        credentials: "include",
+        headers: buildHeaders(token),
+      });
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+
+    // 4. Self-healing token refresh on 401 Unauthorized (deduplicated across concurrent requests)
     if (res.status === 401 && !url.includes("/api/system/me")) {
       try {
-        const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
-        if (!refreshErr && refreshData?.session?.access_token) {
-          const freshToken = refreshData.session.access_token;
-          res = await fetch(url, {
-            ...options,
-            credentials: "include",
-            headers: buildHeaders(freshToken),
-          });
+        const freshToken = await getSharedRefreshedToken();
+        if (freshToken) {
+          let retryTimeoutId: any;
+          let retrySignal = options.signal;
+          if (!retrySignal && typeof AbortController !== "undefined") {
+            const controller = new AbortController();
+            retryTimeoutId = setTimeout(() => controller.abort(), 25000);
+            retrySignal = controller.signal;
+          }
+
+          try {
+            res = await fetch(url, {
+              ...options,
+              signal: retrySignal,
+              credentials: "include",
+              headers: buildHeaders(freshToken),
+            });
+          } finally {
+            if (retryTimeoutId) clearTimeout(retryTimeoutId);
+          }
         }
-      } catch (e) {
+      } catch {
         // Fallback to original response on refresh error
       }
     }

@@ -9,28 +9,32 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { NovaAiProvider } from "./contexts/NovaAiContext";
 
+import { lazyWithRetry } from "./lib/lazy-with-retry";
+import { AppErrorBoundary, RouteErrorBoundary } from "./components/route-error-boundary";
+import { WorkspaceLoadingFallback } from "./components/layout/workspace-loading";
+
 // Critical paths loaded synchronously
 import Home from "./pages/home";
 
-// Lazy-loaded heavy components and layouts
-const GlobalCommandMenu = lazy(() => import("./components/GlobalCommandMenu").then(m => ({ default: m.GlobalCommandMenu })));
-const DashboardLayoutLazy = lazy(() => import("./components/layout/dashboard-layout").then(m => ({ default: m.DashboardLayout })));
+// Lazy-loaded heavy components and layouts with retry and version recovery
+const GlobalCommandMenu = lazyWithRetry(() => import("./components/GlobalCommandMenu").then(m => ({ default: m.GlobalCommandMenu })), { key: "command-menu" });
+const DashboardLayoutLazy = lazyWithRetry(() => import("./components/layout/dashboard-layout").then(m => ({ default: m.DashboardLayout })), { key: "dashboard-layout" });
 
-// Lazy-loaded routes for performance
-const AuthPage = lazy(() => import("./pages/auth"));
-const NotFound = lazy(() => import("./pages/not-found"));
-const ChatPage = lazy(() => import("./pages/chat"));
-const SettingsPage = lazy(() => import("./pages/settings"));
-const NotificationsPage = lazy(() => import("./pages/notifications"));
-const ProfilePage = lazy(() => import("./pages/profile"));
-const BillingPage = lazy(() => import("./pages/billing"));
-const ProjectsPage = lazy(() => import("./pages/projects"));
-const ProjectEditPage = lazy(() => import("./pages/project-edit"));
-const SharedChatPage = lazy(() => import("./pages/shared-chat"));
-const AdminClarityPage = lazy(() => import("./pages/admin-clarity"));
-const ConnectedServicesPage = lazy(() => import("./pages/connected-services"));
-const ApiCenterPage = lazy(() => import("./pages/api-center"));
-const AgentControlPage = lazy(() => import("./pages/agent-control"));
+// Lazy-loaded routes for performance with retry and version recovery
+const AuthPage = lazyWithRetry(() => import("./pages/auth"), { key: "auth" });
+const NotFound = lazyWithRetry(() => import("./pages/not-found"), { key: "not-found" });
+const ChatPage = lazyWithRetry(() => import("./pages/chat"), { key: "chat" });
+const SettingsPage = lazyWithRetry(() => import("./pages/settings"), { key: "settings" });
+const NotificationsPage = lazyWithRetry(() => import("./pages/notifications"), { key: "notifications" });
+const ProfilePage = lazyWithRetry(() => import("./pages/profile"), { key: "profile" });
+const BillingPage = lazyWithRetry(() => import("./pages/billing"), { key: "billing" });
+const ProjectsPage = lazyWithRetry(() => import("./pages/projects"), { key: "projects" });
+const ProjectEditPage = lazyWithRetry(() => import("./pages/project-edit"), { key: "project-edit" });
+const SharedChatPage = lazyWithRetry(() => import("./pages/shared-chat"), { key: "shared-chat" });
+const AdminClarityPage = lazyWithRetry(() => import("./pages/admin-clarity"), { key: "admin-clarity" });
+const ConnectedServicesPage = lazyWithRetry(() => import("./pages/connected-services"), { key: "connected-services" });
+const ApiCenterPage = lazyWithRetry(() => import("./pages/api-center"), { key: "api-center" });
+const AgentControlPage = lazyWithRetry(() => import("./pages/agent-control"), { key: "agent-control" });
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -121,86 +125,90 @@ function NavigationListener() {
 
 export default function App() {
   return (
-    <WouterRouter base={basePath}>
-      <NavigationListener />
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ThemeProvider defaultTheme="light">
-            <NovaAiProvider>
-              <TooltipProvider>
-              <Suspense fallback={<GlobalLoadingScreen />}>
-                <Switch>
-                  <Route path="/" component={Home} />
-                  <Route path="/sign-in"><AuthPage /></Route>
-                  <Route path="/sign-up"><AuthPage /></Route>
+    <AppErrorBoundary>
+      <WouterRouter base={basePath}>
+        <NavigationListener />
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <ThemeProvider defaultPalette="nova-natural" defaultMode="dark">
+              <NovaAiProvider>
+                <TooltipProvider>
+                  <Suspense fallback={<GlobalLoadingScreen />}>
+                    <Switch>
+                      <Route path="/" component={Home} />
+                      <Route path="/sign-in"><AuthPage /></Route>
+                      <Route path="/sign-up"><AuthPage /></Route>
 
-                  {/* Shared public project chat */}
-                  <Route path="/p/:token" component={SharedChatPage} />
+                      {/* Shared public project chat */}
+                      <Route path="/p/:token" component={SharedChatPage} />
 
-                  {/* Persistent Workspace Shell for all protected workspace routes */}
-                  <Route>
-                    <ProtectedRoute>
-                      <DashboardLayoutLazy>
-                        <Suspense fallback={<GlobalLoadingScreen />}>
-                          <Switch>
-                            <Route path="/projects" component={ProjectsPage} />
-                            <Route path="/projects/new" component={ProjectEditPage} />
-                            <Route path="/projects/:id/edit" component={ProjectEditPage} />
+                      {/* Persistent Workspace Shell for all protected workspace routes */}
+                      <Route>
+                        <ProtectedRoute>
+                          <DashboardLayoutLazy>
+                            <RouteErrorBoundary>
+                              <Suspense fallback={<WorkspaceLoadingFallback />}>
+                                <Switch>
+                                  <Route path="/projects" component={ProjectsPage} />
+                                  <Route path="/projects/new" component={ProjectEditPage} />
+                                  <Route path="/projects/:id/edit" component={ProjectEditPage} />
 
-                            {/* Demo and Explore routes */}
-                            <Route path="/projects/demo">
-                              <Redirect to="/projects/00000000-0000-4000-8000-000000000000/edit" replace />
-                            </Route>
-                            <Route path="/projects/explore">
-                              <Redirect to="/projects/00000000-0000-4000-8000-000000000000/edit" replace />
-                            </Route>
+                                  {/* Demo and Explore routes */}
+                                  <Route path="/projects/demo">
+                                    <Redirect to="/projects/00000000-0000-4000-8000-000000000000/edit" replace />
+                                  </Route>
+                                  <Route path="/projects/explore">
+                                    <Redirect to="/projects/00000000-0000-4000-8000-000000000000/edit" replace />
+                                  </Route>
 
-                            {/* Legacy /admin/projects redirects */}
-                            <Route path="/admin/projects">
-                              <Redirect to="/projects" replace />
-                            </Route>
-                            <Route path="/admin/projects/new">
-                              <Redirect to="/projects/new" replace />
-                            </Route>
-                            <Route path="/admin/projects/:id/edit">
-                              {(params) => <Redirect to={`/projects/${params.id}/edit`} replace />}
-                            </Route>
+                                  {/* Legacy /admin/projects redirects */}
+                                  <Route path="/admin/projects">
+                                    <Redirect to="/projects" replace />
+                                  </Route>
+                                  <Route path="/admin/projects/new">
+                                    <Redirect to="/projects/new" replace />
+                                  </Route>
+                                  <Route path="/admin/projects/:id/edit">
+                                    {(params) => <Redirect to={`/projects/${params.id}/edit`} replace />}
+                                  </Route>
 
-                            <Route path="/chat/:id?" component={ChatPage} />
-                            <Route path="/notifications" component={NotificationsPage} />
-                            <Route path="/settings" component={SettingsPage} />
-                            <Route path="/profile" component={ProfilePage} />
-                            <Route path="/billing" component={BillingPage} />
-                            <Route path="/services" component={ConnectedServicesPage} />
-                            <Route path="/api-center" component={ApiCenterPage} />
-                            <Route path="/agent-control" component={AgentControlPage} />
-                            <Route path="/agent-control/:projectId" component={AgentControlPage} />
+                                  <Route path="/chat/:id?" component={ChatPage} />
+                                  <Route path="/notifications" component={NotificationsPage} />
+                                  <Route path="/settings" component={SettingsPage} />
+                                  <Route path="/profile" component={ProfilePage} />
+                                  <Route path="/billing" component={BillingPage} />
+                                  <Route path="/services" component={ConnectedServicesPage} />
+                                  <Route path="/api-center" component={ApiCenterPage} />
+                                  <Route path="/agent-control" component={AgentControlPage} />
+                                  <Route path="/agent-control/:projectId" component={AgentControlPage} />
 
-                            {/* Platform Super Admin Administration */}
-                            <Route path="/admin">
-                              <Redirect to="/admin/clarity" replace />
-                            </Route>
-                            <Route path="/admin/clarity">
-                              <SuperAdminRoute><AdminClarityPage /></SuperAdminRoute>
-                            </Route>
+                                  {/* Platform Super Admin Administration */}
+                                  <Route path="/admin">
+                                    <Redirect to="/admin/clarity" replace />
+                                  </Route>
+                                  <Route path="/admin/clarity">
+                                    <SuperAdminRoute><AdminClarityPage /></SuperAdminRoute>
+                                  </Route>
 
-                            <Route component={NotFound} />
-                          </Switch>
-                        </Suspense>
-                      </DashboardLayoutLazy>
-                    </ProtectedRoute>
-                  </Route>
-                </Switch>
-              </Suspense>
-              <Suspense fallback={null}>
-                <GlobalCommandMenu />
-              </Suspense>
-              <Toaster />
-            </TooltipProvider>
-          </NovaAiProvider>
-        </ThemeProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    </WouterRouter>
+                                  <Route component={NotFound} />
+                                </Switch>
+                              </Suspense>
+                            </RouteErrorBoundary>
+                          </DashboardLayoutLazy>
+                        </ProtectedRoute>
+                      </Route>
+                    </Switch>
+                  </Suspense>
+                  <Suspense fallback={null}>
+                    <GlobalCommandMenu />
+                  </Suspense>
+                  <Toaster />
+                </TooltipProvider>
+              </NovaAiProvider>
+            </ThemeProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </WouterRouter>
+    </AppErrorBoundary>
   );
 }

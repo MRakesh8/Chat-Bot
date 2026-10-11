@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
@@ -27,6 +27,7 @@ type AuthContextType = {
   setActiveOrganizationId: (id: string) => void;
   signOut: () => Promise<void>;
   loginAsDemo: () => void;
+  refreshDbUser: () => Promise<void>;
 };
 
 const DEMO_USER: User = {
@@ -70,6 +71,7 @@ const AuthContext = createContext<AuthContextType>({
   setActiveOrganizationId: () => {},
   signOut: async () => {},
   loginAsDemo: () => {},
+  refreshDbUser: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -78,7 +80,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [dbUser, setDbUser] = useState<DbUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeOrganizationId, setActiveOrgId] = useState<string | null>(null);
+  const [activeOrganizationId, setActiveOrgId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("aria_active_organization_id");
+    }
+    return null;
+  });
 
   const setActiveOrganizationId = (id: string) => {
     setActiveOrgId(id);
@@ -98,30 +105,76 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsLoading(false);
   };
 
-  const fetchDbUser = async (accessToken: string) => {
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/system/me`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDbUser(data);
-        
-        // Ensure active organization is set
-        if (data.memberships && data.memberships.length > 0) {
-          const stored = typeof window !== "undefined" ? localStorage.getItem("aria_active_organization_id") : null;
-          const valid = stored && data.memberships.some((m: any) => m.organizationId === stored);
-          if (valid) {
-            setActiveOrgId(stored);
-          } else {
-            setActiveOrganizationId(data.memberships[0].organizationId);
+  const inFlightFetchDbUserRef = useRef<Promise<void> | null>(null);
+  const retryTimeoutRef = useRef<any>(null);
+
+  const fetchDbUser = async (accessToken: string, isBackgroundRetry = false) => {
+    if (inFlightFetchDbUserRef.current) {
+      return inFlightFetchDbUserRef.current;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second bounded timeout
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/system/me`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: controller.signal,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setDbUser(data);
+          if (retryTimeoutRef.current) {
+            clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = null;
+          }
+          
+          // Ensure active organization is set
+          if (data.memberships && data.memberships.length > 0) {
+            const stored = typeof window !== "undefined" ? localStorage.getItem("aria_active_organization_id") : null;
+            const valid = stored && data.memberships.some((m: any) => m.organizationId === stored);
+            if (valid) {
+              setActiveOrgId(stored);
+            } else {
+              setActiveOrganizationId(data.memberships[0].organizationId);
+            }
+          }
+        } else if (res.status === 401 || res.status === 403) {
+          // Explicit authorization / session failure: clear dbUser
+          setDbUser(null);
+        } else {
+          // Transient 502/503/504 backend cold-start: preserve existing dbUser and schedule background recovery
+          console.warn(`[NOVA Auth] /api/system/me returned status ${res.status} (backend cold start). Scheduling background retry.`);
+          if (!isBackgroundRetry) {
+            retryTimeoutRef.current = setTimeout(() => {
+              fetchDbUser(accessToken, true);
+            }, 3500);
           }
         }
-      } else {
-        setDbUser(null);
+      } catch (err: any) {
+        // Network timeout / AbortError or connection drop
+        const isAbort = err?.name === "AbortError";
+        console.warn(`[NOVA Auth] /api/system/me ${isAbort ? "timed out (cold start)" : "encountered network glitch"}. Scheduling background retry.`);
+        if (!isBackgroundRetry) {
+          retryTimeoutRef.current = setTimeout(() => {
+            fetchDbUser(accessToken, true);
+          }, 4000);
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        inFlightFetchDbUserRef.current = null;
       }
-    } catch (err) {
-      setDbUser(null);
+    })();
+
+    inFlightFetchDbUserRef.current = fetchPromise;
+    return fetchPromise;
+  };
+
+  const refreshDbUser = async () => {
+    if (session?.access_token) {
+      await fetchDbUser(session.access_token);
     }
   };
 
@@ -186,10 +239,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    };
   }, []);
 
+  // Background recovery on tab focus or network reconnection if dbUser was pending from cold-start
+  useEffect(() => {
+    const handleRecheck = () => {
+      if (session?.access_token && !dbUser && !inFlightFetchDbUserRef.current) {
+        fetchDbUser(session.access_token, true);
+      }
+    };
+
+    window.addEventListener("focus", handleRecheck);
+    window.addEventListener("online", handleRecheck);
+    return () => {
+      window.removeEventListener("focus", handleRecheck);
+      window.removeEventListener("online", handleRecheck);
+    };
+  }, [session, dbUser]);
+
   const signOut = async () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("aria_demo_session");
     }
@@ -206,7 +282,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, dbUser, session, isLoading, activeOrganizationId, setActiveOrganizationId, signOut, loginAsDemo }}>
+    <AuthContext.Provider value={{ user, dbUser, session, isLoading, activeOrganizationId, setActiveOrganizationId, signOut, loginAsDemo, refreshDbUser }}>
       {children}
     </AuthContext.Provider>
   );
