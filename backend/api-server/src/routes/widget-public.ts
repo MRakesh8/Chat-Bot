@@ -71,11 +71,19 @@ async function executeLlmWithFailover(
   }
 
   if (method === 'generateContent') {
-    const res = await UniversalRouterService.executeChat(req, chatMessages, options.config?.temperature);
+    const res = await UniversalRouterService.executeChat(req, chatMessages, options.config?.temperature, {
+      deadlineMs: 12000,
+      maxRetries: 1,
+      maxDelayMs: 1500
+    });
     const content = res.content || '';
     return { result: { text: content, getText: () => content }, keyUsed: {} };
   } else {
-    const stream = await UniversalRouterService.executeStream(req, chatMessages, options.config?.temperature);
+    const stream = await UniversalRouterService.executeStream(req, chatMessages, options.config?.temperature, {
+      deadlineMs: 14000,
+      maxRetries: 1,
+      maxDelayMs: 1500
+    });
     return { 
       result: (async function*() {
         for await (const chunk of stream) {
@@ -268,11 +276,21 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
     return res;
   }
 
-  // SSE headers
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
+  // Track client disconnection to avoid burning LLM compute if visitor closed chat
+  let isClientDisconnected = false;
+  req.on("close", () => {
+    isClientDisconnected = true;
+  });
+
+  // Defer SSE headers until first response chunk to prevent false HTTP 200 on error
+  const ensureSseHeaders = () => {
+    if (!res.headersSent && !isClientDisconnected) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+    }
+  };
 
   try {
     const projectId = (req as any).projectId;
@@ -734,10 +752,25 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         if (cachedIntent) {
           intentType = cachedIntent;
         } else {
-          const { result: intentRes } = await executeLlmWithFailover(keys, 'generateContent', {
+          const detectIntentPromise = executeLlmWithFailover(keys, 'generateContent', {
             contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
             config: { responseMimeType: "application/json" }
+          }, projectId, userId);
+          // Attach no-op handler to prevent unhandled rejection if timeout abandons the underlying promise
+          detectIntentPromise.catch(() => {});
+
+          let timeoutHandle: any;
+          const timeoutPromise = new Promise<{ result: any, keyUsed: any }>((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error("Intent detection deadline exceeded")), 3500);
           });
+
+          let intentRes: any;
+          try {
+            const raceResult = await Promise.race([detectIntentPromise, timeoutPromise]);
+            intentRes = raceResult.result;
+          } finally {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+          }
           
           try {
             const raw = (intentRes.text || "").trim();
@@ -784,6 +817,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           const bData = coordRes.data;
 
           if (bData.status === "PENDING_CONFIRMATION") {
+            ensureSseHeaders();
             res.write(`data: ${JSON.stringify({ activity: "Confirmation required" })}\n\n`);
             res.write(`data: ${JSON.stringify({
               status: "PENDING_CONFIRMATION",
@@ -801,6 +835,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           }
 
           if (bData.intent === "action" && bData.status === "COMPLETED") {
+            ensureSseHeaders();
             res.write(`data: ${JSON.stringify({ activity: "Executing authorized server tool..." })}\n\n`);
             if (typeof (res as any).flush === 'function') (res as any).flush();
             res.write(`data: ${JSON.stringify({ activity: "Verifying execution status..." })}\n\n`);
@@ -814,6 +849,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           }
 
           if (bData.action) {
+            ensureSseHeaders();
             const payload = { 
               action: bData.action,
               executionId: bData.executionId,
@@ -835,16 +871,18 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
       if (cachedResponse) {
         req.log.info("[LLM_CACHE_HIT] Widget duplicate prompt detected, returning cached response");
+        ensureSseHeaders();
         res.write(`data: ${JSON.stringify({ content: cachedResponse })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
         fullResponseText = cachedResponse;
       } else {
         const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
           contents: chatMessages as any
-        });
+        }, projectId, userId);
         
         for await (const chunk of stream) {
           if (chunk.text) {
+            ensureSseHeaders();
             fullResponseText += chunk.text;
             res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
             if (typeof (res as any).flush === 'function') (res as any).flush();
@@ -872,20 +910,35 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         }).catch((e) => req.log.error({ err: e }, "Background knowledge gap tracking error"));
       }
     } catch (err: any) {
-      req.log.error({ err }, "executeLlmWithFailover threw an error");
-      res.write(`data: ${JSON.stringify({ content: "Hi! 👋 I'm temporarily having trouble processing messages right now. Please try again later." })}\n\n`);
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      req.log.error({ err }, "executeLlmWithFailover threw an error in widget chat");
+      if (!res.headersSent) {
+        return res.status(503).json({
+          error: "AI service temporarily unavailable. Please try again later.",
+          code: "PROVIDER_UNAVAILABLE"
+        });
+      }
+      res.write(`data: ${JSON.stringify({ content: "\n\nSorry, I encountered an issue connecting to the AI assistant. Please try again." })}\n\n`);
+      res.write(`event: error\ndata: ${JSON.stringify({ error: "AI service temporarily unavailable. Please try again later.", code: "PROVIDER_UNAVAILABLE" })}\n\n`);
       res.end();
       return res;
     }
     
-    res.end();
+    if (res.headersSent && !res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    }
     return res;
 
   } catch (error: any) {
     req.log.error({ err: error }, "Widget chat general error");
-    res.write(`data: ${JSON.stringify({ content: "Hi! 👋 I'm temporarily having trouble processing messages right now. Please try again later." })}\n\n`);
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    if (!res.headersSent) {
+      return res.status(503).json({
+        error: "AI service temporarily unavailable. Please try again later.",
+        code: "PROVIDER_UNAVAILABLE"
+      });
+    }
+    res.write(`data: ${JSON.stringify({ content: "\n\nSorry, I encountered an issue connecting to the AI assistant. Please try again." })}\n\n`);
+    res.write(`event: error\ndata: ${JSON.stringify({ error: "AI service temporarily unavailable. Please try again later.", code: "PROVIDER_UNAVAILABLE" })}\n\n`);
     res.end();
     return res;
   }

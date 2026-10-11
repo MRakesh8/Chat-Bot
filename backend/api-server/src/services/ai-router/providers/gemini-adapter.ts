@@ -140,7 +140,8 @@ export class GeminiAdapter extends BaseProviderAdapter {
 
   classifyError(error: any): any {
     if (!error) return "UNKNOWN_ERROR";
-    const status = error?.status || error?.response?.status || error?.code;
+    const status = error?.status || error?.response?.status || error?.code || error?.error?.code;
+    const gRpcStatus = (error?.error?.status || error?.status || "").toString().toUpperCase();
     const msg = (error?.message || String(error || "")).toLowerCase();
 
     // 1. DNS / Network / Connection Failures
@@ -158,10 +159,14 @@ export class GeminiAdapter extends BaseProviderAdapter {
       return "PROVIDER_UNAVAILABLE";
     }
 
-    // 2. Invalid Credential (401 / 403 / Bad Key)
+    // 2. Invalid Credential (401 / 403 / Bad Key / gRPC Permission Denied)
     if (
       status === 401 ||
       status === 403 ||
+      status === "401" ||
+      status === "403" ||
+      gRpcStatus === "PERMISSION_DENIED" ||
+      gRpcStatus === "UNAUTHENTICATED" ||
       (status === 400 && (msg.includes("api key") || msg.includes("apikey") || msg.includes("invalid key") || msg.includes("unauthenticated"))) ||
       msg.includes("invalid_credential") ||
       msg.includes("permission denied")
@@ -169,9 +174,11 @@ export class GeminiAdapter extends BaseProviderAdapter {
       return "INVALID_CREDENTIAL";
     }
 
-    // 3. Rate Limited (429 / Quota)
+    // 3. Rate Limited (429 / Quota / gRPC Resource Exhausted)
     if (
       status === 429 ||
+      status === "429" ||
+      gRpcStatus === "RESOURCE_EXHAUSTED" ||
       msg.includes("quota") ||
       msg.includes("rate limit") ||
       msg.includes("rate_limited") ||
@@ -183,6 +190,8 @@ export class GeminiAdapter extends BaseProviderAdapter {
     // 4. Model Not Found (404 status or specific missing model string)
     if (
       status === 404 ||
+      status === "404" ||
+      gRpcStatus === "NOT_FOUND" ||
       msg.includes("is not found") ||
       msg.includes("unsupported for generatecontent") ||
       (msg.includes("model") && msg.includes("not found")) ||
@@ -192,12 +201,14 @@ export class GeminiAdapter extends BaseProviderAdapter {
     }
 
     // 5. Invalid Request (400)
-    if (status === 400) return "INVALID_REQUEST";
+    if (status === 400 || status === "400") return "INVALID_REQUEST";
 
-    // 6. Provider Unavailable (5xx or High Demand)
+    // 6. Provider Unavailable (5xx, 503, UNAVAILABLE, or High Demand)
     if (
       (typeof status === "number" && status >= 500) ||
       status === 503 ||
+      status === "503" ||
+      gRpcStatus === "UNAVAILABLE" ||
       msg.includes("high demand") ||
       msg.includes("unavailable") ||
       msg.includes("overloaded")

@@ -68,14 +68,8 @@ router.get("/", async (req: any, res: any) => {
       return res.status(403).json({ error: "Forbidden: You are not a member of this workspace" });
     }
 
-    // Auth & Tenant
+    // Auth & Tenant - fetch integrations directly within validated tenant context
     const items = await withTenantContext(orgId, async (tx: any) => {
-      // Ensure project exists and belongs to org
-      const proj = await tx.query.projects.findFirst({
-        where: and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      });
-      if (!proj) throw new Error("Project not found");
-
       return await tx.query.projectIntegrations.findMany({
         where: eq(projectIntegrations.projectId, projectId)
       });

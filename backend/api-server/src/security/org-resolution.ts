@@ -1,5 +1,5 @@
 import { isDemoProjectId, getDemoProjectMeta } from "../services/demo-project";
-import { db, withTenantContext, projects } from "@workspace/db";
+import { db, withTenantContext, withBypassRLS, projects } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
 export async function resolveAuthorizedProjectOrg(
@@ -32,20 +32,20 @@ export async function resolveAuthorizedProjectOrg(
     candidateOrgIds.push(providedOrgId);
   }
 
-  for (const orgId of candidateOrgIds) {
-    try {
-      const [project] = await withTenantContext(orgId, async (tx: any) => {
-        return await tx.select().from(projects).where(
-          and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-        );
-      });
+  // Fast single-query lookup via bypass RLS followed by strict membership/ownership authorization
+  const project = await withBypassRLS(async (tx: any) => {
+    const [p] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    return p;
+  });
 
-      if (project) {
-        return { project, authoritativeOrgId: orgId };
-      }
-    } catch (e) {
-      // Ignore tenant context errors for non-matching memberships
-    }
+  if (!project) return null;
+
+  const projectOrgId = project.organizationId;
+  const isMember = Boolean(projectOrgId && candidateOrgIds.includes(projectOrgId));
+  const isOwner = Boolean(project.userId && project.userId === auth.userId);
+
+  if (isSuperAdmin || isMember || isOwner) {
+    return { project, authoritativeOrgId: projectOrgId || candidateOrgIds[0] };
   }
 
   return null;

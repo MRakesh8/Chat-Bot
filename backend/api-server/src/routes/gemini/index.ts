@@ -1341,14 +1341,21 @@ ${liveContext}`;
     });
 
     if (!res.headersSent) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.status(200);
+      const httpStatus = typeof classified.status === "number" && classified.status >= 400 && classified.status < 600
+        ? classified.status
+        : 500;
+      res.status(httpStatus).json({ 
+        error: classified.userMessage,
+        errorType: classified.type,
+        retryable: classified.retryable,
+        retryDelaySeconds: classified.retryDelaySeconds,
+        step: currentStep
+      });
+      return;
     }
     
-    // Stream sanitized error payload to UI
-    res.write(`data: ${JSON.stringify({ 
+    // Stream already started: Emit standard SSE error event and terminate stream
+    res.write(`event: error\ndata: ${JSON.stringify({ 
       error: classified.userMessage,
       errorType: classified.type,
       retryable: classified.retryable,

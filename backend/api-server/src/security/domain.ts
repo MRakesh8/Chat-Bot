@@ -220,8 +220,8 @@ export function validateWidgetOrigin(
   req: Request,
   allowedDomains: string[]
 ): { valid: boolean; domain: string; reason?: string } {
-  const originHeader = req.headers.origin;
-  const refererHeader = req.headers.referer;
+  const originHeader = req.headers.origin || (req.headers as any)?.Origin;
+  const refererHeader = req.headers.referer || (req.headers as any)?.Referer;
 
   const rawSource = (typeof originHeader === "string" && originHeader)
     ? originHeader

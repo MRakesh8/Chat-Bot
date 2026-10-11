@@ -13,7 +13,7 @@ import { logger } from "../../lib/logger";
 import { fetchYouTubeTranscriptsForMessage } from "../../lib/youtube";
 import { searchProjectKnowledge } from "../../services/knowledge";
 import { llmResponseCache } from "../../services/cache-provider";
-import { checkProjectEntitlement, logAdminBypassIfNecessary } from "../../security";
+import { checkProjectEntitlement, logAdminBypassIfNecessary, resolveAuthorizedProjectOrg } from "../../security";
 import { isDemoProjectId, isDemoShareToken, getDemoProjectMeta, getDemoKnowledgeSources, getDemoKnowledgeChunks, getDemoDashboardData, getDemoWidgetSettings, getDemoVisitorConversations, getDemoVisitorConversationDetail } from "../../services/demo-project";
 import { authorizeMembership } from "../../middlewares/authorizeMembership";
 import { UniversalRouterService } from "../../services/ai-router";
@@ -1225,49 +1225,6 @@ KNOWLEDGE UNDERSTANDING AND ORGANIZATION RULES
 import widgetRouter from "./widget";
 router.use("/:projectId/widget", widgetRouter);
 
-async function resolveAuthorizedProjectOrg(
-  req: any,
-  projectId: string,
-  providedOrgId?: string
-): Promise<{ project: any; authoritativeOrgId: string } | null> {
-  if (isDemoProjectId(projectId)) {
-    return {
-      project: getDemoProjectMeta(),
-      authoritativeOrgId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9"
-    };
-  }
-  const memberships = (req as any).auth?.memberships || [];
-  const isSuperAdmin = (req as any).auth?.dbUser?.role === "super_admin";
-
-  // Determine candidate organizations from user memberships
-  let candidateOrgIds = memberships.map((m: any) => m.organizationId);
-  
-  // Prioritize frontend-provided orgId if the user is actually a member of it
-  if (providedOrgId && typeof providedOrgId === "string" && candidateOrgIds.includes(providedOrgId)) {
-    candidateOrgIds = [providedOrgId, ...candidateOrgIds.filter((id: string) => id !== providedOrgId)];
-  }
-
-  // If superadmin, and providedOrgId is given, we must allow it even if not in memberships
-  if (isSuperAdmin && providedOrgId && typeof providedOrgId === "string" && !candidateOrgIds.includes(providedOrgId)) {
-    candidateOrgIds.push(providedOrgId);
-  }
-
-  for (const orgId of candidateOrgIds) {
-    try {
-      const [project] = await withTenantContext(orgId, async (tx: any) => {
-        return await tx.select().from(projects).where(eq(projects.id, projectId));
-      });
-
-      if (project) {
-        return { project, authoritativeOrgId: orgId };
-      }
-    } catch (e) {
-      // Ignore tenant context errors and try the next valid membership
-    }
-  }
-
-  return null;
-}
 
 import { enqueueDiscoveryProcessing } from "../../lib/queue";
 

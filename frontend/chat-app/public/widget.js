@@ -6,11 +6,13 @@
 (function() {
   // Find script element using deterministic fallbacks
   let scriptTag = document.currentScript;
-  if (!scriptTag || !scriptTag.getAttribute('data-widget-token')) {
-    const tokenScripts = Array.from(document.querySelectorAll('script[data-widget-token]'));
+  if (!scriptTag || !(scriptTag.getAttribute('data-widget-token') || scriptTag.getAttribute('data-project-id') || scriptTag.getAttribute('data-token'))) {
+    const tokenScripts = Array.from(document.querySelectorAll('script[data-widget-token], script[data-project-id], script[data-token]'));
     const uninitializedScripts = tokenScripts.filter(s => {
-      const t = s.getAttribute('data-widget-token');
-      return t && !(window.AriaWidgetInitializedTokens && window.AriaWidgetInitializedTokens.has(t));
+      const t = s.getAttribute('data-widget-token') || s.getAttribute('data-project-id') || s.getAttribute('data-token');
+      const rootId = `aria-ai-widget-root-${t}`;
+      const existing = document.getElementById(rootId);
+      return t && (!existing || !document.body || !document.body.contains(existing));
     });
 
     if (uninitializedScripts.length === 1) {
@@ -24,7 +26,7 @@
   }
 
   // Extract widget token with fallbacks
-  const widgetToken = (scriptTag && scriptTag.getAttribute('data-widget-token')) ||
+  const widgetToken = (scriptTag && (scriptTag.getAttribute('data-widget-token') || scriptTag.getAttribute('data-project-id') || scriptTag.getAttribute('data-token'))) ||
                       window.NOVA_WIDGET_TOKEN ||
                       window.ARIA_WIDGET_TOKEN ||
                       null;
@@ -34,16 +36,21 @@
     return;
   }
 
-  // Track initialized tokens to ensure idempotency per token
-  window.AriaWidgetInitializedTokens = window.AriaWidgetInitializedTokens || new Set();
-  if (window.AriaWidgetInitializedTokens.has(widgetToken)) {
+  const rootContainerId = `aria-ai-widget-root-${widgetToken}`;
+  const existingDomContainer = document.getElementById(rootContainerId);
+
+  // If container is already mounted and connected to the document, avoid duplicate initialization
+  if (existingDomContainer && document.body && document.body.contains(existingDomContainer)) {
     return;
   }
+
+  // Track initialized tokens to prevent duplicate instances while allowing remount if DOM container was detached
+  window.AriaWidgetInitializedTokens = window.AriaWidgetInitializedTokens || new Set();
   window.AriaWidgetInitializedTokens.add(widgetToken);
   window.AriaWidgetInitialized = true;
 
   // Determine API base URL
-  const passedApiUrl = (scriptTag && scriptTag.getAttribute('data-api-url')) ||
+  const passedApiUrl = (scriptTag && (scriptTag.getAttribute('data-api-url') || scriptTag.getAttribute('data-server-url'))) ||
                        window.NOVA_API_URL ||
                        window.ARIA_API_URL ||
                        null;
@@ -51,11 +58,16 @@
   let apiBaseUrl = passedApiUrl || "https://chat-bot-api-ns81.onrender.com"; 
   if (!passedApiUrl && scriptTag && scriptTag.src) {
     try {
-      const url = new URL(scriptTag.src);
-      if (url.port === "5173") {
-        apiBaseUrl = `${url.protocol}//${url.hostname}:3000`;
-      } else if (url.hostname === "localhost") {
-        apiBaseUrl = url.origin;
+      const scriptUrl = new URL(scriptTag.src, window.location.href);
+      if (scriptUrl.hostname === "localhost" || scriptUrl.hostname === "127.0.0.1") {
+        // In local development, the NOVA backend API gateway default port is 5000
+        if (scriptUrl.port === "5000") {
+          apiBaseUrl = scriptUrl.origin;
+        } else {
+          apiBaseUrl = `${scriptUrl.protocol}//${scriptUrl.hostname}:5000`;
+        }
+      } else if (scriptUrl.hostname.includes("onrender.com") || scriptUrl.hostname.includes("railway.app")) {
+        apiBaseUrl = scriptUrl.origin;
       }
     } catch(e) {}
   }
@@ -86,14 +98,27 @@
     sessionStorage.setItem(sessionKey, contextSessionId);
   }
 
+  function getSubAssetUrl(filename) {
+    try {
+      if (scriptTag && scriptTag.src) {
+        const u = new URL(scriptTag.src, window.location.href);
+        u.pathname = u.pathname.replace(/\/widget\.js(\?.*)?$/i, `/${filename}`);
+        u.search = '';
+        return u.href;
+      }
+    } catch (e) {}
+    return `${apiBaseUrl}/${filename}`;
+  }
+
   async function initContextEngine() {
-    if (!config.contextEngine || !config.contextEngine.enabled) return;
+    if (!config || !config.contextEngine || !config.contextEngine.enabled) return;
     
     try {
-      const engineUrl = scriptTag && scriptTag.src ? scriptTag.src.replace('widget.js', 'widget-context-engine.js') : `${apiBaseUrl}/widget-context-engine.js`;
+      const engineUrl = getSubAssetUrl('widget-context-engine.js');
       
       const script = document.createElement('script');
       script.src = engineUrl;
+      script.async = true;
       script.onload = () => {
         if (window.AriaContextEngine) {
           contextEngine = new window.AriaContextEngine({
@@ -127,30 +152,116 @@
           }
         }
       };
+      script.onerror = () => {
+        if (!engineUrl.startsWith(apiBaseUrl)) {
+          const fallbackScript = document.createElement('script');
+          fallbackScript.src = `${apiBaseUrl}/widget-context-engine.js`;
+          fallbackScript.async = true;
+          document.head.appendChild(fallbackScript);
+        }
+      };
       document.head.appendChild(script);
 
       // Also load action engine
-      const actionEngineUrl = scriptTag && scriptTag.src ? scriptTag.src.replace('widget.js', 'widget-action-engine.js') : `${apiBaseUrl}/widget-action-engine.js`;
+      const actionEngineUrl = getSubAssetUrl('widget-action-engine.js');
       const actionScript = document.createElement('script');
       actionScript.src = actionEngineUrl;
+      actionScript.async = true;
+      actionScript.onerror = () => {
+        if (!actionEngineUrl.startsWith(apiBaseUrl)) {
+          const fallbackActionScript = document.createElement('script');
+          fallbackActionScript.src = `${apiBaseUrl}/widget-action-engine.js`;
+          fallbackActionScript.async = true;
+          document.head.appendChild(fallbackActionScript);
+        }
+      };
       document.head.appendChild(actionScript);
     } catch (e) {
       console.error("Failed to init context engine", e);
     }
   }
 
-  const rootContainerId = `aria-ai-widget-root-${widgetToken}`;
-  if (document.getElementById(rootContainerId)) {
-    return;
-  }
-
-  const container = document.createElement('div');
+  const container = existingDomContainer || document.createElement('div');
   container.id = rootContainerId;
   container.setAttribute('aria-ai-widget-root', 'true');
   container.setAttribute('data-widget-token', widgetToken);
+  container.classList.add('aria-ai-widget-root');
   
-  // Shadow DOM initialization
-  const shadow = container.attachShadow({ mode: 'open' });
+  // Shadow DOM initialization (reuse existing shadowRoot if element already created)
+  const shadow = container.shadowRoot || container.attachShadow({ mode: 'open' });
+
+  function mountContainer() {
+    try {
+      const mountTarget = (config && config.displayMode === "custom" && config.customContainerId)
+        ? (document.getElementById(config.customContainerId) || document.body)
+        : document.body;
+
+      if (!mountTarget) {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', () => mountContainer(), { once: true });
+        } else {
+          setTimeout(mountContainer, 50);
+        }
+        return;
+      }
+
+      if (!mountTarget.contains(container)) {
+        mountTarget.appendChild(container);
+      }
+    } catch (e) {
+      console.warn("NOVA AI Widget: Failed to mount container:", e);
+    }
+  }
+
+  function notifyRouteChange() {
+    try {
+      if (contextEngine && typeof contextEngine.getContext === 'function') {
+        contextEngine.getContext().catch(() => {});
+      }
+    } catch(e) {}
+  }
+
+  function attachRouteObserver() {
+    if (window._novaRouteObserverAttached) return;
+    window._novaRouteObserverAttached = true;
+
+    window.addEventListener('popstate', () => {
+      setTimeout(mountContainer, 50);
+      notifyRouteChange();
+    });
+
+    const originalPushState = window.history.pushState;
+    if (typeof originalPushState === 'function') {
+      window.history.pushState = function() {
+        const result = originalPushState.apply(this, arguments);
+        setTimeout(mountContainer, 50);
+        notifyRouteChange();
+        return result;
+      };
+    }
+
+    const originalReplaceState = window.history.replaceState;
+    if (typeof originalReplaceState === 'function') {
+      window.history.replaceState = function() {
+        const result = originalReplaceState.apply(this, arguments);
+        setTimeout(mountContainer, 50);
+        notifyRouteChange();
+        return result;
+      };
+    }
+
+    if (typeof MutationObserver !== 'undefined' && document.body) {
+      const observer = new MutationObserver(() => {
+        const mountTarget = (config && config.displayMode === "custom" && config.customContainerId)
+          ? (document.getElementById(config.customContainerId) || document.body)
+          : document.body;
+        if (mountTarget && !mountTarget.contains(container)) {
+          mountTarget.appendChild(container);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: false });
+    }
+  }
 
   async function loadConfig() {
     try {
@@ -555,16 +666,8 @@
   }
 
   function render() {
-    if (config.displayMode === "custom" && config.customContainerId) {
-      const customDiv = document.getElementById(config.customContainerId);
-      if (customDiv) {
-         customDiv.appendChild(container);
-      } else {
-        document.body.appendChild(container);
-      }
-    } else {
-      document.body.appendChild(container);
-    }
+    mountContainer();
+    attachRouteObserver();
 
     const isBottomLeft = config.position === "bottom-left";
 
@@ -894,11 +997,19 @@
             }
           }
 
+          if (!websiteContext) {
+            websiteContext = {
+              version: "1.0.0",
+              url: window.location.href,
+              title: document.title || "",
+              segments: {}
+            };
+          } else if (!websiteContext.url) {
+            websiteContext.url = window.location.href;
+          }
+
           // Merge manually injected context if present
           if (window.AriaHiddenContext) {
-            if (!websiteContext) {
-              websiteContext = { version: "1.0.0", segments: {} };
-            }
             if (!websiteContext.segments) websiteContext.segments = {};
             websiteContext.segments.injectedContext = window.AriaHiddenContext;
             

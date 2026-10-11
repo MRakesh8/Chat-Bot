@@ -1,106 +1,189 @@
 import { db, projectApiKeys, userApiKeys, crypto } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { RoutingRequirement, ResolvedModel, NormalizedModel } from "./types";
 import { registry } from "./registry";
 import { getRedisClient } from "../../lib/redis";
+import {
+  RetryOptions,
+  AllAiProvidersFailedError,
+  isTransientError,
+  isPermanentCredentialError,
+  extractRetryAfterMs,
+  calculateBackoffMs,
+  sleepWithDeadline
+} from "./retry";
+
+export type { RetryOptions };
+export { AllAiProvidersFailedError };
 
 export class UniversalRouterService {
   /**
-   * Resolves the authoritative credential based on Routing Hierarchy: Project -> User -> System -> Env Fallback.
-   * Enforces enabled state, quotas, and health constraints.
+   * Helper to check if a decrypted API key is non-empty and not raw un-decrypted ciphertext.
    */
-  static async resolveCredential(req: RoutingRequirement): Promise<ResolvedModel> {
+  static isValidKey(key: string | null | undefined): boolean {
+    if (!key || typeof key !== "string" || !key.trim()) return false;
+    if (key.split(":").length === 3 && /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/i.test(key)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Resolves all eligible candidate credentials across Project -> User -> System -> Env tiers.
+   * Only decryptable, valid keys are returned. Invalid or un-decryptable keys are safely skipped.
+   * Candidates matching preferredProvider appear first, followed by fallback providers.
+   */
+  static async resolveCandidates(req: RoutingRequirement): Promise<ResolvedModel[]> {
     const { projectId, userId, preferredProvider, preferredModel } = req;
-    
-    const isValidKey = (key: string | null | undefined): boolean => {
-      if (!key || typeof key !== "string" || !key.trim()) return false;
-      if (key.split(":").length === 3 && /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/i.test(key)) {
-        return false;
+    const candidates: ResolvedModel[] = [];
+    const seenKeys = new Set<string>();
+
+    const addCandidate = (cand: ResolvedModel) => {
+      if (cand.credential.apiKey && !seenKeys.has(cand.credential.apiKey)) {
+        seenKeys.add(cand.credential.apiKey);
+        candidates.push(cand);
       }
-      return true;
     };
 
-    // Attempt 1: Project API Key
+    // Tier 1: Project API Keys
     if (projectId && projectId !== "demo" && projectId !== "00000000-0000-4000-8000-000000000000") {
-      const pKeys = await db.select().from(projectApiKeys).where(
-        and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
-      );
-      if (pKeys.length > 0) {
-        const sorted = preferredProvider ? pKeys.filter(k => k.provider === preferredProvider) : [...pKeys].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
-        for (const match of sorted) {
-          const decrypted = crypto.decrypt(match.encryptedKey);
-          if (isValidKey(decrypted)) {
-            return {
-              provider: match.provider,
-              modelId: preferredModel || match.model || "default",
-              credential: { id: match.id, apiKey: decrypted, type: "project" }
-            };
+      try {
+        const pKeys = await db.select().from(projectApiKeys).where(
+          and(eq(projectApiKeys.projectId, projectId), eq(projectApiKeys.isEnabled, true))
+        );
+        if (pKeys.length > 0) {
+          const sorted = [...pKeys].sort((a, b) => {
+            if (preferredProvider) {
+              if (a.provider === preferredProvider && b.provider !== preferredProvider) return -1;
+              if (b.provider === preferredProvider && a.provider !== preferredProvider) return 1;
+            }
+            return (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0);
+          });
+          for (const match of sorted) {
+            const decrypted = crypto.decrypt(match.encryptedKey);
+            if (this.isValidKey(decrypted)) {
+              addCandidate({
+                provider: match.provider,
+                modelId: preferredModel || match.model || "default",
+                credential: { id: match.id, apiKey: decrypted, type: "project" }
+              });
+            }
           }
         }
+      } catch (e) {
+        console.warn("[AI-ROUTER] Failed to query project keys:", e);
       }
     }
 
-    // Attempt 2: User API Key
+    // Tier 2: User API Keys
     if (userId && userId !== "system") {
-      const uKeys = await db.select().from(userApiKeys).where(
-        and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
+      try {
+        const uKeys = await db.select().from(userApiKeys).where(
+          and(eq(userApiKeys.userId, userId), eq(userApiKeys.isEnabled, true))
+        );
+        if (uKeys.length > 0) {
+          const sorted = [...uKeys].sort((a, b) => {
+            if (preferredProvider) {
+              if (a.provider === preferredProvider && b.provider !== preferredProvider) return -1;
+              if (b.provider === preferredProvider && a.provider !== preferredProvider) return 1;
+            }
+            return (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0);
+          });
+          for (const match of sorted) {
+            const decrypted = crypto.decrypt(match.encryptedKey);
+            if (this.isValidKey(decrypted)) {
+              addCandidate({
+                provider: match.provider,
+                modelId: preferredModel || "default",
+                credential: { id: match.id, apiKey: decrypted, type: "user" }
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[AI-ROUTER] Failed to query user keys:", e);
+      }
+    }
+
+    // Tier 3: Global System DB Keys
+    try {
+      const systemKeys = await db.select().from(userApiKeys).where(
+        and(eq(userApiKeys.isEnabled, true), isNull(userApiKeys.userId))
       );
-      if (uKeys.length > 0) {
-        const sorted = preferredProvider ? uKeys.filter(k => k.provider === preferredProvider) : [...uKeys].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+      if (systemKeys.length > 0) {
+        const sorted = [...systemKeys].sort((a, b) => {
+          if (preferredProvider) {
+            if (a.provider === preferredProvider && b.provider !== preferredProvider) return -1;
+            if (b.provider === preferredProvider && a.provider !== preferredProvider) return 1;
+          }
+          return (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0);
+        });
         for (const match of sorted) {
           const decrypted = crypto.decrypt(match.encryptedKey);
-          if (isValidKey(decrypted)) {
-            return {
+          if (this.isValidKey(decrypted)) {
+            addCandidate({
               provider: match.provider,
               modelId: preferredModel || "default",
-              credential: { id: match.id, apiKey: decrypted, type: "user" }
-            };
+              credential: { id: match.id, apiKey: decrypted, type: "system" }
+            });
           }
         }
       }
+    } catch (e) {
+      console.warn("[AI-ROUTER] Failed to query system DB keys:", e);
     }
 
-    // Attempt 3: Global System Config Fallback from DB
-    const { isNull } = await import("drizzle-orm");
-    const systemKeys = await db.select().from(userApiKeys).where(
-      and(
-        eq(userApiKeys.isEnabled, true),
-        isNull(userApiKeys.userId)
-      )
-    );
-    if (systemKeys.length > 0) {
-      const sorted = preferredProvider ? systemKeys.filter(k => k.provider === preferredProvider) : [...systemKeys].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
-      for (const match of sorted) {
-        const decrypted = crypto.decrypt(match.encryptedKey);
-        if (isValidKey(decrypted)) {
-          return {
-            provider: match.provider,
-            modelId: preferredModel || "default",
-            credential: { id: match.id, apiKey: decrypted, type: "system" }
-          };
-        }
-      }
-    }
-
-    // Attempt 4: Environment Variable Fallback
+    // Tier 4: Environment Variable Fallbacks
     const envGeminiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-    if (envGeminiKey && (!preferredProvider || preferredProvider === "gemini")) {
-      return {
+    const envOpenaiKey = process.env.OPENAI_API_KEY || process.env.openapi || process.env.OPENAPI;
+    const envAnthropicKey = process.env.ANTHROPIC_API_KEY;
+
+    const envCandidates: ResolvedModel[] = [];
+    if (this.isValidKey(envGeminiKey)) {
+      envCandidates.push({
         provider: "gemini",
         modelId: preferredModel || "default",
-        credential: { id: "env_gemini_key", apiKey: envGeminiKey, type: "system" }
-      };
+        credential: { id: "env_gemini_key", apiKey: envGeminiKey!, type: "system" }
+      });
     }
-
-    const envOpenaiKey = process.env.OPENAI_API_KEY || process.env.openapi || process.env.OPENAPI;
-    if (envOpenaiKey && preferredProvider === "openai") {
-      return {
+    if (this.isValidKey(envOpenaiKey)) {
+      envCandidates.push({
         provider: "openai",
         modelId: preferredModel || "default",
-        credential: { id: "env_openai_key", apiKey: envOpenaiKey, type: "system" }
-      };
+        credential: { id: "env_openai_key", apiKey: envOpenaiKey!, type: "system" }
+      });
+    }
+    if (this.isValidKey(envAnthropicKey)) {
+      envCandidates.push({
+        provider: "anthropic",
+        modelId: preferredModel || "default",
+        credential: { id: "env_anthropic_key", apiKey: envAnthropicKey!, type: "system" }
+      });
     }
 
+    envCandidates.sort((a, b) => {
+      if (preferredProvider) {
+        if (a.provider === preferredProvider && b.provider !== preferredProvider) return -1;
+        if (b.provider === preferredProvider && a.provider !== preferredProvider) return 1;
+      }
+      return 0;
+    });
+
+    for (const ec of envCandidates) {
+      addCandidate(ec);
+    }
+
+    return candidates;
+  }
+
+  /**
+   * Resolves the authoritative primary credential based on Routing Hierarchy.
+   */
+  static async resolveCredential(req: RoutingRequirement): Promise<ResolvedModel> {
+    const candidates = await this.resolveCandidates(req);
+    if (candidates.length > 0) {
+      return candidates[0];
+    }
     throw new Error("No valid AI provider credential found for this request.");
   }
 
@@ -160,7 +243,8 @@ export class UniversalRouterService {
   }
 
   static async persistRepairedModel(initialResolved: ResolvedModel, finalResolved: ResolvedModel, originalModelId?: string) {
-    if (originalModelId === finalResolved.modelId) return;
+    // Dynamic 'default' model resolution from catalog is standard operation, not a repair
+    if (!originalModelId || originalModelId === "default" || originalModelId === finalResolved.modelId) return;
 
     try {
       const { auditLogs } = await import("@workspace/db/schema");
@@ -189,133 +273,257 @@ export class UniversalRouterService {
     }
   }
 
-  static async executeChat(req: RoutingRequirement, messages: any[], temperature?: number) {
+  static async executeChat(req: RoutingRequirement, messages: any[], temperature?: number, options?: RetryOptions) {
+    const candidates = await this.resolveCandidates(req);
+    if (candidates.length === 0) {
+      throw new Error("No valid AI provider credential found for this request.");
+    }
+
+    const maxRetries = options?.maxRetries ?? 2;
+    const baseDelayMs = options?.baseDelayMs ?? 300;
+    const maxDelayMs = options?.maxDelayMs ?? 2000;
+    const jitterMs = options?.jitterMs ?? 200;
+    const deadline = Date.now() + (options?.deadlineMs ?? 20000);
+
+    let lastError: any = null;
     const excludeModels = new Set<string>();
-    const initialResolved = await this.resolveCredential(req);
-    const originalModelId = initialResolved.modelId;
-    let resolved = await this.selectModel(initialResolved, req, excludeModels);
-    const adapter = registry.getAdapter(resolved.provider);
-    
-    let attempt = 0;
-    let wasRepaired = resolved.modelId !== originalModelId;
-    while (attempt < 2) {
-      attempt++;
-      const startTime = Date.now();
+
+    for (let cIdx = 0; cIdx < candidates.length; cIdx++) {
+      const candidate = candidates[cIdx];
+      let resolvedCandidate: ResolvedModel;
       try {
-        const response = await adapter.generateChat({
-          messages,
-          temperature,
-          model: resolved
-        });
-        
-        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, originalModelId);
-        const { updateKeyStats } = await import("../api-health");
-        updateKeyStats({
-          key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
-          success: true,
-          latencyMs: Date.now() - startTime,
-          status: "HEALTHY",
-          model: resolved.modelId,
-          promptTokens: response.usage?.promptTokens,
-          completionTokens: response.usage?.completionTokens,
-          totalTokens: response.usage?.totalTokens
-        }).catch((e: any) => console.error(e));
+        resolvedCandidate = await this.selectModel(candidate, req, excludeModels);
+      } catch (err: any) {
+        lastError = err;
+        continue;
+      }
 
-        return response;
-      } catch (e: any) {
-        const status = adapter.classifyError(e);
-        const { updateKeyStats } = await import("../api-health");
-        updateKeyStats({
-          key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
-          success: false,
-          latencyMs: Date.now() - startTime,
-          status: status as any,
-          model: resolved.modelId,
-          error: e.message
-        }).catch((e2: any) => console.error(e2));
+      let adapter;
+      try {
+        adapter = registry.getAdapter(resolvedCandidate.provider);
+      } catch (err: any) {
+        lastError = err;
+        continue;
+      }
 
-        if (status === "MODEL_NOT_FOUND" && attempt === 1) {
-           if (resolved.modelId) excludeModels.add(resolved.modelId);
-           const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
-           const redis = getRedisClient();
-           if (redis && redis.status === "ready") {
-             await redis.del(cacheKey);
-           }
-           const freshResolved = { ...initialResolved, modelId: "default" };
-           resolved = await this.selectModel(freshResolved, req, excludeModels);
-           wasRepaired = true;
-           continue;
+      const originalModelId = resolvedCandidate.modelId;
+      let wasRepaired = resolvedCandidate.modelId !== originalModelId;
+      let attempt = 0;
+
+      while (attempt <= maxRetries) {
+        const startTime = Date.now();
+        try {
+          const response = await adapter.generateChat({
+            messages,
+            temperature,
+            model: resolvedCandidate
+          });
+
+          if (wasRepaired) {
+            await this.persistRepairedModel(candidate, resolvedCandidate, originalModelId);
+          }
+
+          const { updateKeyStats } = await import("../api-health");
+          updateKeyStats({
+            key: { id: resolvedCandidate.credential.id, type: resolvedCandidate.credential.type, provider: resolvedCandidate.provider, rawDbKey: {} },
+            success: true,
+            latencyMs: Date.now() - startTime,
+            status: "HEALTHY",
+            model: resolvedCandidate.modelId,
+            promptTokens: response.usage?.promptTokens,
+            completionTokens: response.usage?.completionTokens,
+            totalTokens: response.usage?.totalTokens
+          }).catch((e: any) => console.error(e));
+
+          return response;
+        } catch (e: any) {
+          lastError = e;
+          const status = adapter.classifyError(e);
+          const { updateKeyStats } = await import("../api-health");
+          updateKeyStats({
+            key: { id: resolvedCandidate.credential.id, type: resolvedCandidate.credential.type, provider: resolvedCandidate.provider, rawDbKey: {} },
+            success: false,
+            latencyMs: Date.now() - startTime,
+            status: status as any,
+            model: resolvedCandidate.modelId,
+            error: e.message
+          }).catch((e2: any) => console.error(e2));
+
+          // 1. Model Not Found -> auto substitute once
+          if (status === "MODEL_NOT_FOUND" && attempt === 0) {
+            if (resolvedCandidate.modelId) excludeModels.add(resolvedCandidate.modelId);
+            const cacheKey = `raghub:model_catalog:${resolvedCandidate.provider}:${resolvedCandidate.credential.id}`;
+            const redis = getRedisClient();
+            if (redis && redis.status === "ready") {
+              await redis.del(cacheKey);
+            }
+            try {
+              const fresh = { ...candidate, modelId: "default" };
+              resolvedCandidate = await this.selectModel(fresh, req, excludeModels);
+              wasRepaired = true;
+              attempt++;
+              continue;
+            } catch {
+              break;
+            }
+          }
+
+          // 2. Permanent Credential Failure -> do NOT retry, fail over immediately
+          if (isPermanentCredentialError(status, e)) {
+            console.warn(`[AI-ROUTER] Credential ${resolvedCandidate.credential.id} (${resolvedCandidate.provider}) permanently rejected. Skipping retries, failing over.`);
+            break;
+          }
+
+          // 3. Transient error -> bounded exponential backoff retry if attempts remaining and within deadline
+          if (isTransientError(status, e) && attempt < maxRetries) {
+            const retryAfter = extractRetryAfterMs(e);
+            const delay = calculateBackoffMs(attempt, retryAfter, baseDelayMs, maxDelayMs, jitterMs);
+            const canSleep = await sleepWithDeadline(delay, deadline);
+            if (canSleep) {
+              attempt++;
+              continue;
+            }
+          }
+
+          break; // Retries exhausted or non-retryable for this candidate, failover to next candidate
         }
-
-        throw e;
       }
     }
-    throw new Error("Failed after retries");
+
+    throw new AllAiProvidersFailedError(
+      `All available AI providers failed. Last error: ${lastError?.message || "Unknown error"}`,
+      lastError
+    );
   }
 
-  static async *executeStream(req: RoutingRequirement, messages: any[], temperature?: number) {
+  static async *executeStream(req: RoutingRequirement, messages: any[], temperature?: number, options?: RetryOptions) {
+    const candidates = await this.resolveCandidates(req);
+    if (candidates.length === 0) {
+      throw new Error("No valid AI provider credential found for this request.");
+    }
+
+    const maxRetries = options?.maxRetries ?? 2;
+    const baseDelayMs = options?.baseDelayMs ?? 300;
+    const maxDelayMs = options?.maxDelayMs ?? 2000;
+    const jitterMs = options?.jitterMs ?? 200;
+    const deadline = Date.now() + (options?.deadlineMs ?? 20000);
+
+    let lastError: any = null;
     const excludeModels = new Set<string>();
-    const initialResolved = await this.resolveCredential(req);
-    const originalModelId = initialResolved.modelId;
-    let resolved = await this.selectModel(initialResolved, req, excludeModels);
-    let wasRepaired = resolved.modelId !== originalModelId;
-    const adapter = registry.getAdapter(resolved.provider);
-    
-    let attempt = 0;
-    while (attempt < 2) {
-      attempt++;
-      const startTime = Date.now();
-      let chunkCount = 0;
+
+    for (let cIdx = 0; cIdx < candidates.length; cIdx++) {
+      const candidate = candidates[cIdx];
+      let resolvedCandidate: ResolvedModel;
       try {
-        const stream = adapter.generateChatStream({
-          messages,
-          temperature,
-          model: resolved
-        });
-        
-        for await (const chunk of stream) {
-          chunkCount++;
-          yield chunk;
+        resolvedCandidate = await this.selectModel(candidate, req, excludeModels);
+      } catch (err: any) {
+        lastError = err;
+        continue;
+      }
+
+      let adapter;
+      try {
+        adapter = registry.getAdapter(resolvedCandidate.provider);
+      } catch (err: any) {
+        lastError = err;
+        continue;
+      }
+
+      const originalModelId = resolvedCandidate.modelId;
+      let wasRepaired = resolvedCandidate.modelId !== originalModelId;
+      let attempt = 0;
+
+      while (attempt <= maxRetries) {
+        const startTime = Date.now();
+        let chunkCount = 0;
+        try {
+          const stream = adapter.generateChatStream({
+            messages,
+            temperature,
+            model: resolvedCandidate
+          });
+
+          for await (const chunk of stream) {
+            chunkCount++;
+            yield chunk;
+          }
+
+          if (wasRepaired) {
+            await this.persistRepairedModel(candidate, resolvedCandidate, originalModelId);
+          }
+
+          const { updateKeyStats } = await import("../api-health");
+          updateKeyStats({
+            key: { id: resolvedCandidate.credential.id, type: resolvedCandidate.credential.type, provider: resolvedCandidate.provider, rawDbKey: {} },
+            success: true,
+            latencyMs: Date.now() - startTime,
+            status: "HEALTHY",
+            model: resolvedCandidate.modelId
+          }).catch((e: any) => console.error(e));
+
+          return; // Stream finished successfully
+        } catch (e: any) {
+          lastError = e;
+          const status = adapter.classifyError(e);
+          const { updateKeyStats } = await import("../api-health");
+          updateKeyStats({
+            key: { id: resolvedCandidate.credential.id, type: resolvedCandidate.credential.type, provider: resolvedCandidate.provider, rawDbKey: {} },
+            success: false,
+            latencyMs: Date.now() - startTime,
+            status: status as any,
+            model: resolvedCandidate.modelId,
+            error: e.message
+          }).catch((e2: any) => console.error(e2));
+
+          // If chunks were already yielded, cannot retry or failover without corrupting client output
+          if (chunkCount > 0) {
+            throw e;
+          }
+
+          // 1. Model Not Found -> auto substitute once if chunkCount === 0
+          if (status === "MODEL_NOT_FOUND" && attempt === 0) {
+            if (resolvedCandidate.modelId) excludeModels.add(resolvedCandidate.modelId);
+            const cacheKey = `raghub:model_catalog:${resolvedCandidate.provider}:${resolvedCandidate.credential.id}`;
+            const redis = getRedisClient();
+            if (redis && redis.status === "ready") {
+              await redis.del(cacheKey);
+            }
+            try {
+              const fresh = { ...candidate, modelId: "default" };
+              resolvedCandidate = await this.selectModel(fresh, req, excludeModels);
+              wasRepaired = true;
+              attempt++;
+              continue;
+            } catch {
+              break;
+            }
+          }
+
+          // 2. Permanent credential rejection -> fail over immediately
+          if (isPermanentCredentialError(status, e)) {
+            console.warn(`[AI-ROUTER] Credential ${resolvedCandidate.credential.id} (${resolvedCandidate.provider}) permanently rejected. Skipping retries, failing over.`);
+            break;
+          }
+
+          // 3. Transient error -> bounded exponential backoff retry if chunkCount === 0 and within deadline
+          if (isTransientError(status, e) && attempt < maxRetries) {
+            const retryAfter = extractRetryAfterMs(e);
+            const delay = calculateBackoffMs(attempt, retryAfter, baseDelayMs, maxDelayMs, jitterMs);
+            const canSleep = await sleepWithDeadline(delay, deadline);
+            if (canSleep) {
+              attempt++;
+              continue;
+            }
+          }
+
+          break; // Retries exhausted or non-retryable, fail over to next candidate
         }
-
-        if (wasRepaired) await this.persistRepairedModel(initialResolved, resolved, originalModelId);
-
-        const { updateKeyStats } = await import("../api-health");
-        updateKeyStats({
-          key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
-          success: true,
-          latencyMs: Date.now() - startTime,
-          status: "HEALTHY",
-          model: resolved.modelId
-        }).catch((e: any) => console.error(e));
-        return; // Success, exit
-      } catch (e: any) {
-        const status = adapter.classifyError(e);
-        const { updateKeyStats } = await import("../api-health");
-        updateKeyStats({
-          key: { id: resolved.credential.id, type: resolved.credential.type, provider: resolved.provider, rawDbKey: {} },
-          success: false,
-          latencyMs: Date.now() - startTime,
-          status: status as any,
-          model: resolved.modelId,
-          error: e.message
-        }).catch((e2: any) => console.error(e2));
-
-        if (status === "MODEL_NOT_FOUND" && attempt === 1 && chunkCount === 0) {
-           if (resolved.modelId) excludeModels.add(resolved.modelId);
-           const cacheKey = `raghub:model_catalog:${resolved.provider}:${resolved.credential.id}`;
-           const redis = getRedisClient();
-           if (redis && redis.status === "ready") {
-             await redis.del(cacheKey);
-           }
-           const freshResolved = { ...initialResolved, modelId: "default" };
-           resolved = await this.selectModel(freshResolved, req, excludeModels);
-           wasRepaired = true;
-           continue;
-        }
-        throw e;
       }
     }
-    throw new Error("Failed after retries");
+
+    throw new AllAiProvidersFailedError(
+      `All available AI providers failed. Last error: ${lastError?.message || "Unknown error"}`,
+      lastError
+    );
   }
 }
