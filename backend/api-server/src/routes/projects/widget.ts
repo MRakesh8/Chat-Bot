@@ -149,13 +149,33 @@ router.put("/settings", async (req: any, res: Response) => {
 });
 
 // API Keys routes for project
-router.get("/api-keys", async (req: any, res: Response) => {
+router.get("/api-keys", async (req: any, res: Response): Promise<void> => {
   const { projectId } = req.params;
+  if (isDemoProjectId(projectId)) {
+    res.json([]);
+    return;
+  }
   try {
-    const keys = await db.query.projectApiKeys.findMany({
-      where: eq(projectApiKeys.projectId, projectId),
-    });
+    const keys = await db
+      .select({
+        id: projectApiKeys.id,
+        name: projectApiKeys.name,
+        provider: projectApiKeys.provider,
+        maskedKey: projectApiKeys.maskedKey,
+        model: projectApiKeys.model,
+        isPrimary: projectApiKeys.isPrimary,
+        isEnabled: projectApiKeys.isEnabled,
+        status: projectApiKeys.status,
+        lastSuccess: projectApiKeys.lastSuccess,
+        lastFailure: projectApiKeys.lastFailure,
+        failureReason: projectApiKeys.failureReason,
+        cooldownUntil: projectApiKeys.cooldownUntil,
+        createdAt: projectApiKeys.createdAt,
+      })
+      .from(projectApiKeys)
+      .where(eq(projectApiKeys.projectId, projectId));
     
+    const now = Date.now();
     const safeKeys = keys.map(k => ({
       id: k.id,
       name: k.name,
@@ -168,7 +188,7 @@ router.get("/api-keys", async (req: any, res: Response) => {
       lastSuccess: k.lastSuccess,
       lastFailure: k.lastFailure,
       failureReason: k.failureReason,
-      cooldownRemaining: k.cooldownUntil && k.cooldownUntil.getTime() > Date.now() ? Math.ceil((k.cooldownUntil.getTime() - Date.now()) / 60000) : 0,
+      cooldownRemaining: k.cooldownUntil && k.cooldownUntil.getTime() > now ? Math.ceil((k.cooldownUntil.getTime() - now) / 60000) : 0,
       createdAt: k.createdAt,
     }));
     

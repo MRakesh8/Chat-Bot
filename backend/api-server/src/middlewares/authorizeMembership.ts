@@ -31,11 +31,16 @@ export const authorizeMembership = (requiredRole: "owner" | "admin" | "manager" 
       }
 
       let organizationId = req.params?.organizationId || req.query?.organizationId || req.body?.organizationId;
+      if (!organizationId && (req as any).project?.organizationId) {
+        organizationId = (req as any).project.organizationId;
+      }
       if (!organizationId && projectId) {
-        const project = await withBypassRLS(async (tx: any) => {
-          return await tx.query.projects.findFirst({
-            where: eq(projects.id, projectId),
-          });
+        const [project] = await withBypassRLS(async (tx: any) => {
+          return await tx
+            .select({ id: projects.id, organizationId: projects.organizationId })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1);
         });
         if (!project) {
           return res.status(404).json({ error: "Project not found" });
