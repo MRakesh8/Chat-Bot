@@ -114,7 +114,9 @@ async function runNestedRoutesTests() {
   // --------------------------------------------------------------------------
   console.log("\n[Test Section 3] Script Asset Resolution & API Base URL Handling");
 
-  const widgetJsPath = path.resolve(process.cwd(), "../../frontend/chat-app/public/widget.js");
+  const widgetJsPath = fs.existsSync(path.resolve(process.cwd(), "frontend/chat-app/public/widget.js"))
+    ? path.resolve(process.cwd(), "frontend/chat-app/public/widget.js")
+    : path.resolve(process.cwd(), "../../frontend/chat-app/public/widget.js");
   assert(fs.existsSync(widgetJsPath), "widget.js exists at expected path");
   const widgetJsCode = fs.readFileSync(widgetJsPath, "utf-8");
 
@@ -383,7 +385,9 @@ async function runNestedRoutesTests() {
   // --------------------------------------------------------------------------
   console.log("\n[Test Section 6] React Guide Snippet Cleanup & Token Reset");
 
-  const deploymentPath = path.resolve(process.cwd(), "../../frontend/chat-app/src/components/project/deployment.tsx");
+  const deploymentPath = fs.existsSync(path.resolve(process.cwd(), "frontend/chat-app/src/components/project/deployment.tsx"))
+    ? path.resolve(process.cwd(), "frontend/chat-app/src/components/project/deployment.tsx")
+    : path.resolve(process.cwd(), "../../frontend/chat-app/src/components/project/deployment.tsx");
   assert(fs.existsSync(deploymentPath), "deployment.tsx exists");
   const deploymentCode = fs.readFileSync(deploymentPath, "utf-8");
 

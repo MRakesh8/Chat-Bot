@@ -5,6 +5,7 @@ import { logSecurityEvent } from "../../security/middleware";
 import { logger } from "../../lib/logger";
 import { db, projects, organizationMembers } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { isDemoProjectId } from "../../services/demo-project";
 
 const router = Router();
 const businessAgent = new BusinessAgent();
@@ -38,12 +39,16 @@ async function userHasAccessToProject(userId: string, projectId: string, dbUserR
 // GET /api/agent/capabilities/:projectId
 router.get("/capabilities/:projectId", async (req: Request, res: Response): Promise<any> => {
   try {
+    const projectId = req.params.projectId as string;
+    if (isDemoProjectId(projectId)) {
+      const capabilities = await businessAgent.getProjectCapabilities(projectId);
+      return res.json({ success: true, capabilities });
+    }
+
     const userId = (req as any).auth?.userId;
     if (!userId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
-
-    const projectId = req.params.projectId as string;
     const hasAccess = await userHasAccessToProject(
       userId,
       projectId,
