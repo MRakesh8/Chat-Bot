@@ -87,6 +87,7 @@ export function useProjectTabPrefetch(projectId: string | null | undefined, curr
           );
           break;
 
+        case "website-connected":
         case "widget-studio":
           prefetchPromises.push(
             queryClient.prefetchQuery({
@@ -94,6 +95,14 @@ export function useProjectTabPrefetch(projectId: string | null | undefined, curr
               queryFn: async () => {
                 const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/settings`));
                 if (!res.ok) throw new Error("Failed to load widget settings");
+                return res.json();
+              },
+            }),
+            queryClient.prefetchQuery({
+              queryKey: ["project-api-keys", projectId],
+              queryFn: async () => {
+                const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/api-keys`));
+                if (!res.ok) throw new Error("Failed to load api keys");
                 return res.json();
               },
             })
@@ -270,7 +279,7 @@ export function useProjectTabPrefetch(projectId: string | null | undefined, curr
     // Ordered stages of prefetching to prevent request congestion and preserve network bandwidth
     // Stage 1 (150ms): Core customization tabs most frequently clicked after overview
     const timer1 = setTimeout(() => {
-      const stage1Tabs = ["knowledge", "widget-studio", "api-keys"];
+      const stage1Tabs = ["knowledge", "website-connected", "widget-studio", "api-keys"];
       stage1Tabs.forEach((tab) => {
         if (tab !== currentTab && !prefetchedTabsRef.current.has(tab)) {
           prefetchTab(tab);

@@ -52,43 +52,38 @@ const PROJECT_NAV_GROUPS: NavGroup[] = [
   {
     id: "workspace",
     title: "Workspace",
-    description: "Overview & Setup Guide",
+    description: "Overview & Dashboard",
     icon: LayoutDashboard,
     items: [
       { id: "overview", label: "Overview", icon: LayoutDashboard },
-      { id: "guide", label: "Project Guide", icon: Compass },
     ],
   },
   {
-    id: "knowledge-ai",
-    title: "Knowledge & AI",
-    description: "Bot Testing, Knowledge & Context",
+    id: "ai-context",
+    title: "AI & Context",
+    description: "Bot Testing & Context Engine",
     icon: Brain,
     items: [
       { id: "chat", label: "Test Chat", icon: MessageSquare },
-      { id: "knowledge", label: "Knowledge Base", icon: Database },
       { id: "context-engine", label: "Context Engine", icon: Brain },
     ],
   },
   {
     id: "website-experience",
     title: "Website Experience",
-    description: "Widget Studio, Channels & Launch",
-    icon: Paintbrush,
+    description: "Visitor Inbox & Channels",
+    icon: Inbox,
     items: [
       { id: "conversations", label: "Visitor Inbox", icon: Inbox },
-      { id: "widget-studio", label: "Widget Studio", icon: Paintbrush },
       { id: "channels", label: "Channels", icon: Smartphone },
-      { id: "deployment", label: "Deployment", icon: Rocket },
     ],
   },
   {
     id: "operations",
     title: "Operations",
-    description: "API Keys, Control, Analytics & Settings",
+    description: "Reports, Analytics, Integrations, Control & Settings",
     icon: Wrench,
     items: [
-      { id: "api-keys", label: "API Keys", icon: Key },
       { id: "reports", label: "Reports", icon: FileText },
       { id: "analytics", label: "Analytics", icon: LayoutDashboard },
       { id: "notifications", label: "Notifications", icon: AlertTriangle },
@@ -149,23 +144,76 @@ export default function ProjectEditPage() {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
       const urlTab = searchParams.get("tab");
+      if (urlTab === "widget-studio" || urlTab === "deployment" || urlTab === "api-keys") {
+        return "website-connected";
+      }
       if (urlTab) return urlTab;
     }
     if (projectId) {
       const saved = getSavedProjectTab(projectId);
+      if (saved === "widget-studio" || saved === "deployment" || saved === "api-keys") {
+        return "website-connected";
+      }
       if (saved) return saved;
     }
     return "overview";
   };
 
+  const getInitialWebsiteConnectedSubtab = (): "widget-studio" | "deployment" | "api-keys" => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const subtab = searchParams.get("subtab");
+      if (subtab === "widget-studio" || subtab === "deployment" || subtab === "api-keys") {
+        return subtab;
+      }
+      const urlTab = searchParams.get("tab");
+      if (urlTab === "widget-studio" || urlTab === "deployment" || urlTab === "api-keys") {
+        return urlTab;
+      }
+    }
+    return "widget-studio";
+  };
+
   const [activeTab, setActiveTab] = useState(getInitialTab);
+  const [websiteConnectedSubtab, setWebsiteConnectedSubtab] = useState<"widget-studio" | "deployment" | "api-keys">(getInitialWebsiteConnectedSubtab);
 
   useEffect(() => {
     const tabToSet = getInitialTab();
     setActiveTab(tabToSet);
+    setWebsiteConnectedSubtab(getInitialWebsiteConnectedSubtab());
   }, [projectId]);
 
-  const handleTabChange = (tab: string) => {
+  const handleTabChange = (tab: string, subtab?: string) => {
+    if (tab === "widget-studio" || tab === "deployment" || tab === "api-keys") {
+      setActiveTab("website-connected");
+      setWebsiteConnectedSubtab(tab);
+      if (projectId) {
+        saveProjectTab(projectId, "website-connected");
+      }
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", "website-connected");
+        url.searchParams.set("subtab", tab);
+        window.history.replaceState(null, "", url.toString());
+      }
+      return;
+    }
+
+    if (tab === "website-connected" && subtab) {
+      setActiveTab("website-connected");
+      setWebsiteConnectedSubtab(subtab as any);
+      if (projectId) {
+        saveProjectTab(projectId, "website-connected");
+      }
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", "website-connected");
+        url.searchParams.set("subtab", subtab);
+        window.history.replaceState(null, "", url.toString());
+      }
+      return;
+    }
+
     setActiveTab(tab);
     if (projectId) {
       saveProjectTab(projectId, tab);
@@ -173,6 +221,7 @@ export default function ProjectEditPage() {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", tab);
+      url.searchParams.delete("subtab");
       window.history.replaceState(null, "", url.toString());
     }
   };
@@ -574,16 +623,27 @@ export default function ProjectEditPage() {
                 </div>
               </div>
 
-              {/* Grid: Vertical Setup Checklist + Next What-To-Do Card */}
+              {/* Grid: Vertical Setup Checklist (Step 1, Step 2, Step 3) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
                 {/* 1. Website Connected */}
                 <div
-                  onClick={() => handleTabChange("settings")}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
-                    storedUrl
-                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50"
-                      : "bg-card border-border/80 hover:border-primary/50"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleTabChange("website-connected")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleTabChange("website-connected");
+                    }
+                  }}
+                  aria-label="Open Website Connected setup"
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    activeTab === "website-connected"
+                      ? "bg-primary/10 border-primary ring-2 ring-primary/40 shadow-xs"
+                      : storedUrl
+                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50 hover:bg-card/90"
+                      : "bg-card border-border/80 hover:border-primary/50 hover:bg-card/90"
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -605,18 +665,29 @@ export default function ProjectEditPage() {
                       Website Connected
                     </h4>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {storedUrl ? storedUrl : "Add your business domain"}
+                      {storedUrl ? storedUrl : "Widget Studio, Deployment & API Keys"}
                     </p>
                   </div>
                 </div>
 
-                {/* 2. Knowledge Ready */}
+                {/* 2. Knowledge Base */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleTabChange("knowledge")}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
-                    isDiscoveryReady || project
-                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50"
-                      : "bg-card border-border/80 hover:border-primary/50"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleTabChange("knowledge");
+                    }
+                  }}
+                  aria-label="Open Knowledge Base"
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    activeTab === "knowledge"
+                      ? "bg-primary/10 border-primary ring-2 ring-primary/40 shadow-xs"
+                      : isDiscoveryReady || project
+                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50 hover:bg-card/90"
+                      : "bg-card border-border/80 hover:border-primary/50 hover:bg-card/90"
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -638,8 +709,8 @@ export default function ProjectEditPage() {
 
                   <div>
                     <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
-                      <Brain className="w-4 h-4 text-primary shrink-0" />
-                      Knowledge Ready
+                      <Database className="w-4 h-4 text-primary shrink-0" />
+                      Knowledge Base
                     </h4>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
                       {isDiscoveryReady ? "Automated discovery complete" : "RAG & business context sources"}
@@ -647,88 +718,112 @@ export default function ProjectEditPage() {
                   </div>
                 </div>
 
-                {/* 3. Chat on Your Site */}
+                {/* 3. Connected Website */}
                 <div
-                  onClick={() => handleTabChange("deployment")}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    const rawUrl = project?.websiteUrl || readinessData?.productionWebsiteUrl || null;
+                    if (!rawUrl || !rawUrl.trim()) {
+                      toast({
+                        title: "No Website Connected",
+                        description: "This project does not have a configured website URL yet. You can connect one in project settings.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+
+                    let urlToOpen = rawUrl.trim();
+                    if (!/^https?:\/\//i.test(urlToOpen)) {
+                      urlToOpen = `http://${urlToOpen}`;
+                    }
+
+                    try {
+                      const parsed = new URL(urlToOpen);
+                      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                        toast({
+                          title: "Unsupported Protocol",
+                          description: "Only HTTP and HTTPS website URLs are supported.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      window.open(parsed.href, "_blank", "noopener,noreferrer");
+                    } catch {
+                      toast({
+                        title: "Invalid Website URL",
+                        description: `"${rawUrl}" is not a valid website URL. Please verify your project settings.`,
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      const rawUrl = project?.websiteUrl || readinessData?.productionWebsiteUrl || null;
+                      if (!rawUrl || !rawUrl.trim()) {
+                        toast({
+                          title: "No Website Connected",
+                          description: "This project does not have a configured website URL yet.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      let urlToOpen = rawUrl.trim();
+                      if (!/^https?:\/\//i.test(urlToOpen)) {
+                        urlToOpen = `http://${urlToOpen}`;
+                      }
+                      try {
+                        const parsed = new URL(urlToOpen);
+                        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                          toast({ title: "Unsupported Protocol", description: "Only HTTP/HTTPS URLs supported.", variant: "destructive" });
+                          return;
+                        }
+                        window.open(parsed.href, "_blank", "noopener,noreferrer");
+                      } catch {
+                        toast({ title: "Invalid URL", description: "Please verify website URL in settings.", variant: "destructive" });
+                      }
+                    }
+                  }}
+                  aria-label="Open connected website in new tab"
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isLive
-                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50"
-                      : "bg-card border-border/80 hover:border-primary/50"
+                      ? "bg-card border-emerald-500/30 hover:border-emerald-500/50 hover:bg-card/90"
+                      : storedUrl
+                      ? "bg-card border-border/80 hover:border-primary/50 hover:bg-card/90"
+                      : "bg-card border-border/80 hover:border-primary/50 hover:bg-card/90 opacity-90"
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Step 3</span>
                     {isLive ? (
-                      <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full">
-                        Active
+                      <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Live
+                      </Badge>
+                    ) : storedUrl ? (
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full text-muted-foreground border-border flex items-center gap-1">
+                        <ExternalLink className="w-2.5 h-2.5" />
+                        Open Site
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-full text-muted-foreground border-border">
-                        Not Installed
+                        Not Configured
                       </Badge>
                     )}
                   </div>
 
                   <div>
                     <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-primary shrink-0" />
-                      Chat on Your Site
+                      <ExternalLink className="w-4 h-4 text-primary shrink-0" />
+                      Connected Website
                     </h4>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {isLive ? "Live widget responding" : "Embed 1-line script snippet"}
+                      {storedUrl ? storedUrl : "Click to connect domain in settings"}
                     </p>
                   </div>
                 </div>
 
-              </div>
-
-              {/* What To Do Next Card */}
-              <div className="p-5 rounded-2xl bg-card border border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-primary block">
-                    What to do next
-                  </span>
-                  <p className="text-sm font-medium text-foreground mt-1">
-                    {isAnalyzing
-                      ? "NOVA AI is currently analyzing your website content."
-                      : isLive
-                      ? "Your AI assistant is live on your website. Check visitor conversations & analytics."
-                      : readinessData?.isReady
-                      ? "Installation detected! Test your widget and launch."
-                      : !isDiscoveryReady && storedUrl
-                      ? "Run automated AI Discovery on your website to populate business knowledge."
-                      : "Embed the 1-line widget snippet into your website code."}
-                  </p>
-                </div>
-
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (isLive && storedUrl) {
-                      window.open(storedUrl, "_blank");
-                    } else if (isAnalyzing) {
-                      handleTabChange("overview");
-                    } else if (!isDiscoveryReady && storedUrl) {
-                      handleStartAnalysis();
-                    } else {
-                      handleTabChange("deployment");
-                    }
-                  }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs rounded-xl h-10 px-5 shrink-0 gap-1.5 shadow-xs"
-                >
-                  <span>
-                    {isAnalyzing
-                      ? "View Discovery"
-                      : isLive
-                      ? "View Site"
-                      : readinessData?.isReady
-                      ? "Verify & Launch"
-                      : !isDiscoveryReady && storedUrl
-                      ? "Run AI Discovery"
-                      : "Get Embed Code"}
-                  </span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Button>
               </div>
             </div>
           );
@@ -780,24 +875,60 @@ export default function ProjectEditPage() {
 
             {/* Sub-Tab Navigation Bar for Active Category */}
             {(() => {
+              const isWebsiteConnected =
+                activeTab === "website-connected" ||
+                activeTab === "widget-studio" ||
+                activeTab === "deployment" ||
+                activeTab === "api-keys";
+
               const activeGroup = PROJECT_NAV_GROUPS.find((g) => g.items.some((item) => item.id === activeTab)) || PROJECT_NAV_GROUPS[0];
+
+              const websiteConnectedTabs = [
+                { id: "widget-studio", label: "Widget Studio", icon: Paintbrush },
+                { id: "deployment", label: "Deployment", icon: Share2 },
+                { id: "api-keys", label: "API Keys", icon: Key },
+              ];
+
               return (
                 <div className="bg-card/80 border border-border p-1.5 rounded-2xl backdrop-blur-xl shadow-xs flex items-center justify-between gap-2">
                   <TabsList className="bg-transparent border-0 p-0 h-auto flex flex-wrap sm:flex-nowrap gap-1.5 w-full justify-start no-scrollbar">
-                    {activeGroup.items.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <TabsTrigger
-                          key={item.id}
-                          value={item.id}
-                          {...getTabTriggerProps(item.id)}
-                          className="px-3.5 py-2 rounded-xl text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all gap-2 shrink-0"
-                        >
-                          <Icon className="w-3.5 h-3.5 shrink-0" />
-                          <span>{item.label}</span>
-                        </TabsTrigger>
-                      );
-                    })}
+                    {isWebsiteConnected ? (
+                      websiteConnectedTabs.map((item) => {
+                        const Icon = item.icon;
+                        const isSubActive = websiteConnectedSubtab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleTabChange("website-connected", item.id)}
+                            {...getTabTriggerProps(item.id)}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0 transition-all cursor-pointer ${
+                              isSubActive
+                                ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      activeGroup.items.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <TabsTrigger
+                            key={item.id}
+                            value={item.id}
+                            {...getTabTriggerProps(item.id)}
+                            className="px-3.5 py-2 rounded-xl text-xs font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all gap-2 shrink-0"
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{item.label}</span>
+                          </TabsTrigger>
+                        );
+                      })
+                    )}
                   </TabsList>
 
                   {/* Dropdown Menu to jump to any tab directly */}
@@ -810,6 +941,38 @@ export default function ProjectEditPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-64 p-2 rounded-2xl bg-popover border-border z-50 max-h-96 overflow-y-auto">
+                      {/* Setup Shortcuts */}
+                      <div className="py-1">
+                        <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 border-b border-border/40 mb-1">
+                          <Compass className="w-3 h-3 text-primary" />
+                          <span>Setup Shortcuts</span>
+                        </div>
+                        <DropdownMenuItem
+                          onClick={() => handleTabChange("website-connected")}
+                          className={`cursor-pointer rounded-xl text-xs py-2 px-2.5 flex items-center justify-between gap-2 my-0.5 ${
+                            activeTab === "website-connected" ? "bg-primary/15 text-primary font-semibold" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            <span>Website Connected (Step 1)</span>
+                          </div>
+                          {activeTab === "website-connected" && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleTabChange("knowledge")}
+                          className={`cursor-pointer rounded-xl text-xs py-2 px-2.5 flex items-center justify-between gap-2 my-0.5 ${
+                            activeTab === "knowledge" ? "bg-primary/15 text-primary font-semibold" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Database className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            <span>Knowledge Base (Step 2)</span>
+                          </div>
+                          {activeTab === "knowledge" && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                        </DropdownMenuItem>
+                      </div>
+
                       {PROJECT_NAV_GROUPS.map((group) => (
                         <div key={group.id} className="py-1">
                           <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 border-b border-border/40 mb-1">
@@ -1024,6 +1187,42 @@ export default function ProjectEditPage() {
             {projectId && (
               <div className="mt-8">
                 <VisitorInboxTab projectId={projectId} onSelectTab={handleTabChange} />
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="website-connected">
+            {projectId && (
+              <div className="mt-8 space-y-6">
+                <Card className="bg-card border-border text-card-foreground shadow-xs">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                          <Globe className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-lg">Website Connected</CardTitle>
+                            <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full">
+                              Step 1 Shortcut
+                            </Badge>
+                          </div>
+                          <CardDescription className="text-xs mt-0.5 text-muted-foreground">
+                            Consolidated management for your website integration: customize widget styles, copy embed scripts, or manage API keys.
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                {/* Subtab content view */}
+                <div>
+                  {websiteConnectedSubtab === "widget-studio" && <WidgetStudio projectId={projectId} />}
+                  {websiteConnectedSubtab === "deployment" && <Deployment projectId={projectId} />}
+                  {websiteConnectedSubtab === "api-keys" && <ApiKeys projectId={projectId} />}
+                </div>
               </div>
             )}
           </TabsContent>

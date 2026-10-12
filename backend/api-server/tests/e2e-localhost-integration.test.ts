@@ -1,4 +1,6 @@
 import http from "http";
+import fs from "fs";
+import path from "path";
 import app from "../src/app";
 import {
   db,
@@ -133,6 +135,56 @@ async function runE2EIntegrationVerification() {
     assert(demoFilteredRes.status === 200, "Demo endpoint handles ?status=COMPLETED filter");
     const demoFilteredData = await demoFilteredRes.json();
     assert(demoFilteredData.executions.every((e: any) => e.status === "COMPLETED"), "Filtered demo runs strictly match status");
+
+    // Stats endpoint
+    const statsRes = await fetch(`${baseUrl}/api/projects/00000000-0000-4000-8000-000000000000/executions/stats`);
+    assert(statsRes.status === 200, "Demo executions stats endpoint returns HTTP 200");
+    const statsData = await statsRes.json();
+    assert(typeof statsData.totalCount === "number" && statsData.totalCount >= 3, "Stats returns valid total count");
+    assert(typeof statsData.pendingApprovalCount === "number" && statsData.pendingApprovalCount >= 1, "Stats includes pending approval count");
+
+    // Capabilities endpoint
+    const capsRes = await fetch(`${baseUrl}/api/agent/capabilities/00000000-0000-4000-8000-000000000000`);
+    assert(capsRes.status === 200, "Demo agent capabilities endpoint returns HTTP 200");
+    const capsData = await capsRes.json();
+    assert(capsData.success === true, "Capabilities endpoint reports success: true");
+    assert(Array.isArray(capsData.capabilities) && capsData.capabilities.length > 0, "Capabilities returns registered business capabilities");
+
+    // Execution detail endpoint
+    const detailRes = await fetch(`${baseUrl}/api/projects/00000000-0000-4000-8000-000000000000/executions/demo-exec-2`);
+    assert(detailRes.status === 200, "Demo execution detail returns HTTP 200");
+    const detailData = await detailRes.json();
+    assert(detailData.id === "demo-exec-2", "Detail endpoint returns requested execution ID");
+    assert(detailData.status === "PENDING_APPROVAL", "Detail endpoint reflects PENDING_APPROVAL status");
+
+    // Direct HTTP Cancel endpoint
+    const cancelRes = await fetch(`${baseUrl}/api/projects/00000000-0000-4000-8000-000000000000/executions/demo-exec-2/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "Operator cancelled in demo mode" }),
+    });
+    assert(cancelRes.status === 200, "Demo cancel execution returns HTTP 200");
+    const cancelData = await cancelRes.json();
+    assert(cancelData.success === true && cancelData.execution.status === "CANCELLED", "Cancel returns updated CANCELLED status");
+
+    // Direct HTTP Approve endpoint
+    const approveRes = await fetch(`${baseUrl}/api/projects/00000000-0000-4000-8000-000000000000/executions/demo-exec-2/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalToken: "demo-approval-token" }),
+    });
+    assert(approveRes.status === 200, "Demo approve execution returns HTTP 200");
+    const approveData = await approveRes.json();
+    assert(approveData.success === true && approveData.execution.status === "RUNNING", "Approve resumes execution into RUNNING status");
+
+    // Direct HTTP Retry endpoint
+    const retryRes = await fetch(`${baseUrl}/api/projects/00000000-0000-4000-8000-000000000000/executions/demo-exec-3/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    assert(retryRes.status === 200, "Demo retry execution returns HTTP 200");
+    const retryData = await retryRes.json();
+    assert(retryData.success === true && retryData.execution.status === "RUNNING", "Retry sets execution back into RUNNING status");
 
     // =========================================================================
     // SECTION 3: AUTHENTICATION & ACCESS CONTROL
@@ -342,7 +394,68 @@ async function runE2EIntegrationVerification() {
     assert(widgetConfig.botName === "NOVA E2E Assistant", "Widget config returns correct bot name");
     assert(widgetConfig.welcomeMessage === "Welcome to NOVA AI E2E Test", "Widget config returns correct welcome message");
 
-    // 2. Fetch widget config with unauthorized domain
+    // 2. Test multiple nested routes simulating customer application navigation
+    const nestedRoutes = [
+      "/",
+      "/student",
+      "/student/admin",
+      "/classes/projects",
+      "/dashboard/settings",
+    ];
+
+    for (const nestedPath of nestedRoutes) {
+      const nestedRes = await fetch(`${baseUrl}/api/widget/${widgetTokenA}/config`, {
+        headers: {
+          Origin: "http://localhost:3000",
+          Referer: `http://localhost:3000${nestedPath}`,
+        },
+      });
+      assert(nestedRes.status === 200, `Widget config loads on route: ${nestedPath}`);
+      const cfg = await nestedRes.json();
+      assert(cfg.botName === "NOVA E2E Assistant", `Widget config returns valid botName on route: ${nestedPath}`);
+    }
+
+    // 3. Static Asset Verification for Universal Widget Script
+    const widgetJsCandidates = [
+      path.resolve(process.cwd(), "frontend/chat-app/public/widget.js"),
+      path.resolve(process.cwd(), "../../frontend/chat-app/public/widget.js"),
+      path.resolve(process.cwd(), "../frontend/chat-app/public/widget.js"),
+    ];
+    const resolvedWidgetJs = widgetJsCandidates.find((p) => fs.existsSync(p));
+    assert(!!resolvedWidgetJs, "frontend/chat-app/public/widget.js file exists on disk");
+    if (resolvedWidgetJs) {
+      const widgetContent = fs.readFileSync(resolvedWidgetJs, "utf8");
+      assert(widgetContent.length > 5000, "widget.js has complete runtime payload (>5KB)");
+      assert(
+        widgetContent.includes("window.NOVA_AI") || widgetContent.includes("AriaWidgetInitialized"),
+        "widget.js contains universal initializer definition (window.NOVA_AI / AriaWidgetInitialized)"
+      );
+      assert(
+        widgetContent.includes("MutationObserver") &&
+        widgetContent.includes("popstate") &&
+        widgetContent.includes("pushState"),
+        "widget.js contains SPA nested route observers (MutationObserver, pushState, popstate)"
+      );
+      assert(
+        widgetContent.includes("new URL(scriptTag.src") || widgetContent.includes(":5000") || widgetContent.includes("getSubAssetUrl"),
+        "widget.js implements multi-port origin / dynamic URL resolution"
+      );
+    }
+
+    // 4. Production Build Artifact Verification
+    const distHtmlCandidates = [
+      path.resolve(process.cwd(), "frontend/chat-app/dist/public/index.html"),
+      path.resolve(process.cwd(), "../../frontend/chat-app/dist/public/index.html"),
+      path.resolve(process.cwd(), "../frontend/chat-app/dist/public/index.html"),
+    ];
+    const resolvedDistHtml = distHtmlCandidates.find((p) => fs.existsSync(p));
+    assert(!!resolvedDistHtml, "frontend production build dist/public/index.html exists");
+    if (resolvedDistHtml) {
+      const htmlContent = fs.readFileSync(resolvedDistHtml, "utf8");
+      assert(htmlContent.includes('<div id="root">'), "dist index.html contains SPA root mounting element");
+    }
+
+    // 5. Fetch widget config with unauthorized domain
     const unauthorizedOriginRes = await fetch(`${baseUrl}/api/widget/${widgetTokenA}/config`, {
       headers: {
         Origin: "https://evil-unauthorized-site.com",
@@ -351,7 +464,7 @@ async function runE2EIntegrationVerification() {
     });
     assert(unauthorizedOriginRes.status === 403, "Request from unauthorized origin is blocked with HTTP 403");
 
-    // 3. Fetch widget config with nonexistent token
+    // 6. Fetch widget config with nonexistent token
     const invalidTokenRes = await fetch(`${baseUrl}/api/widget/nonexistent-token-xyz/config`, {
       headers: { Origin: "http://localhost:3000" },
     });
@@ -406,7 +519,11 @@ async function runE2EIntegrationVerification() {
   }
 }
 
-runE2EIntegrationVerification().catch((err) => {
-  console.error("E2E Integration Verification failed with error:", err);
-  process.exit(1);
-});
+runE2EIntegrationVerification()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("E2E Integration Verification failed with error:", err);
+    process.exit(1);
+  });

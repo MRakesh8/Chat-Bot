@@ -20,6 +20,7 @@ import {
   organizationMembers,
   projectIntegrations,
   integrationTools,
+  organizationUsage,
   withBypassRLS,
   crypto
 } from "@workspace/db";
@@ -69,6 +70,10 @@ async function runAgentReliabilityTests() {
 
   // Setup Database Test Fixtures
   await withBypassRLS(async (tx: any) => {
+    // Reset any accumulated quota usage from prior test runs
+    await tx.delete(organizationUsage).where(eq(organizationUsage.organizationId, orgA_Id));
+    await tx.delete(organizationUsage).where(eq(organizationUsage.organizationId, orgB_Id));
+
     // Orgs
     await tx.insert(organizations).values([
       { id: orgA_Id, name: "Tenant A Organization" },

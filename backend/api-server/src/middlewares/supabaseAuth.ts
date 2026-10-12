@@ -23,6 +23,8 @@ export const supabaseAuthMiddleware = async (
     req.path.startsWith("/api/projects/share/") ||
     req.path.includes("/projects/demo") ||
     req.path.includes("/projects/00000000-0000-4000-8000-000000000000") ||
+    req.path.includes("/agent/capabilities/00000000-0000-4000-8000-000000000000") ||
+    req.path.includes("/agent/capabilities/demo") ||
     req.path === "/api/payments/razorpay/webhook"
   ) {
     return next();

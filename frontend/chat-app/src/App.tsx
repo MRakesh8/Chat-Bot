@@ -35,6 +35,7 @@ const AdminClarityPage = lazyWithRetry(() => import("./pages/admin-clarity"), { 
 const ConnectedServicesPage = lazyWithRetry(() => import("./pages/connected-services"), { key: "connected-services" });
 const ApiCenterPage = lazyWithRetry(() => import("./pages/api-center"), { key: "api-center" });
 const AgentControlPage = lazyWithRetry(() => import("./pages/agent-control"), { key: "agent-control" });
+const ProjectWorkingPage = lazyWithRetry(() => import("./pages/project-working"), { key: "project-working" });
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -152,6 +153,16 @@ export default function App() {
                                   <Route path="/projects" component={ProjectsPage} />
                                   <Route path="/projects/new" component={ProjectEditPage} />
                                   <Route path="/projects/:id/edit" component={ProjectEditPage} />
+
+                                  {/* Project Working routes */}
+                                  <Route path="/projects/working" component={ProjectWorkingPage} />
+                                  <Route path="/projects/:id/working" component={ProjectWorkingPage} />
+                                  <Route path="/projects/guide">
+                                    <Redirect to="/projects/working" replace />
+                                  </Route>
+                                  <Route path="/projects/:id/guide">
+                                    {(params) => <Redirect to={`/projects/${params.id}/working`} replace />}
+                                  </Route>
 
                                   {/* Demo and Explore routes */}
                                   <Route path="/projects/demo">

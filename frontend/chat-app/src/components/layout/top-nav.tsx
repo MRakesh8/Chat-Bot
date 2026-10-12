@@ -16,11 +16,13 @@ import {
 import { apiUrl } from "@/lib/api-url";
 import { useAuthFetch } from "@/hooks/use-auth-fetch";
 import { useNovaAi } from "@/contexts/NovaAiContext";
+import { NovaBrand } from "@/components/ui/nova-brand";
 
 export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
   const [location, setLocation] = useLocation();
   const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, effectiveMode } = useTheme();
+  const isDark = effectiveMode === "dark" || theme === "dark";
   const { toggleOpen } = useNovaAi();
   const authFetch = useAuthFetch();
 
@@ -144,17 +146,17 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
           {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
         </Button>
 
-        {/* ✨ NOVA AI Floating Launcher */}
+        {/* NOVA AI Floating Launcher */}
         <Button
           variant="outline"
           size="sm"
           onClick={toggleOpen}
           aria-label="Open NOVA AI Assistant"
-          className="relative flex items-center gap-1.5 text-xs font-semibold bg-gradient-to-r from-violet-500/10 via-primary/10 to-indigo-500/10 border-primary/30 hover:border-primary text-foreground hover:text-primary h-9 px-3 rounded-xl transition-all shadow-xs group overflow-hidden focus-visible:ring-2 focus-visible:ring-primary/50"
-          title="Open ✨ NOVA AI Floating Assistant"
+          className="relative flex items-center gap-2 text-xs font-semibold bg-gradient-to-r from-violet-500/10 via-primary/10 to-indigo-500/10 border-primary/30 hover:border-primary text-foreground hover:text-primary h-9 px-3 rounded-xl transition-all shadow-xs group overflow-hidden focus-visible:ring-2 focus-visible:ring-primary/50"
+          title="Open NOVA AI Floating Assistant"
         >
-          <Sparkles className="w-3.5 h-3.5 text-violet-500 animate-pulse shrink-0" />
-          <span className="font-bold tracking-tight">✨ NOVA AI</span>
+          <NovaBrand variant="mark" height={18} theme={isDark ? "dark" : "light"} className="shrink-0" />
+          <span className="font-bold tracking-tight">NOVA AI</span>
         </Button>
 
         {/* Notifications */}

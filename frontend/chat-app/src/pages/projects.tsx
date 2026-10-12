@@ -23,6 +23,7 @@ import {
   AlertCircle,
   FolderPlus,
   Compass,
+  Layers,
 } from "lucide-react";
 import {
   Dialog,
@@ -396,6 +397,21 @@ export default function ProjectsPage() {
               </div>
 
               <div className="flex items-center gap-2.5">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const firstProj = projectList?.[0];
+                    if (firstProj?.id) {
+                      setLocation(`/projects/${firstProj.id}/working`);
+                    } else {
+                      setLocation("/projects/working");
+                    }
+                  }}
+                  className="border-border hover:bg-accent text-foreground gap-2 h-10 px-4 rounded-xl font-medium text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Layers className="w-4 h-4 text-primary" />
+                  Project Working
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => setIsExploreOpen(true)}

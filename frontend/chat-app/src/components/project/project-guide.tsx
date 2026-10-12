@@ -309,7 +309,7 @@ export function ProjectGuide({ projectId, onSelectTab }: ProjectGuideProps) {
               </div>
               <CardTitle className="text-xl font-bold flex items-center gap-2">
                 <Compass className="w-5 h-5 text-primary" />
-                Project Guide — How NOVA Works
+                Project Working — How NOVA Works
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground mt-1">
                 Understand how your NOVA Business AI project connects website discovery, Knowledge Base RAG, AI Engine, Widget Studio, and 9-Step Agent Control.
