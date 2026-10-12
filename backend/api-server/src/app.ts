@@ -81,17 +81,42 @@ app.use(
 
 import { RedisFallbackStore } from "./lib/rate-limiter";
 
+// Localhost and development rate-limit bypass helper
+const isLocalhostRequest = (req: express.Request) => {
+  const ip = req.ip || req.socket?.remoteAddress || "";
+  const host = req.get("host") || "";
+  return (
+    ip === "127.0.0.1" ||
+    ip === "::1" ||
+    ip.endsWith("127.0.0.1") ||
+    host.startsWith("localhost") ||
+    host.startsWith("127.0.0.1")
+  );
+};
+
+const shouldBypassRateLimit = (req: express.Request) => {
+  if (req.method === "OPTIONS") return true;
+  if (process.env.NODE_ENV !== "production") return true;
+  if (process.env.LOCAL_DEMO_MODE === "true") return true;
+  if (isLocalhostRequest(req)) return true;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.includes("local-demo-token")) return true;
+  return false;
+};
+
 // Global API Rate Limiting (Fallback)
 const globalLimiter = rateLimit({
   store: new RedisFallbackStore('global'),
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: process.env.NODE_ENV === "production" ? 1500 : 100000,
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
   skip: (req) => {
-    if (req.method === "OPTIONS") return true;
+    if (shouldBypassRateLimit(req)) return true;
     const p = req.originalUrl.split('?')[0];
     return p === '/api/healthz' || 
+           p === '/healthz' ||
            p.startsWith('/api/webhooks/') || 
            p.startsWith('/api/widget/') || 
            p.startsWith('/api/public/') || 
@@ -109,6 +134,7 @@ const geminiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests to the AI model. Please try again later." },
+  skip: shouldBypassRateLimit,
 });
 // Apply to message endpoints specifically with correct route prefix
 app.use("/api/gemini/conversations/:id/messages", geminiLimiter);
@@ -120,7 +146,8 @@ const keyVerifyLimiter = rateLimit({
   max: 10, // 10 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many key verification attempts. Please wait a minute." }
+  message: { error: "Too many key verification attempts. Please wait a minute." },
+  skip: shouldBypassRateLimit,
 });
 app.use("/api/projects/:projectId/widget/api-keys/:keyId/verify", keyVerifyLimiter);
 app.use("/api/projects/:projectId/widget/api-keys/:keyId/test", keyVerifyLimiter);
@@ -131,7 +158,8 @@ const paymentLimiter = rateLimit({
   max: 5, // 5 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many payment submission attempts. Please try again later." }
+  message: { error: "Too many payment submission attempts. Please try again later." },
+  skip: shouldBypassRateLimit,
 });
 app.use("/api/payments/manual", paymentLimiter);
 
@@ -142,6 +170,7 @@ const widgetLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests to the widget API. Please try again later." },
+  skip: shouldBypassRateLimit,
 });
 app.use("/api/widget", widgetLimiter);
 
@@ -152,7 +181,8 @@ const integrationLimiter = rateLimit({
   max: 20, // 20 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many integration requests. Please wait a minute." }
+  message: { error: "Too many integration requests. Please wait a minute." },
+  skip: shouldBypassRateLimit,
 });
 app.use("/api/projects/:projectId/integrations", integrationLimiter);
 app.use("/api/projects/:projectId/tools", integrationLimiter);
@@ -164,7 +194,8 @@ const agentLimiter = rateLimit({
   max: 15, // 15 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many agent requests. Please wait a minute." }
+  message: { error: "Too many agent requests. Please wait a minute." },
+  skip: shouldBypassRateLimit,
 });
 app.use("/api/agent", agentLimiter);
 
@@ -205,6 +236,36 @@ app.use("/api", (req, res, next) => {
   }
   next();
 });
+
+// Root server status and health discovery endpoints
+app.get("/", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "NOVA Business AI API Server",
+    version: "1.0.0",
+    health: "/api/healthz",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/health", (_req, res) => {
+  res.redirect("/api/healthz");
+});
+
+app.get("/healthz", (_req, res) => {
+  res.redirect("/api/healthz");
+});
+
+app.get("/api", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "NOVA Business AI API Server",
+    version: "1.0.0",
+    health: "/api/healthz",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use("/api/widget", widgetPublicRouter);
 
 app.use("/api", healthRouter);

@@ -18,14 +18,24 @@ export const supabaseAuthMiddleware = async (
   res: Response,
   next: NextFunction,
 ) => {
-  // Public share routes, demo project, and webhooks do not require Supabase authentication
+  const p = req.path;
+
+  // Root endpoints, health checks, non-API routes, public share routes, demo project, and webhooks do not require Supabase authentication
   if (
-    req.path.startsWith("/api/projects/share/") ||
-    req.path.includes("/projects/demo") ||
-    req.path.includes("/projects/00000000-0000-4000-8000-000000000000") ||
-    req.path.includes("/agent/capabilities/00000000-0000-4000-8000-000000000000") ||
-    req.path.includes("/agent/capabilities/demo") ||
-    req.path === "/api/payments/razorpay/webhook"
+    p === "/" ||
+    p === "/health" ||
+    p === "/healthz" ||
+    p === "/favicon.ico" ||
+    p === "/api" ||
+    p === "/api/healthz" ||
+    p.startsWith("/api/health") ||
+    !p.startsWith("/api") ||
+    p.startsWith("/api/projects/share/") ||
+    p.includes("/projects/demo") ||
+    p.includes("/projects/00000000-0000-4000-8000-000000000000") ||
+    p.includes("/agent/capabilities/00000000-0000-4000-8000-000000000000") ||
+    p.includes("/agent/capabilities/demo") ||
+    p === "/api/payments/razorpay/webhook"
   ) {
     return next();
   }
@@ -103,7 +113,7 @@ export const supabaseAuthMiddleware = async (
   const token = authHeader.split(" ")[1];
 
   if (
-    (process.env.LOCAL_DEMO_MODE === "true" || process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") &&
+    (process.env.LOCAL_DEMO_MODE === "true" || process.env.NODE_ENV !== "production") &&
     (token === "local-demo-token" || token === "test-token")
   ) {
     try {

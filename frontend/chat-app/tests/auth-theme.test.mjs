@@ -309,15 +309,20 @@ assert(
 );
 console.log("✓ Test 21: Project Guide title renamed to 'Project Working — How NOVA Works'.");
 
-// 22. Audit Removal of Project Guide from Project Overview Navigation
-const workspaceGroupMatch = projectEditTsx.match(/id:\s*"workspace"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
-assert(workspaceGroupMatch, "Workspace category group must exist in project-edit.tsx");
+// 22. Audit Promotion of Overview and Removal of Workspace Category
+const overviewGroupMatch = projectEditTsx.match(/id:\s*"overview"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
+assert(overviewGroupMatch, "Overview category group must exist in project-edit.tsx");
 assert(
-  !workspaceGroupMatch[1].includes('"guide"') &&
-  workspaceGroupMatch[1].includes('"overview"'),
-  "Project Guide tab must be removed from Workspace category navigation items"
+  !projectEditTsx.includes('title: "Workspace"') &&
+  !projectEditTsx.includes('id: "workspace"'),
+  "Workspace category must be completely removed from project navigation"
 );
-console.log("✓ Test 22: Project Guide tab successfully removed from Project Overview navigation.");
+assert(
+  !overviewGroupMatch[1].includes('"guide"') &&
+  overviewGroupMatch[1].includes('"overview"'),
+  "Project Guide tab must be removed from Overview category navigation items"
+);
+console.log("✓ Test 22: Overview promoted to primary category navigation and Workspace category cleanly removed.");
 
 // 23. Audit Route Registration in App.tsx
 assert(
@@ -377,16 +382,20 @@ assert(
 );
 console.log("✓ Test 28: Visitor Inbox and Channels remain fully accessible through the Website Experience category.");
 
-// 29. Audit Removal of Competing Duplicate Controls Inside Website Connected Content Card
-const websiteConnectedCardBlock = projectEditTsx.match(/<TabsContent value="website-connected">[\s\S]*?<\/CardHeader>/);
-assert(websiteConnectedCardBlock, "Website Connected card header must exist");
+// 29. Audit Complete Removal of Website Connected Information Panel Container
 assert(
-  !websiteConnectedCardBlock[0].includes('onClick={() => handleTabChange("website-connected", "widget-studio")}') &&
-  !websiteConnectedCardBlock[0].includes('onClick={() => handleTabChange("website-connected", "deployment")}') &&
-  !websiteConnectedCardBlock[0].includes('onClick={() => handleTabChange("website-connected", "api-keys")}'),
-  "Website Connected card header must not render duplicate subtab button switcher competing with lower tab bar"
+  !projectEditTsx.includes('Consolidated management for your website integration') &&
+  !projectEditTsx.includes('Step 1 Shortcut'),
+  "The entire Website Connected information panel, badge, and description must be removed from TabsContent value='website-connected'"
 );
-console.log("✓ Test 29: Duplicate subtab button controls removed from Website Connected card header.");
+const tabsContentWebsiteConnected = projectEditTsx.match(/<TabsContent value="website-connected">([\s\S]*?)<\/TabsContent>/);
+assert(tabsContentWebsiteConnected, "TabsContent value='website-connected' must exist");
+assert(
+  !tabsContentWebsiteConnected[1].includes('<Card') &&
+  !tabsContentWebsiteConnected[1].includes('Website Connected'),
+  "TabsContent value='website-connected' must not contain the Card information panel or heading"
+);
+console.log("✓ Test 29: Entire Website Connected information panel container completely removed.");
 
 console.log("\n=================================================");
 console.log("ALL 29 TESTS PASSED (EXIT 0)");

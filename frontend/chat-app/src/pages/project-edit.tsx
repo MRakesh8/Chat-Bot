@@ -50,8 +50,8 @@ type NavGroup = {
 
 const PROJECT_NAV_GROUPS: NavGroup[] = [
   {
-    id: "workspace",
-    title: "Workspace",
+    id: "overview",
+    title: "Overview",
     description: "Overview & Dashboard",
     icon: LayoutDashboard,
     items: [
@@ -144,6 +144,9 @@ export default function ProjectEditPage() {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
       const urlTab = searchParams.get("tab");
+      if (urlTab === "workspace") {
+        return "overview";
+      }
       if (urlTab === "widget-studio" || urlTab === "deployment" || urlTab === "api-keys") {
         return "website-connected";
       }
@@ -151,6 +154,9 @@ export default function ProjectEditPage() {
     }
     if (projectId) {
       const saved = getSavedProjectTab(projectId);
+      if (saved === "workspace") {
+        return "overview";
+      }
       if (saved === "widget-studio" || saved === "deployment" || saved === "api-keys") {
         return "website-connected";
       }
@@ -184,6 +190,9 @@ export default function ProjectEditPage() {
   }, [projectId]);
 
   const handleTabChange = (tab: string, subtab?: string) => {
+    if (tab === "workspace") {
+      tab = "overview";
+    }
     if (tab === "widget-studio" || tab === "deployment" || tab === "api-keys") {
       setActiveTab("website-connected");
       setWebsiteConnectedSubtab(tab);
@@ -1037,7 +1046,7 @@ export default function ProjectEditPage() {
                 
                 <br />
                 {/* Dashboard Overview */}
-                {projectId && <DashboardOverview projectId={projectId} />}
+                {projectId && <DashboardOverview key={projectId} projectId={projectId} />}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1193,36 +1202,10 @@ export default function ProjectEditPage() {
 
           <TabsContent value="website-connected">
             {projectId && (
-              <div className="mt-8 space-y-6">
-                <Card className="bg-card border-border text-card-foreground shadow-xs">
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                          <Globe className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="text-lg">Website Connected</CardTitle>
-                            <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5 rounded-full">
-                              Step 1 Shortcut
-                            </Badge>
-                          </div>
-                          <CardDescription className="text-xs mt-0.5 text-muted-foreground">
-                            Consolidated management for your website integration: customize widget styles, copy embed scripts, or manage API keys.
-                          </CardDescription>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-
-                {/* Subtab content view */}
-                <div>
-                  {websiteConnectedSubtab === "widget-studio" && <WidgetStudio projectId={projectId} />}
-                  {websiteConnectedSubtab === "deployment" && <Deployment projectId={projectId} />}
-                  {websiteConnectedSubtab === "api-keys" && <ApiKeys projectId={projectId} />}
-                </div>
+              <div className="mt-8">
+                {websiteConnectedSubtab === "widget-studio" && <WidgetStudio projectId={projectId} />}
+                {websiteConnectedSubtab === "deployment" && <Deployment projectId={projectId} />}
+                {websiteConnectedSubtab === "api-keys" && <ApiKeys projectId={projectId} />}
               </div>
             )}
           </TabsContent>
