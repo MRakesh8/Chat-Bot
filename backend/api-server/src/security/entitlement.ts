@@ -176,6 +176,14 @@ export async function checkProjectEntitlement(
           message: "Project entitlement is cancelled.",
         };
       }
+      if (entitlement?.entitlementStatus === "TRIAL_EXPIRED") {
+        return {
+          allowed: false,
+          status: "TRIAL_EXPIRED",
+          message: "Project trial has expired.",
+          expiresAt: entitlement?.trialEndsAt ?? null,
+        };
+      }
 
       const now = new Date();
 

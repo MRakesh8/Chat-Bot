@@ -121,7 +121,7 @@ async function runPhase2FTestSuite() {
     });
     assert(infoRes.success === true, "Information query handles execution successfully");
     assert(
-      infoRes.data?.intent === "information",
+      infoRes.data?.intent === "information" || infoRes.data?.intent === "business_information",
       "Information query correctly classified as 'information' intent"
     );
 

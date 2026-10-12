@@ -128,13 +128,23 @@ router.post("/process", async (req: Request, res: Response): Promise<any> => {
 
     if (execRecord && execRecord.organizationId) {
       const resAny = result as any;
-      const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+      const resData = result.data || {};
+      const isPending = resAny.status === "PENDING_CONFIRMATION" || resData.status === "PENDING_CONFIRMATION";
+      const finalStatus = isPending ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+      const stepsToSave = resData.steps || resAny.steps || [];
+      const tokenToSave = resData.confirmationToken || resAny.confirmationToken || null;
+
       await updateExecutionProgress(projectId, execRecord.organizationId, execRecord.id, {
         status: finalStatus,
         outputData: result.data || { response: resAny.response },
-        error: result.error || null,
-        steps: resAny.steps || [],
+        error: result.error || resData.error || null,
+        steps: stepsToSave,
       });
+
+      if (tokenToSave) {
+        const { agentExecutions } = await import("@workspace/db");
+        await db.update(agentExecutions).set({ approvalToken: tokenToSave }).where(eq(agentExecutions.id, execRecord.id));
+      }
     }
 
     return res.json(result);

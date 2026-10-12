@@ -154,7 +154,7 @@ export function Deployment({ projectId }: { projectId: string }) {
                 {/* HTML Guide */}
                 <TabsContent value="html" className="space-y-4">
                   <h3 className="text-sm font-medium">Standard HTML Installation</h3>
-                  <p className="text-sm text-muted-foreground">Paste this code right before the closing <code>&lt;/body&gt;</code> tag on your website.</p>
+                  <p className="text-sm text-muted-foreground">Paste this code right before the closing <code>&lt;/body&gt;</code> tag on your website (or in your shared root layout) to make the AI widget available across all routes, including nested pages.</p>
                   <div className="relative">
                     <pre className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 text-sm overflow-x-auto font-mono">
                       {embedCode}
@@ -174,7 +174,7 @@ export function Deployment({ projectId }: { projectId: string }) {
                 {/* React Guide */}
                 <TabsContent value="react" className="space-y-4">
                   <h3 className="text-sm font-medium">React / Vite Installation</h3>
-                  <p className="text-sm text-muted-foreground">You can add the script tag to your <code>index.html</code> file, or load it dynamically in a component.</p>
+                  <p className="text-sm text-muted-foreground">Add the script tag to your root <code>index.html</code> or mount the component in your root layout (e.g. <code>App.tsx</code>) so the widget persists across nested route navigation.</p>
                   <div className="relative">
                     <pre className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 text-sm overflow-x-auto font-mono">
 {`import { useEffect } from "react";

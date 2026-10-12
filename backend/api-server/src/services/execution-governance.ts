@@ -30,6 +30,10 @@ export interface GetExecutionsOptions {
   organizationId: string;
   statusFilter?: ExecutionStatus | "all";
   agentType?: string;
+  searchQuery?: string;
+  toolName?: string;
+  fromDate?: string;
+  toDate?: string;
   limit?: number;
   offset?: number;
 }
@@ -165,7 +169,18 @@ export async function createExecution(params: CreateExecutionParams) {
  * Retrieves paginated execution history for a project with strict tenant isolation.
  */
 export async function getProjectExecutions(options: GetExecutionsOptions) {
-  const { projectId, organizationId, statusFilter = "all", agentType, limit = 50, offset = 0 } = options;
+  const {
+    projectId,
+    organizationId,
+    statusFilter = "all",
+    agentType,
+    searchQuery,
+    toolName,
+    fromDate,
+    toDate,
+    limit = 50,
+    offset = 0
+  } = options;
   const safeLimit = Math.max(1, Math.min(limit, 100));
   const safeOffset = Math.max(0, offset);
 
@@ -188,6 +203,31 @@ export async function getProjectExecutions(options: GetExecutionsOptions) {
 
     if (agentType) {
       conditions.push(eq(agentExecutions.agentType, agentType));
+    }
+
+    if (searchQuery && searchQuery.trim()) {
+      conditions.push(sql`${agentExecutions.title} ILIKE ${'%' + searchQuery.trim() + '%'}`);
+    }
+
+    if (fromDate) {
+      const fDate = new Date(fromDate);
+      if (!isNaN(fDate.getTime())) {
+        conditions.push(sql`${agentExecutions.createdAt} >= ${fDate}`);
+      }
+    }
+
+    if (toDate) {
+      const tDate = new Date(toDate);
+      if (!isNaN(tDate.getTime())) {
+        conditions.push(sql`${agentExecutions.createdAt} <= ${tDate}`);
+      }
+    }
+
+    if (toolName && toolName.trim()) {
+      const cleanTool = toolName.trim();
+      conditions.push(
+        sql`(${agentExecutions.inputPayload}->>'actionName' = ${cleanTool} OR ${agentExecutions.outputData}->>'toolExecuted' = ${cleanTool} OR ${agentExecutions.steps}::text ILIKE ${'%' + cleanTool + '%'})`
+      );
     }
 
     const items = await tx
@@ -422,12 +462,13 @@ export async function retryExecution(projectId: string, organizationId: string, 
           },
         }).then(async (result) => {
           const resAny = result as any;
-          const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+          const resData = result.data || {};
+          const finalStatus = (resAny.status === "PENDING_CONFIRMATION" || resData.status === "PENDING_CONFIRMATION") ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
           await updateExecutionProgress(projectId, organizationId, executionId, {
             status: finalStatus,
             outputData: result.data || { response: resAny.response },
-            error: result.error || null,
-            steps: resAny.steps || [],
+            error: result.error || resData.error || null,
+            steps: resData.steps || resAny.steps || [],
           });
         }).catch(async (execErr: any) => {
           await updateExecutionProgress(projectId, organizationId, executionId, {
@@ -531,12 +572,13 @@ export async function approveExecution(
           },
         }).then(async (result) => {
           const resAny = result as any;
-          const finalStatus = resAny.status === "PENDING_CONFIRMATION" ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
+          const resData = result.data || {};
+          const finalStatus = (resAny.status === "PENDING_CONFIRMATION" || resData.status === "PENDING_CONFIRMATION") ? "PENDING_APPROVAL" : (result.success ? "COMPLETED" : "FAILED");
           await updateExecutionProgress(projectId, organizationId, executionId, {
             status: finalStatus,
             outputData: result.data || { response: resAny.response },
-            error: result.error || null,
-            steps: resAny.steps || [],
+            error: result.error || resData.error || null,
+            steps: resData.steps || resAny.steps || [],
           });
         }).catch(async (execErr: any) => {
           await updateExecutionProgress(projectId, organizationId, executionId, {
@@ -565,6 +607,7 @@ export async function updateExecutionProgress(
     outputData?: Record<string, any>;
     error?: string | null;
     steps?: any[];
+    approvalToken?: string | null;
   }
 ) {
   return await withTenantContext(organizationId, async (tx: any) => {
@@ -584,6 +627,10 @@ export async function updateExecutionProgress(
 
     if (updates.error !== undefined) {
       updateData.error = updates.error ? sanitizeActivityText(updates.error, 300) : null;
+    }
+
+    if (updates.approvalToken !== undefined) {
+      updateData.approvalToken = updates.approvalToken;
     }
 
     if (updates.steps) {

@@ -54,11 +54,26 @@ export function AgentRunHistory({
 }: AgentRunHistoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [agentTypeFilter, setAgentTypeFilter] = useState<string>("ALL");
+  const [toolFilter, setToolFilter] = useState<string>("ALL");
+  const [environmentFilter, setEnvironmentFilter] = useState<string>("ALL");
 
   const uniqueAgentTypes = useMemo(() => {
     const set = new Set<string>();
     for (const e of executions) {
       if (e.agentType) set.add(e.agentType);
+    }
+    return Array.from(set);
+  }, [executions]);
+
+  const uniqueTools = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of executions) {
+      if (Array.isArray(e.steps)) {
+        for (const s of e.steps) {
+          if (s.actionType) set.add(s.actionType);
+          else if (s.name) set.add(s.name);
+        }
+      }
     }
     return Array.from(set);
   }, [executions]);
@@ -72,7 +87,13 @@ export function AgentRunHistory({
         const matchId = exec.id.toLowerCase().includes(q);
         const matchAgent = (exec.agentType || "").toLowerCase().includes(q);
         const matchError = (exec.error || "").toLowerCase().includes(q);
-        if (!matchTitle && !matchId && !matchAgent && !matchError) {
+        const matchStep = exec.steps?.some(
+          (s) =>
+            s.name.toLowerCase().includes(q) ||
+            (s.actionType && s.actionType.toLowerCase().includes(q)) ||
+            (s.description && s.description.toLowerCase().includes(q))
+        );
+        if (!matchTitle && !matchId && !matchAgent && !matchError && !matchStep) {
           return false;
         }
       }
@@ -82,18 +103,37 @@ export function AgentRunHistory({
         if (exec.agentType !== agentTypeFilter) return false;
       }
 
+      // 3. Tool Filter
+      if (toolFilter !== "ALL") {
+        const hasTool = exec.steps?.some(
+          (s) => s.actionType === toolFilter || s.name === toolFilter
+        );
+        if (!hasTool) return false;
+      }
+
+      // 4. Environment Filter
+      const isDemoRun = exec.id.startsWith("exec_demo");
+      if (environmentFilter === "LIVE" && isDemoRun) return false;
+      if (environmentFilter === "DEMO" && !isDemoRun) return false;
+
       return true;
     });
-  }, [executions, searchQuery, agentTypeFilter]);
+  }, [executions, searchQuery, agentTypeFilter, toolFilter, environmentFilter]);
 
   const clearFilters = () => {
     setSearchQuery("");
     onStatusFilterChange("all");
     setAgentTypeFilter("ALL");
+    setToolFilter("ALL");
+    setEnvironmentFilter("ALL");
   };
 
   const hasActiveFilters =
-    searchQuery.trim() !== "" || statusFilter !== "all" || agentTypeFilter !== "ALL";
+    searchQuery.trim() !== "" ||
+    statusFilter !== "all" ||
+    agentTypeFilter !== "ALL" ||
+    toolFilter !== "ALL" ||
+    environmentFilter !== "ALL";
 
   return (
     <div className="space-y-4">
@@ -105,7 +145,7 @@ export function AgentRunHistory({
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by execution title, ID, agent type, or error..."
+              placeholder="Search by execution title, ID, agent type, step or error..."
               className="pl-9 bg-muted/40 border-border text-xs rounded-xl h-9 focus-visible:ring-primary/40"
             />
           </div>
@@ -134,14 +174,14 @@ export function AgentRunHistory({
           </div>
         </div>
 
-        {/* Status & Agent Type Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+        {/* Multi-Dimensional Filter Selects */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1">
           <Select value={statusFilter} onValueChange={onStatusFilterChange}>
             <SelectTrigger className="h-8 text-xs rounded-xl bg-muted/30 border-border">
               <SelectValue placeholder="Status: All" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Status: All Lifecycle States</SelectItem>
+              <SelectItem value="all">Status: All States</SelectItem>
               <SelectItem value="RUNNING">Status: RUNNING</SelectItem>
               <SelectItem value="PENDING_APPROVAL">Status: PENDING_APPROVAL</SelectItem>
               <SelectItem value="COMPLETED">Status: COMPLETED</SelectItem>
@@ -156,12 +196,37 @@ export function AgentRunHistory({
               <SelectValue placeholder="Agent: All" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Agent Type: All</SelectItem>
+              <SelectItem value="ALL">Agent: All Types</SelectItem>
               {uniqueAgentTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   Agent: {t}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={toolFilter} onValueChange={setToolFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-xl bg-muted/30 border-border">
+              <SelectValue placeholder="Tool: All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tool: All Executed</SelectItem>
+              {uniqueTools.map((t) => (
+                <SelectItem key={t} value={t}>
+                  Tool: {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={environmentFilter} onValueChange={setEnvironmentFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-xl bg-muted/30 border-border">
+              <SelectValue placeholder="Env: All" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Env: Live & Demo</SelectItem>
+              <SelectItem value="LIVE">Env: Live Workspace</SelectItem>
+              <SelectItem value="DEMO">Env: Demo Sandbox</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -198,6 +263,10 @@ export function AgentRunHistory({
             const canCancel = (isRunning || isPending || isPendingApproval) && onCancel;
             const canRetry = (isFailed || isCancelled) && exec.retryCount < exec.maxRetries && onRetry;
             const canApprove = isPendingApproval && onApprove;
+
+            const totalSteps = exec.steps?.length || 0;
+            const completedSteps = exec.steps?.filter((s) => s.status === "COMPLETED").length || 0;
+            const isDemoRun = exec.id.startsWith("exec_demo");
 
             return (
               <div
@@ -242,9 +311,29 @@ export function AgentRunHistory({
                       <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 border-border">
                         {exec.agentType}
                       </Badge>
-                      {exec.steps && exec.steps.length > 0 && (
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {exec.steps.length} {exec.steps.length === 1 ? "step" : "steps"}
+                      <Badge
+                        variant="outline"
+                        className={`text-[9px] font-mono px-1.5 py-0 ${
+                          isDemoRun
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                            : "bg-primary/10 text-primary border-primary/30"
+                        }`}
+                      >
+                        {isDemoRun ? "SANDBOX" : "LIVE"}
+                      </Badge>
+                      {totalSteps > 0 && (
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                            isPendingApproval
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/30 font-bold"
+                              : isFailed
+                              ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                              : isCompleted
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              : "bg-muted/80 text-muted-foreground border-border"
+                          }`}
+                        >
+                          {completedSteps}/{totalSteps} steps {isPendingApproval ? "(Approval Needed)" : isCompleted ? "completed" : "done"}
                         </span>
                       )}
                       {exec.retryCount > 0 && (
@@ -257,6 +346,26 @@ export function AgentRunHistory({
                     <p className="text-xs text-muted-foreground font-mono truncate">
                       ID: {exec.id}
                     </p>
+
+                    {/* Step Action Tools Preview */}
+                    {exec.steps && exec.steps.some((s) => s.actionType || s.name) && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        {Array.from(
+                          new Set(
+                            exec.steps
+                              .map((s) => s.actionType || s.name)
+                              .filter((n): n is string => Boolean(n))
+                          )
+                        ).map((toolName) => (
+                          <span
+                            key={toolName}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground border border-border/60"
+                          >
+                            ⚙️ {toolName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {exec.error && (
                       <p className="text-[11px] text-rose-400 font-mono line-clamp-1">

@@ -17,51 +17,180 @@ const router = Router({ mergeParams: true });
 /**
  * Demo project executions helper
  */
-function getDemoExecutions() {
+export function getDemoExecutions(filters?: { status?: string; search?: string; agentType?: string }) {
   const now = new Date().toISOString();
+  const allExecutions = [
+    {
+      id: "demo-exec-1",
+      projectId: "demo-project",
+      organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
+      agentType: "business_agent",
+      title: "Website Catalog Analysis & Knowledge Indexing",
+      status: "COMPLETED",
+      inputPayload: { targetUrl: "https://demo.apex-dynamics.com", maxDepth: 2 },
+      outputData: { indexedPages: 14, chunksGenerated: 48, status: "SUCCESS" },
+      steps: [
+        {
+          stepId: "step_1",
+          name: "crawl_page",
+          actionType: "crawl_page",
+          description: "Crawl Homepage and extract structure",
+          riskLevel: "READ_ONLY",
+          status: "COMPLETED",
+          durationMs: 420,
+          verification: {
+            verified: true,
+            status: "SUCCEEDED",
+            evidence: { recordsCount: 1, entityId: "page_home" },
+            reason: "Successfully parsed homepage DOM tree",
+          },
+        },
+        {
+          stepId: "step_2",
+          name: "extract_chunks",
+          actionType: "extract_chunks",
+          description: "Extract clean semantic knowledge chunks",
+          dependsOn: ["step_1"],
+          riskLevel: "READ_ONLY",
+          status: "COMPLETED",
+          durationMs: 680,
+          verification: {
+            verified: true,
+            status: "SUCCEEDED",
+            evidence: { recordsCount: 48 },
+            reason: "Generated 48 chunks with verified tokens",
+          },
+        },
+        {
+          stepId: "step_3",
+          name: "generate_embeddings",
+          actionType: "generate_embeddings",
+          description: "Vectorize chunks and upsert to index",
+          dependsOn: ["step_2"],
+          riskLevel: "LOW_RISK_WRITE",
+          status: "COMPLETED",
+          durationMs: 1150,
+          verification: {
+            verified: true,
+            status: "SUCCEEDED",
+            evidence: { recordsCount: 48, entityId: "kb_index_ready" },
+            reason: "Indexed 48 vectors into knowledge store",
+          },
+        },
+      ],
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      startedAt: new Date(Date.now() - 3600000).toISOString(),
+      completedAt: new Date(Date.now() - 3597750).toISOString(),
+    },
+    {
+      id: "demo-exec-2",
+      projectId: "demo-project",
+      organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
+      agentType: "business_agent",
+      title: "Cancel Shopify Order #1094",
+      status: "PENDING_APPROVAL",
+      inputPayload: { actionName: "shopify_cancel_order", orderId: "#1094" },
+      outputData: {
+        stepToConfirm: {
+          stepId: "step_1",
+          actionType: "shopify_cancel_order",
+          description: "Cancel store order #1094",
+          input: { orderId: "#1094" },
+          riskLevel: "HIGH_RISK_WRITE",
+        },
+        confirmationToken: "demo_approval_token_shopify_cancel_1094",
+        expiresAt: new Date(Date.now() + 240000).toISOString(),
+        response: "Approval Required: Step 'Cancel store order #1094' is classified as HIGH_RISK_WRITE risk. Please confirm to proceed.",
+      },
+      steps: [
+        {
+          stepId: "step_1",
+          name: "shopify_cancel_order",
+          actionType: "shopify_cancel_order",
+          description: "Cancel store order #1094",
+          input: { orderId: "#1094" },
+          riskLevel: "HIGH_RISK_WRITE",
+          requiresConfirmation: true,
+          status: "PENDING_APPROVAL",
+          detail: "Awaiting operator authorization before permanent cancellation.",
+        },
+      ],
+      approvalToken: "demo_approval_token_shopify_cancel_1094",
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: new Date(Date.now() - 600000).toISOString(),
+      startedAt: new Date(Date.now() - 600000).toISOString(),
+    },
+    {
+      id: "demo-exec-3",
+      projectId: "demo-project",
+      organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
+      agentType: "business_agent",
+      title: "Bulk Price Adjustment - Winter Sale",
+      status: "FAILED",
+      inputPayload: { actionName: "shopify_bulk_update_prices", discountPercent: 20 },
+      outputData: {},
+      error: "Rate limit exceeded on Shopify Admin API (HTTP 429). Retry quota exhausted.",
+      steps: [
+        {
+          stepId: "step_1",
+          name: "shopify_get_products",
+          actionType: "shopify_get_products",
+          description: "Fetch product catalog",
+          riskLevel: "READ_ONLY",
+          status: "COMPLETED",
+          durationMs: 310,
+          verification: {
+            verified: true,
+            status: "SUCCEEDED",
+            evidence: { recordsCount: 15 },
+          },
+        },
+        {
+          stepId: "step_2",
+          name: "shopify_update_product",
+          actionType: "shopify_update_product",
+          description: "Update product prices in bulk",
+          dependsOn: ["step_1"],
+          riskLevel: "LOW_RISK_WRITE",
+          status: "FAILED",
+          error: "HTTP 429: Too Many Requests from Shopify API gateway",
+          verification: {
+            verified: false,
+            status: "FAILED",
+            reason: "Provider returned rate limit error",
+          },
+        },
+      ],
+      retryCount: 1,
+      maxRetries: 3,
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      startedAt: new Date(Date.now() - 7200000).toISOString(),
+      completedAt: new Date(Date.now() - 7198000).toISOString(),
+    },
+  ];
+
+  let filtered = allExecutions;
+  if (filters?.status && filters.status !== "all") {
+    filtered = filtered.filter((e) => e.status === filters.status);
+  }
+  if (filters?.agentType && filters.agentType !== "ALL") {
+    filtered = filtered.filter((e) => e.agentType === filters.agentType);
+  }
+  if (filters?.search && filters.search.trim()) {
+    const q = filters.search.toLowerCase();
+    filtered = filtered.filter((e) => e.title.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
+  }
+
   return {
-    executions: [
-      {
-        id: "demo-exec-1",
-        projectId: "demo-project",
-        organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
-        agentType: "business_agent",
-        title: "Website Catalog Analysis & Knowledge Indexing",
-        status: "COMPLETED",
-        inputPayload: { targetUrl: "https://demo.apex-dynamics.com", maxDepth: 2 },
-        outputData: { indexedPages: 14, chunksGenerated: 48, status: "SUCCESS" },
-        steps: [
-          { name: "Crawl Homepage", status: "COMPLETED" },
-          { name: "Extract Knowledge Chunks", status: "COMPLETED" },
-          { name: "Generate Embeddings", status: "COMPLETED" },
-        ],
-        retryCount: 0,
-        maxRetries: 3,
-        createdAt: now,
-        startedAt: now,
-        completedAt: now,
-      },
-      {
-        id: "demo-exec-2",
-        projectId: "demo-project",
-        organizationId: "5e6c4459-93c8-40a0-9fb2-9e9927b77ba9",
-        agentType: "tool_runner",
-        title: "Shopify Order Status Lookup",
-        status: "PENDING_APPROVAL",
-        inputPayload: { actionName: "shopify_check_order", orderId: "#1094" },
-        outputData: {},
-        steps: [{ name: "Request User Approval for Write Action", status: "PENDING_APPROVAL" }],
-        approvalToken: null,
-        retryCount: 0,
-        maxRetries: 3,
-        createdAt: now,
-      },
-    ],
-    totalCount: 2,
-    runningCount: 0,
-    pendingApprovalCount: 1,
-    failedCount: 0,
-    completedCount: 1,
+    executions: filtered,
+    totalCount: allExecutions.length,
+    runningCount: allExecutions.filter((e) => e.status === "RUNNING").length,
+    pendingApprovalCount: allExecutions.filter((e) => e.status === "PENDING_APPROVAL").length,
+    failedCount: allExecutions.filter((e) => e.status === "FAILED").length,
+    completedCount: allExecutions.filter((e) => e.status === "COMPLETED").length,
   };
 }
 
@@ -73,11 +202,15 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
   const { projectId } = req.params;
   const statusFilter = (req.query.status as string) || "all";
   const agentType = req.query.agentType as string;
+  const searchQuery = (req.query.search as string) || (req.query.searchQuery as string);
+  const toolName = req.query.tool as string;
+  const fromDate = req.query.fromDate as string;
+  const toDate = req.query.toDate as string;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
   const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
   if (isDemoProjectId(projectId)) {
-    return res.json(getDemoExecutions());
+    return res.json(getDemoExecutions({ status: statusFilter, search: searchQuery, agentType }));
   }
 
   let rawOrgId = req.headers["x-organization-id"] || req.query.organizationId;
@@ -96,6 +229,10 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
       organizationId: authoritativeOrgId,
       statusFilter: statusFilter as any,
       agentType,
+      searchQuery,
+      toolName,
+      fromDate,
+      toDate,
       limit,
       offset,
     });

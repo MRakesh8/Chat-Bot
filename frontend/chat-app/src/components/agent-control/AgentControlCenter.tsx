@@ -385,6 +385,28 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
     }
   };
 
+  const handleOpenApprovalModal = (exec: AgentExecutionRecord) => {
+    const pendingStep =
+      exec.steps?.find((s) => s.status === "PENDING_APPROVAL") ||
+      (exec.steps && exec.steps[exec.steps.length - 1]);
+    const out = exec.outputData || {};
+    const token = exec.approvalToken || out.confirmationToken || out.token || undefined;
+
+    setActiveExecutionApproval({
+      executionId: exec.id,
+      title: exec.title,
+      agentType: exec.agentType,
+      requiresToken: !!token || !!exec.approvalToken,
+      actionType: out.actionType || pendingStep?.actionType || pendingStep?.name,
+      stepDescription: pendingStep?.description || out.message || pendingStep?.detail,
+      riskLevel: pendingStep?.riskLevel || out.riskLevel || "HIGH_RISK_WRITE",
+      parameters: out.parameters || pendingStep?.input,
+      confirmationToken: token,
+      expiresAt: out.expiresAt,
+      response: out.response || out.message,
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Demo Sandbox Alert if in demo mode */}
@@ -543,14 +565,7 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
             onInspect={(exec) => setSelectedExecutionForTimeline(exec)}
             onCancel={handleCancelExecution}
             onRetry={handleRetryExecution}
-            onApprove={(exec) => {
-              setActiveExecutionApproval({
-                executionId: exec.id,
-                title: exec.title,
-                agentType: exec.agentType,
-                requiresToken: !!exec.approvalToken,
-              });
-            }}
+            onApprove={(exec) => handleOpenApprovalModal(exec)}
             isActionLoading={isActionLoading}
           />
         </TabsContent>
@@ -663,14 +678,7 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         }}
         onCancel={handleCancelExecution}
         onRetry={handleRetryExecution}
-        onApprove={(exec) => {
-          setActiveExecutionApproval({
-            executionId: exec.id,
-            title: exec.title,
-            agentType: exec.agentType,
-            requiresToken: !!exec.approvalToken,
-          });
-        }}
+        onApprove={(exec) => handleOpenApprovalModal(exec)}
         isActionLoading={isActionLoading}
       />
 
@@ -682,6 +690,7 @@ export function AgentControlCenter({ projectId, onSelectTab }: AgentControlCente
         }}
         approvalState={activeExecutionApproval}
         onApprove={handleApproveExecution}
+        onReject={(id, reason) => handleCancelExecution(id)}
         isSubmitting={isActionLoading}
       />
 

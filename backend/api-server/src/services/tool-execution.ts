@@ -48,11 +48,13 @@ export interface ExecuteServerToolParams {
   input?: any;
   confirmationToken?: string;
   customerContext?: CustomerContext;
+  idempotencyKey?: string;
+  timeoutMs?: number;
 }
 
 export interface ExecuteServerToolResult {
   success: boolean;
-  status: "COMPLETED" | "PENDING_CONFIRMATION" | "EXECUTION_FAILED" | "FORBIDDEN" | "QUOTA_EXCEEDED" | "ENTITLEMENT_EXPIRED" | "INVALID_CONFIRMATION_TOKEN";
+  status: "COMPLETED" | "PENDING_CONFIRMATION" | "EXECUTION_FAILED" | "FORBIDDEN" | "QUOTA_EXCEEDED" | "ENTITLEMENT_EXPIRED" | "INVALID_CONFIRMATION_TOKEN" | "INVALID_INPUT" | "TIMEOUT";
   data?: any;
   error?: string;
   requiresConfirmation?: boolean;
@@ -62,14 +64,55 @@ export interface ExecuteServerToolResult {
   riskLevel?: string;
   toolExecuted?: string;
   provider?: string;
+  isIdempotentReplay?: boolean;
+  verification?: any;
 }
 
 const verificationAgent = new VerificationAgent();
 
+export const idempotencyCache = new Map<string, { result: ExecuteServerToolResult; timestamp: number }>();
+
+export function validateToolSchema(schema: any, input: any): { valid: boolean; error?: string } {
+  if (!schema) return { valid: true };
+  if (typeof schema.safeParse === "function") {
+    const res = schema.safeParse(input);
+    if (!res.success) {
+      const issues = res.error?.issues?.map((i: any) => `${i.path.join('.') || 'input'}: ${i.message}`).join(', ') || "Schema validation failed";
+      return { valid: false, error: issues };
+    }
+    return { valid: true };
+  }
+  if (schema.type === "object" || schema.required || schema.properties) {
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    for (const reqField of required) {
+      if (input === undefined || input === null || input[reqField] === undefined || input[reqField] === null || input[reqField] === "") {
+        return { valid: false, error: `Missing required field '${reqField}'` };
+      }
+    }
+    if (schema.properties && input && typeof input === "object") {
+      for (const [propName, propDef] of Object.entries<any>(schema.properties)) {
+        const val = input[propName];
+        if (val !== undefined && val !== null) {
+          if (propDef.type === "string" && typeof val !== "string") {
+            return { valid: false, error: `Field '${propName}' must be a string` };
+          }
+          if (propDef.type === "number" && typeof val !== "number" && isNaN(Number(val))) {
+            return { valid: false, error: `Field '${propName}' must be a number` };
+          }
+          if (propDef.type === "array" && !Array.isArray(val)) {
+            return { valid: false, error: `Field '${propName}' must be an array` };
+          }
+        }
+      }
+    }
+  }
+  return { valid: true };
+}
+
 /**
  * Authoritative, deterministic server-side execution primitive for Phase 2E/2F tools.
  * Independently enforces tenant isolation, entitlement, DB tool authorization,
- * permissions/RBAC, quota, risk level, and confirmation validation.
+ * permissions/RBAC, quota, risk level, schema validation, idempotency, and confirmation validation.
  */
 export async function executeServerTool(
   params: ExecuteServerToolParams
@@ -84,8 +127,24 @@ export async function executeServerTool(
     actionName,
     input = {},
     confirmationToken,
-    customerContext
+    customerContext,
+    idempotencyKey,
+    timeoutMs = 15000
   } = params;
+
+  // Check idempotency cache first
+  if (idempotencyKey && idempotencyCache.has(idempotencyKey)) {
+    const cached = idempotencyCache.get(idempotencyKey)!;
+    const now = Date.now();
+    if (now - cached.timestamp < 10 * 60 * 1000) { // 10 minutes cache TTL
+      return {
+        ...cached.result,
+        isIdempotentReplay: true,
+      };
+    } else {
+      idempotencyCache.delete(idempotencyKey);
+    }
+  }
 
   const executionStart = Date.now();
 
@@ -282,6 +341,32 @@ export async function executeServerTool(
       ? (dbRiskLevel === "IRREVERSIBLE" || evaluatedRisk === "CRITICAL" ? "IRREVERSIBLE" : "HIGH_RISK_WRITE")
       : dbRiskLevel;
 
+    // 4.1 Authoritative Input Schema Validation (must precede confirmation gate)
+    let providerImpl;
+    try {
+      providerImpl = providerRegistry.getProvider(providerName);
+    } catch (e: any) {
+      return {
+        success: false,
+        status: "EXECUTION_FAILED",
+        error: e.message || `Provider ${providerName} execution engine is not registered.`
+      };
+    }
+
+    const toolDef = providerImpl?.getAvailableTools()?.find(t => t.actionName === resolvedActionName);
+    const schemaToValidate = toolDef?.inputSchema || matchedTool.inputSchema;
+    const valResult = validateToolSchema(schemaToValidate, input);
+    if (!valResult.valid) {
+      return {
+        success: false,
+        status: "INVALID_INPUT",
+        error: `Input validation failed for tool '${resolvedActionName}': ${valResult.error}`,
+        toolExecuted: resolvedActionName,
+        provider: providerName,
+        riskLevel: serverRiskLevel
+      };
+    }
+
     // Check RBAC permissions from websitePermissions table
     const permissions = await db
       .select()
@@ -383,7 +468,8 @@ export async function executeServerTool(
     // Derive isBusinessAdmin strictly from trusted server-side database role checks.
     // Never infer admin privileges from userId existence, orgId, or untrusted LLM input.
 
-    if (!isBusinessAdmin) {
+    const isCustomerSession = customerContext && customerContext.isBusinessAdmin === false;
+    if (!isBusinessAdmin || isCustomerSession) {
       const verifiedEmail = customerContext?.email;
       const verifiedCustId = customerContext?.customerId;
       const verifiedPhone = customerContext?.phone;
@@ -419,34 +505,47 @@ export async function executeServerTool(
       };
     }
 
-    let providerImpl;
-    try {
-        providerImpl = providerRegistry.getProvider(providerName);
-    } catch (e: any) {
-        return {
-          success: false,
-          status: "EXECUTION_FAILED",
-          error: e.message || `Provider ${providerName} execution engine is not registered.`
-        };
-    }
-
-    if (!providerImpl) {
-      return {
-        success: false,
-        status: "EXECUTION_FAILED",
-        error: `Provider ${providerName} execution engine is not registered.`
-      };
-    }
-
-
-
     let executionResult: any = null;
     let executionError: string | null = null;
 
-    try {
-      executionResult = await providerImpl.executeTool(resolvedActionName, input, credentialsObj);
-    } catch (execErr: any) {
-      executionError = execErr.message || "Provider tool execution failed.";
+    // 7.7 Tool Execution with Bounded Timeout and Transient Retry
+    const isReadOnly = serverRiskLevel === "READ_ONLY";
+    const maxAttempts = isReadOnly ? 3 : 1;
+    let attempt = 0;
+
+    const executeWithTimeout = async () => {
+      let timer: any;
+      const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Tool execution timed out after ${timeoutMs}ms.`)), timeoutMs);
+      });
+      try {
+        return await Promise.race([
+          providerImpl.executeTool(resolvedActionName, input, credentialsObj),
+          timeoutPromise
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        executionResult = await executeWithTimeout();
+        executionError = null;
+        break;
+      } catch (execErr: any) {
+        executionError = execErr.message || "Provider tool execution failed.";
+        const isTransient = /timeout|econnreset|etimedout|socket hang up|503|429|resource_exhausted/i.test(executionError || "");
+        if (isReadOnly && isTransient && attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, Math.min(400 * Math.pow(2, attempt), 2000)));
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (executionError) {
       await refundUsage(projectId, "action", 1);
     }
 
@@ -485,6 +584,7 @@ export async function executeServerTool(
       sessionId,
       payload: {
         result: {
+          toolExecuted: resolvedActionName,
           status: executionError ? "failed" : "success",
           error: executionError,
           data: executionResult
@@ -562,18 +662,26 @@ export async function executeServerTool(
         status: "EXECUTION_FAILED",
         error: executionError || verRes.data?.reason || "Execution verification failed.",
         toolExecuted: resolvedActionName,
-        provider: providerName
+        provider: providerName,
+        verification: verRes.data
       };
     }
 
-    return {
+    const completedResult: ExecuteServerToolResult = {
       success: true,
       status: "COMPLETED",
       data: executionResult,
       toolExecuted: resolvedActionName,
       provider: providerName,
-      riskLevel: serverRiskLevel
+      riskLevel: serverRiskLevel,
+      verification: verRes.data
     };
+
+    if (idempotencyKey) {
+      idempotencyCache.set(idempotencyKey, { result: completedResult, timestamp: Date.now() });
+    }
+
+    return completedResult;
   } catch (err: any) {
     logger.error({ err, projectId, toolId, actionName }, "executeServerTool unhandled error");
     return {

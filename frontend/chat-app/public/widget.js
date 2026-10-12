@@ -56,7 +56,13 @@
                        null;
 
   let apiBaseUrl = passedApiUrl || "https://chat-bot-api-ns81.onrender.com"; 
-  if (!passedApiUrl && scriptTag && scriptTag.src) {
+  if (passedApiUrl) {
+    try {
+      apiBaseUrl = new URL(passedApiUrl, window.location.origin).href;
+    } catch(e) {
+      apiBaseUrl = passedApiUrl;
+    }
+  } else if (scriptTag && scriptTag.src) {
     try {
       const scriptUrl = new URL(scriptTag.src, window.location.href);
       if (scriptUrl.hostname === "localhost" || scriptUrl.hostname === "127.0.0.1") {
@@ -77,6 +83,7 @@
   const storageKeyHistory = `aria_widget_history_${widgetToken}`;
 
   let config = null;
+  let contextEngine = null;
   let isOpen = sessionStorage.getItem(storageKeyOpen) === 'true';
   let isMobile = window.innerWidth <= 768;
 
@@ -102,7 +109,9 @@
     try {
       if (scriptTag && scriptTag.src) {
         const u = new URL(scriptTag.src, window.location.href);
-        u.pathname = u.pathname.replace(/\/widget\.js(\?.*)?$/i, `/${filename}`);
+        const lastSlash = u.pathname.lastIndexOf('/');
+        const basePath = lastSlash !== -1 ? u.pathname.substring(0, lastSlash + 1) : '/';
+        u.pathname = `${basePath}${filename}`;
         u.search = '';
         return u.href;
       }
@@ -186,15 +195,18 @@
   container.setAttribute('aria-ai-widget-root', 'true');
   container.setAttribute('data-widget-token', widgetToken);
   container.classList.add('aria-ai-widget-root');
+  container.style.cssText = "position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; z-index: 2147483647 !important; pointer-events: none !important; border: 0 !important; padding: 0 !important; margin: 0 !important; background: transparent !important; display: block !important;";
   
   // Shadow DOM initialization (reuse existing shadowRoot if element already created)
   const shadow = container.shadowRoot || container.attachShadow({ mode: 'open' });
 
   function mountContainer() {
     try {
-      const mountTarget = (config && config.displayMode === "custom" && config.customContainerId)
-        ? (document.getElementById(config.customContainerId) || document.body)
-        : document.body;
+      container.style.cssText = "position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; z-index: 2147483647 !important; pointer-events: none !important; border: 0 !important; padding: 0 !important; margin: 0 !important; background: transparent !important; display: block !important;";
+
+      const isCustomMode = config && config.displayMode === "custom" && config.customContainerId;
+      const customEl = isCustomMode ? document.getElementById(config.customContainerId) : null;
+      const mountTarget = customEl || document.body;
 
       if (!mountTarget) {
         if (document.readyState === 'loading') {
@@ -221,21 +233,49 @@
     } catch(e) {}
   }
 
+  function initBodyObserver() {
+    if (typeof MutationObserver !== 'undefined' && document.body) {
+      if (window._novaBodyObserver) {
+        window._novaBodyObserver.disconnect();
+      }
+      window._novaBodyObserver = new MutationObserver(() => {
+        const isCustomMode = config && config.displayMode === "custom" && config.customContainerId;
+        const customEl = isCustomMode ? document.getElementById(config.customContainerId) : null;
+        const mountTarget = customEl || document.body;
+        if (mountTarget && !mountTarget.contains(container)) {
+          mountTarget.appendChild(container);
+        }
+      });
+      window._novaBodyObserver.observe(document.body, { childList: true, subtree: false });
+    } else if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initBodyObserver, { once: true });
+    }
+  }
+
   function attachRouteObserver() {
-    if (window._novaRouteObserverAttached) return;
+    if (window._novaRouteObserverAttached) {
+      initBodyObserver();
+      return;
+    }
     window._novaRouteObserverAttached = true;
 
-    window.addEventListener('popstate', () => {
-      setTimeout(mountContainer, 50);
-      notifyRouteChange();
-    });
+    let routeChangeTimer = null;
+    function handleRouteChange() {
+      if (routeChangeTimer) clearTimeout(routeChangeTimer);
+      routeChangeTimer = setTimeout(() => {
+        mountContainer();
+        notifyRouteChange();
+      }, 50);
+    }
+
+    window.addEventListener('popstate', handleRouteChange);
+    window.addEventListener('hashchange', handleRouteChange);
 
     const originalPushState = window.history.pushState;
     if (typeof originalPushState === 'function') {
       window.history.pushState = function() {
         const result = originalPushState.apply(this, arguments);
-        setTimeout(mountContainer, 50);
-        notifyRouteChange();
+        handleRouteChange();
         return result;
       };
     }
@@ -244,34 +284,41 @@
     if (typeof originalReplaceState === 'function') {
       window.history.replaceState = function() {
         const result = originalReplaceState.apply(this, arguments);
-        setTimeout(mountContainer, 50);
-        notifyRouteChange();
+        handleRouteChange();
         return result;
       };
     }
 
-    if (typeof MutationObserver !== 'undefined' && document.body) {
-      const observer = new MutationObserver(() => {
-        const mountTarget = (config && config.displayMode === "custom" && config.customContainerId)
-          ? (document.getElementById(config.customContainerId) || document.body)
-          : document.body;
-        if (mountTarget && !mountTarget.contains(container)) {
-          mountTarget.appendChild(container);
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: false });
-    }
+    initBodyObserver();
   }
 
+  window.__novaWidgetConfigs = window.__novaWidgetConfigs || {};
+
   async function loadConfig() {
+    if (window.__novaWidgetConfigs[widgetToken]) {
+      config = window.__novaWidgetConfigs[widgetToken];
+      render();
+    }
     try {
       const res = await fetch(`${apiBaseUrl}/api/widget/${widgetToken}/config`);
-      if (!res.ok) throw new Error("Failed to load config");
+      if (!res.ok) throw new Error("Failed to load config (HTTP " + res.status + ")");
       config = await res.json();
+      window.__novaWidgetConfigs[widgetToken] = config;
       render();
       initContextEngine();
     } catch (err) {
       console.error("NOVA AI Widget Initialization failed:", err);
+      if (!config) {
+        config = {
+          botName: "AI Assistant",
+          themeColor: "#8B5CF6",
+          welcomeMessage: "Hi there! How can I help you today?",
+          onlineStatus: "Online",
+          displayMode: "bubble",
+          position: "bottom-right"
+        };
+        render();
+      }
     }
   }
 
@@ -670,11 +717,13 @@
     attachRouteObserver();
 
     const isBottomLeft = config.position === "bottom-left";
+    const hasCustomEl = !!(config.displayMode === 'custom' && config.customContainerId && document.getElementById(config.customContainerId));
+    const isCustom = config.displayMode === 'custom' && hasCustomEl;
 
     shadow.innerHTML = `
       <style>${getBaseStyles()}</style>
       <div class="widget-wrapper" id="widget-wrapper">
-        ${config.displayMode !== 'custom' ? `
+        ${!isCustom ? `
         <div class="chat-panel ${isOpen ? 'open' : ''}">
           <div class="header">
             <div class="header-info">
@@ -1004,8 +1053,12 @@
               title: document.title || "",
               segments: {}
             };
-          } else if (!websiteContext.url) {
+          } else {
+            // Always synchronize live URL and title so SPA transitions never report stale route
             websiteContext.url = window.location.href;
+            if (!websiteContext.title) {
+              websiteContext.title = document.title || "";
+            }
           }
 
           // Merge manually injected context if present
@@ -1243,6 +1296,7 @@
             });
           }
         } catch (err) {
+          console.error("NOVA AI Widget Chat Error:", err);
           typingIndicator.classList.remove('visible');
           addMessage('bot', 'Sorry, I am having trouble connecting right now.');
         }
@@ -1285,6 +1339,10 @@
       window.AriaHiddenContext = text;
     }
   };
+
+  // Early container mount and observer attachment
+  mountContainer();
+  attachRouteObserver();
 
   // Init
   loadConfig();

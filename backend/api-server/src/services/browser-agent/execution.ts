@@ -30,7 +30,7 @@ export interface ExecuteBrowserActionParams {
 
 export interface ExecuteBrowserActionResult {
   success: boolean;
-  status: "COMPLETED" | "PENDING_CONFIRMATION" | "EXECUTION_FAILED" | "FORBIDDEN" | "QUOTA_EXCEEDED" | "ENTITLEMENT_EXPIRED" | "INVALID_CONFIRMATION_TOKEN" | "ACTION_UNVERIFIED" | "DELEGATED_TO_API";
+  status: "COMPLETED" | "PENDING_CONFIRMATION" | "EXECUTION_FAILED" | "FORBIDDEN" | "QUOTA_EXCEEDED" | "ENTITLEMENT_EXPIRED" | "INVALID_CONFIRMATION_TOKEN" | "ACTION_UNVERIFIED" | "DELEGATED_TO_API" | "INVALID_INPUT" | "TIMEOUT";
   data?: any;
   error?: string;
   confirmationToken?: string;

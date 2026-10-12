@@ -64,6 +64,35 @@ export function AgentExecutionOverview({
 
   return (
     <div className="space-y-6">
+      {/* Pending Approval Operator Action Banner */}
+      {pendingApprovalCount > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground">
+                Action Required: {pendingApprovalCount} {pendingApprovalCount === 1 ? "run is" : "runs are"} awaiting human authorization
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Consequential operations have been paused until an operator inspects parameters and approves execution.
+              </p>
+            </div>
+          </div>
+          {onNavigateToRuns && (
+            <Button
+              size="sm"
+              onClick={onNavigateToRuns}
+              className="h-8 px-3 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-black shrink-0 rounded-xl gap-1.5"
+            >
+              <span>Review Runs</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* KPI Cards Grid from Real Persisted Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Runs */}

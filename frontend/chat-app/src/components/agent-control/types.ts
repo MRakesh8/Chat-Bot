@@ -2,6 +2,15 @@ export type RiskLevel = "READ_ONLY" | "LOW_RISK_WRITE" | "HIGH_RISK_WRITE" | "IR
 
 export type ToolStatus = "DISCOVERED" | "VERIFIED" | "AUTHORIZED" | "EXECUTABLE" | "UNAVAILABLE";
 
+export type VerificationStatus = "SUCCEEDED" | "FAILED" | "UNVERIFIED" | "PARTIALLY_COMPLETED";
+
+export interface StepVerification {
+  verified: boolean;
+  status: VerificationStatus;
+  evidence?: Record<string, any>;
+  reason?: string;
+}
+
 export interface AgentCapability {
   capabilityId: string;
   name: string;
@@ -22,10 +31,21 @@ export type ExecutionStatus =
 
 export interface ExecutionStep {
   name: string;
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "PENDING_APPROVAL" | string;
+  stepId?: string;
+  actionType?: string;
+  description?: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "PENDING_APPROVAL" | "SKIPPED" | string;
   detail?: string;
   timestamp?: string;
+  durationMs?: number;
+  dependsOn?: string[];
+  inputMapping?: Record<string, string>;
+  riskLevel?: RiskLevel;
+  requiresConfirmation?: boolean;
+  input?: Record<string, any>;
+  result?: any;
   error?: string;
+  verification?: StepVerification;
 }
 
 export interface AgentExecutionRecord {
@@ -59,8 +79,7 @@ export interface ExecutionStats {
 }
 
 /**
- * Kept separate: Cryptographic action confirmation for internal server tool execution
- * (e.g. high-risk write actions via /api/agent/process or tools execute).
+ * Cryptographic action confirmation for internal server tool execution.
  */
 export interface ConfirmationState {
   actionId: string;
@@ -80,6 +99,13 @@ export interface ExecutionApprovalState {
   title: string;
   agentType: string;
   requiresToken: boolean;
+  actionType?: string;
+  stepDescription?: string;
+  riskLevel?: RiskLevel;
+  parameters?: Record<string, any>;
+  confirmationToken?: string;
+  expiresAt?: string;
+  response?: string;
 }
 
 export type StreamConnectionState = "connected" | "reconnecting" | "polling" | "disconnected";

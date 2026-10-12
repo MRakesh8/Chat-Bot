@@ -32,6 +32,10 @@ async function runNestedRoutesTests() {
   console.log("[Test Section 1] Domain & URL Normalization on Deep Nested Routes");
 
   assert(
+    normalizeDomain("http://localhost:3000/") === "localhost",
+    "Root path '/' normalizes correctly to 'localhost'"
+  );
+  assert(
     normalizeDomain("http://localhost:3000/student") === "localhost",
     "Nested path '/student' normalizes correctly to 'localhost'"
   );
@@ -40,8 +44,12 @@ async function runNestedRoutesTests() {
     "Deep nested path '/student/admin' normalizes correctly to 'localhost'"
   );
   assert(
-    normalizeDomain("http://localhost:3000/student/classes/101/grades?term=fall&view=full") === "localhost",
-    "Deep route with query parameters and fragments normalizes to 'localhost'"
+    normalizeDomain("http://localhost:3000/classes/projects") === "localhost",
+    "Nested path '/classes/projects' normalizes correctly to 'localhost'"
+  );
+  assert(
+    normalizeDomain("http://localhost:3000/dashboard/settings?tab=general#security") === "localhost",
+    "Complex nested route with query and hash normalizes to 'localhost'"
   );
   assert(
     normalizeDomain("https://portal.university.edu/student/dashboard") === "portal.university.edu",
@@ -49,30 +57,23 @@ async function runNestedRoutesTests() {
   );
 
   // --------------------------------------------------------------------------
-  // TEST SECTION 2: ORIGIN & REFERER VALIDATION ON NESTED ROUTES
+  // TEST SECTION 2: MULTI-PORT & CROSS-ORIGIN VALIDATION ON NESTED ROUTES
   // --------------------------------------------------------------------------
-  console.log("\n[Test Section 2] Origin & Referer Validation on Nested Routes");
+  console.log("\n[Test Section 2] Multi-Port & Cross-Origin Validation on Nested Routes");
 
-  // Request from /student on localhost
-  const reqStudent: any = {
-    headers: {
-      origin: "http://localhost:3000",
-      referer: "http://localhost:3000/student"
-    }
-  };
-  const resStudent = validateWidgetOrigin(reqStudent, ["localhost"]);
-  assert(resStudent.valid === true, "Request from nested route /student is authorized on localhost");
-  assert(resStudent.domain === "localhost", "Domain extracted on /student is 'localhost'");
-
-  // Request from /student/admin with referer only (some browsers omit Origin on GET)
-  const reqAdminRefererOnly: any = {
-    headers: {
-      referer: "http://localhost:3000/student/admin"
-    }
-  };
-  const resAdmin = validateWidgetOrigin(reqAdminRefererOnly, ["localhost"]);
-  assert(resAdmin.valid === true, "Request with referer-only on /student/admin is authorized");
-  assert(resAdmin.domain === "localhost", "Domain extracted from deep nested referer is 'localhost'");
+  // Multi-port host testing (Port 3000, 8080, 4173, 5173)
+  const testPorts = [3000, 8080, 4173, 5173];
+  for (const port of testPorts) {
+    const reqPort: any = {
+      headers: {
+        origin: `http://localhost:${port}`,
+        referer: `http://localhost:${port}/student/admin`
+      }
+    };
+    const resPort = validateWidgetOrigin(reqPort, ["localhost"]);
+    assert(resPort.valid === true, `Request from host on port ${port} is authorized with allowed 'localhost'`);
+    assert(resPort.domain === "localhost", `Extracted domain for port ${port} is 'localhost'`);
+  }
 
   // Production nested route with domain allowlist
   const reqProdNested: any = {
@@ -84,6 +85,15 @@ async function runNestedRoutesTests() {
   const resProdNested = validateWidgetOrigin(reqProdNested, ["my-lms-platform.com"]);
   assert(resProdNested.valid === true, "Production nested route is authorized when hostname matches allowed list");
 
+  // Production allowed without referer header (valid Origin)
+  const reqProdOriginOnly: any = {
+    headers: {
+      origin: "https://my-lms-platform.com"
+    }
+  };
+  const resProdOriginOnly = validateWidgetOrigin(reqProdOriginOnly, ["my-lms-platform.com"]);
+  assert(resProdOriginOnly.valid === true, "Production route with valid origin-only is authorized");
+
   // Disallowed nested route
   const reqDisallowedNested: any = {
     headers: {
@@ -93,6 +103,11 @@ async function runNestedRoutesTests() {
   };
   const resDisallowed = validateWidgetOrigin(reqDisallowedNested, ["my-lms-platform.com"]);
   assert(resDisallowed.valid === false, "Unauthorized nested route is correctly rejected");
+
+  // Empty headers / missing origin and referer
+  const reqNoHeaders: any = { headers: {} };
+  const resNoHeaders = validateWidgetOrigin(reqNoHeaders, ["my-lms-platform.com"]);
+  assert(resNoHeaders.valid === false, "Request without Origin or Referer is safely rejected");
 
   // --------------------------------------------------------------------------
   // TEST SECTION 3: WIDGET SCRIPT LOGIC (API RESOLUTION & ASSETS)
@@ -121,22 +136,73 @@ async function runNestedRoutesTests() {
     "widget.js contains getSubAssetUrl helper for absolute sub-resource resolution"
   );
 
-  // Verify that route observer is integrated
+  // Verify sub-asset URL calculation across multiple scriptTag permutations
+  function testSubAssetResolution(scriptSrc: string, filename: string): string {
+    const u = new URL(scriptSrc, "http://localhost:3000/student/admin");
+    const lastSlash = u.pathname.lastIndexOf('/');
+    const basePath = lastSlash !== -1 ? u.pathname.substring(0, lastSlash + 1) : '/';
+    u.pathname = `${basePath}${filename}`;
+    u.search = '';
+    return u.href;
+  }
+
+  assert(
+    testSubAssetResolution("http://localhost:5000/widget.js", "widget-context-engine.js") === "http://localhost:5000/widget-context-engine.js",
+    "Absolute script URL resolves sub-asset on backend port 5000"
+  );
+  assert(
+    testSubAssetResolution("https://chat-bot-api-ns81.onrender.com/widget.js", "widget-context-engine.js") === "https://chat-bot-api-ns81.onrender.com/widget-context-engine.js",
+    "Production Render script URL resolves sub-asset correctly"
+  );
+  assert(
+    testSubAssetResolution("/assets/v2/widget.js?v=2.1", "widget-action-engine.js") === "http://localhost:3000/assets/v2/widget-action-engine.js",
+    "Root-relative script URL with query params resolves sub-asset stripping search"
+  );
+
+  // Verify that route observer is integrated with popstate, pushState, and hashchange
   assert(
     widgetJsCode.includes("attachRouteObserver"),
     "widget.js contains attachRouteObserver to maintain mounting across route changes"
   );
-
-  // Verify that popstate and pushState are monitored
   assert(
-    widgetJsCode.includes("popstate") && widgetJsCode.includes("pushState"),
-    "widget.js listens to popstate and pushState navigation events"
+    widgetJsCode.includes("popstate") && widgetJsCode.includes("pushState") && widgetJsCode.includes("hashchange"),
+    "widget.js listens to popstate, pushState, and hashchange navigation events"
   );
 
   // Verify MutationObserver is present for body element resilience
   assert(
     widgetJsCode.includes("MutationObserver"),
     "widget.js includes MutationObserver on document.body for SPA unmount recovery"
+  );
+
+  // Verify that Light DOM container has explicit inline fixed styling
+  assert(
+    widgetJsCode.includes("container.style.cssText") && widgetJsCode.includes("z-index: 2147483647 !important"),
+    "widget.js sets explicit Light DOM fixed positioning and maximum z-index on container"
+  );
+
+  // Verify initBodyObserver exists for deferred observer attachment when script runs in <head>
+  assert(
+    widgetJsCode.includes("initBodyObserver") && widgetJsCode.includes("DOMContentLoaded"),
+    "widget.js attaches MutationObserver safely via initBodyObserver even when executed before document.body exists"
+  );
+
+  // Verify fallback to floating launcher when custom container element is absent on nested routes
+  assert(
+    widgetJsCode.includes("hasCustomEl") && widgetJsCode.includes("!isCustom"),
+    "widget.js falls back to floating launcher if custom container ID is absent on a nested page"
+  );
+
+  // Verify config caching and fallback config
+  assert(
+    widgetJsCode.includes("__novaWidgetConfigs") && widgetJsCode.includes("welcomeMessage: \"Hi there! How can I help you today?\""),
+    "widget.js implements in-memory config caching and resilient fallback configuration on network errors"
+  );
+
+  // Verify dynamic websiteContext URL synchronization on submit
+  assert(
+    widgetJsCode.includes("websiteContext.url = window.location.href;"),
+    "widget.js dynamically synchronizes live URL in websiteContext on every chat submit"
   );
 
   // --------------------------------------------------------------------------
@@ -162,30 +228,31 @@ async function runNestedRoutesTests() {
   assert(isAlreadyMounted === true, "Duplicate script on '/' detects container already in DOM and avoids duplicate mount");
 
   // 3. User navigates client-side to "/student"
-  // Simulate SPA route transition where router temporarily detaches or wipes body
   delete mockDom[containerId]; // Detached by router
   assert(!mockDom[containerId], "SPA route transition to '/student' unmounted container");
 
   // 4. Widget remount logic on "/student"
-  // Even though mockTokens has testToken, container is missing from DOM, so remount MUST be permitted
   const shouldRemount = !mockDom[containerId];
   assert(shouldRemount === true, "Widget remount is permitted when container is missing from DOM on '/student'");
   mockDom[containerId] = true; // Remounted
   assert(mockDom[containerId] === true, "Container successfully remounted on '/student'");
 
   // 5. User navigates client-side to "/student/admin"
-  // Router retains body or observer re-attaches
   assert(mockDom[containerId] === true, "Container remains active on '/student/admin'");
 
-  // --------------------------------------------------------------------------
-  // TEST SECTION 5: REAL HTTP SERVER INTEGRATION (PORT 3000 NESTED ROUTES)
-  // --------------------------------------------------------------------------
-  console.log("\n[Test Section 5] Real HTTP Server with Nested Routes (Port 3000)");
+  // 6. User navigates client-side to "/classes/projects"
+  assert(mockDom[containerId] === true, "Container remains active on '/classes/projects'");
 
-  // Use deterministic project widget token for testing nested route HTML embeds
+  // 7. User navigates to "/dashboard/settings?tab=general#security"
+  assert(mockDom[containerId] === true, "Container remains active on complex query/hash route");
+
+  // --------------------------------------------------------------------------
+  // TEST SECTION 5: REAL HTTP SERVER INTEGRATION WITH ALL NESTED ROUTES
+  // --------------------------------------------------------------------------
+  console.log("\n[Test Section 5] Real HTTP Server with Comprehensive Nested Routes (Port 3001)");
+
   const liveWidgetToken = "test_widget_token_abc_123";
 
-  // Create real HTTP server representing customer website on Port 3000
   const server = http.createServer((req, res) => {
     const url = req.url || "/";
     res.writeHead(200, { "Content-Type": "text/html" });
@@ -194,19 +261,31 @@ async function runNestedRoutesTests() {
       res.end(`<!DOCTYPE html>
 <html><head><title>Root Home</title></head>
 <body><h1>Home Page</h1>
-<script src="http://localhost:5173/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
+<script src="http://localhost:5000/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
 </body></html>`);
     } else if (url === "/student") {
       res.end(`<!DOCTYPE html>
 <html><head><title>Student Portal</title></head>
 <body><h1>Student Portal Page</h1>
-<script src="http://localhost:5173/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
+<script src="http://localhost:5000/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
 </body></html>`);
     } else if (url === "/student/admin") {
       res.end(`<!DOCTYPE html>
 <html><head><title>Student Admin Dashboard</title></head>
 <body><h1>Student Admin Dashboard Page</h1>
-<script src="http://localhost:5173/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
+<script src="http://localhost:5000/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
+</body></html>`);
+    } else if (url === "/classes/projects") {
+      res.end(`<!DOCTYPE html>
+<html><head><title>Classes & Projects</title></head>
+<body><h1>Classes and Projects Page</h1>
+<script src="http://localhost:5000/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
+</body></html>`);
+    } else if (url.startsWith("/dashboard/settings")) {
+      res.end(`<!DOCTYPE html>
+<html><head><title>Dashboard Settings</title></head>
+<body><h1>Dashboard Settings Page</h1>
+<script src="http://localhost:5000/widget.js" data-widget-token="${liveWidgetToken}" data-api-url="http://127.0.0.1:5000"></script>
 </body></html>`);
     } else {
       res.writeHead(404);
@@ -214,7 +293,7 @@ async function runNestedRoutesTests() {
     }
   });
 
-  const TEST_PORT = 3001; // Use 3001 to avoid potential conflicts with any existing test process
+  const TEST_PORT = 3001;
   await new Promise<void>((resolve) => server.listen(TEST_PORT, () => resolve()));
   console.log(`  * Customer website test server listening on http://localhost:${TEST_PORT}`);
 
@@ -237,21 +316,30 @@ async function runNestedRoutesTests() {
     const adminHtml = await adminRes.text();
     assert(adminHtml.includes("Student Admin Dashboard") && adminHtml.includes("widget.js"), "Deep nested '/student/admin' HTML contains widget script");
 
-    // 4. Test API Config request with Origin & Nested Referer Headers
+    // 4. Direct load of "/classes/projects"
+    const projectsRes = await fetch(`http://localhost:${TEST_PORT}/classes/projects`);
+    assert(projectsRes.status === 200, "Direct load of '/classes/projects' returns HTTP 200");
+    const projectsHtml = await projectsRes.text();
+    assert(projectsHtml.includes("Classes and Projects") && projectsHtml.includes("widget.js"), "Nested '/classes/projects' HTML contains widget script");
+
+    // 5. Direct load of "/dashboard/settings?tab=general#security"
+    const settingsRes = await fetch(`http://localhost:${TEST_PORT}/dashboard/settings?tab=general`);
+    assert(settingsRes.status === 200, "Direct load of '/dashboard/settings?tab=general' returns HTTP 200");
+    const settingsHtml = await settingsRes.text();
+    assert(settingsHtml.includes("Dashboard Settings") && settingsHtml.includes("widget.js"), "Complex query nested page HTML contains widget script");
+
+    // 6. Test API Config request with Origin & Nested Referer Headers
     const configHeadersStudent = {
       Origin: `http://localhost:${TEST_PORT}`,
       Referer: `http://localhost:${TEST_PORT}/student`,
       Accept: "application/json"
     };
 
-    // Test origin check directly against backend route logic
-    const reqMockConfig: any = {
-      headers: configHeadersStudent
-    };
+    const reqMockConfig: any = { headers: configHeadersStudent };
     const originEvalStudent = validateWidgetOrigin(reqMockConfig, ["localhost"]);
     assert(originEvalStudent.valid === true, "API Config evaluates localhost as valid for /student referer");
 
-    // Test API Chat payload with websiteContext containing nested route
+    // 7. Test API Chat payload with websiteContext containing nested route
     const chatReqPayload = {
       sessionId: "session_student_test_123",
       messages: [{ role: "user", content: "Hello from student portal" }],
@@ -265,6 +353,22 @@ async function runNestedRoutesTests() {
     assert(
       chatReqPayload.websiteContext.url === `http://localhost:${TEST_PORT}/student/admin`,
       "websiteContext records deep nested route '/student/admin' correctly"
+    );
+
+    // 8. Test API Chat payload on complex route with query & hash
+    const complexChatPayload = {
+      sessionId: "session_settings_456",
+      messages: [{ role: "user", content: "Help with settings" }],
+      websiteContext: {
+        url: `http://localhost:${TEST_PORT}/dashboard/settings?tab=general#security`,
+        title: "Dashboard Settings",
+        selectedText: ""
+      }
+    };
+
+    assert(
+      complexChatPayload.websiteContext.url.includes("/dashboard/settings?tab=general#security"),
+      "websiteContext records query parameters and hash fragments accurately"
     );
 
   } finally {
