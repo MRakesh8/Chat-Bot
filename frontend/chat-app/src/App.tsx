@@ -51,6 +51,7 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function ForbiddenPage() {
   const [, setLocation] = useLocation();
+  const { defaultLandingScreen } = useAuth();
 
   return (
     <div className="min-h-[100dvh] w-full flex items-center justify-center bg-background text-foreground relative overflow-hidden px-6 py-12">
@@ -77,10 +78,10 @@ function ForbiddenPage() {
 
         <div className="pt-4 border-t border-foreground/5">
           <button
-            onClick={() => setLocation("/projects")}
+            onClick={() => setLocation(defaultLandingScreen || "/projects")}
             className="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-medium text-sm transition-all"
           >
-            Return to Projects
+            Return to Dashboard
           </button>
         </div>
       </div>

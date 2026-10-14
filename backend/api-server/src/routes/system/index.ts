@@ -1,11 +1,24 @@
 import { Router } from "express";
-import { db, withBypassRLS } from "@workspace/db";
-import { userApiKeys } from "@workspace/db";
+import { db, withBypassRLS, users, userApiKeys } from "@workspace/db";
 import { and, eq, isNull, or } from "drizzle-orm";
 
 const router = Router();
 
 import { getDatabaseStatus } from "../../middlewares/databaseHealth";
+
+// Valid options for user's default landing screen
+const ALLOWED_DEFAULT_SCREENS = [
+  "/projects",
+  "/chat",
+  "/services",
+  "/api-center",
+  "/notifications",
+  "/agent-control",
+  "/billing",
+  "/settings",
+  "/profile",
+  "/admin/clarity",
+];
 
 // GET /api/system/database
 router.get("/database", (req, res) => {
@@ -20,7 +33,53 @@ router.get("/me", (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.json({ ...dbUser, memberships });
+  res.json({
+    ...dbUser,
+    defaultScreen: dbUser.defaultScreen || "/projects",
+    memberships,
+  });
+});
+
+// PATCH /api/system/default-screen
+router.patch("/default-screen", async (req, res): Promise<any> => {
+  try {
+    const auth = (req as any).auth;
+    const userId = auth?.userId || auth?.dbUser?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { defaultScreen } = req.body;
+    if (!defaultScreen || typeof defaultScreen !== "string") {
+      return res.status(400).json({ error: "defaultScreen is required and must be a string." });
+    }
+
+    const trimmedScreen = defaultScreen.trim();
+    if (!ALLOWED_DEFAULT_SCREENS.includes(trimmedScreen) && !trimmedScreen.startsWith("/")) {
+      return res.status(400).json({ error: "Invalid screen path." });
+    }
+
+    const [updated] = await withBypassRLS(async (tx: any) => {
+      return await tx
+        .update(users)
+        .set({ defaultScreen: trimmedScreen })
+        .where(eq(users.id, userId))
+        .returning();
+    });
+
+    if (auth.dbUser) {
+      auth.dbUser.defaultScreen = trimmedScreen;
+    }
+
+    return res.json({
+      success: true,
+      defaultScreen: updated?.defaultScreen || trimmedScreen,
+      user: updated,
+    });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "Error updating default screen");
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // GET /api/system/ai-status

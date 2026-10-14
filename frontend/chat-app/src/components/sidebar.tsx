@@ -136,7 +136,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
 
 export function Sidebar({ className, onClose, onDesktopClose }: { className?: string, onClose?: () => void, onDesktopClose?: () => void }) {
   const [location, setLocation] = useLocation();
-  const { user, dbUser, session, signOut } = useAuth();
+  const { user, dbUser, session, signOut, defaultLandingScreen } = useAuth();
   const { data: conversations, isLoading } = useListGeminiConversations();
   const deleteConversation = useDeleteGeminiConversation();
   const updateConversation = useUpdateGeminiConversation();
@@ -348,7 +348,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
       {/* Brand Header */}
       <div className="p-4 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <Link href="/projects" onClick={() => onClose?.()} className="flex items-center px-1 group cursor-pointer transition-opacity hover:opacity-90">
+          <Link href={defaultLandingScreen || "/projects"} onClick={() => onClose?.()} className="flex items-center px-1 group cursor-pointer transition-opacity hover:opacity-90">
             <NovaBrand variant="full" theme="dark" height={26} />
           </Link>
           <div className="flex items-center gap-1">

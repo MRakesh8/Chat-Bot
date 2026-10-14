@@ -56,7 +56,7 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [legalModal, setLegalModal] = useState<"terms" | "privacy" | null>(null);
 
-  const { user, loginAsDemo } = useAuth();
+  const { user, loginAsDemo, defaultLandingScreen } = useAuth();
   const { effectiveMode, setTheme } = useTheme();
   const [, setLocation] = useLocation();
   const shouldReduceMotion = useReducedMotion();
@@ -74,14 +74,16 @@ export default function AuthPage() {
   // Preserve redirect if user is already authenticated
   useEffect(() => {
     if (user && !isSuccess) {
-      setLocation("/");
+      setLocation(defaultLandingScreen || "/projects");
     }
-  }, [user, isSuccess, setLocation]);
+  }, [user, isSuccess, setLocation, defaultLandingScreen]);
 
   const handleGoogleLogin = async () => {
     try {
       setIsLoading(true);
       setError("");
+
+      const targetPath = defaultLandingScreen || "/projects";
 
       // IMPORTANT: Always use the direct supabase client (never the proxy) for OAuth.
       // PKCE flow stores a code_verifier in sessionStorage during signInWithOAuth,
@@ -91,7 +93,7 @@ export default function AuthPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/projects`,
+          redirectTo: `${window.location.origin}${targetPath}`,
         },
       });
 
@@ -105,7 +107,7 @@ export default function AuthPage() {
 
   const handleDemoLogin = () => {
     loginAsDemo();
-    setLocation("/projects");
+    setLocation(defaultLandingScreen || "/projects");
   };
 
   return (

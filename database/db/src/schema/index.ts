@@ -36,6 +36,7 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   role: varchar("role", { length: 50 }).default("user").notNull(), // super_admin, admin, user, client
+  defaultScreen: varchar("default_screen", { length: 100 }).default("/projects").notNull(),
   features: jsonb("features").$type<{
     canCreateProject: boolean;
     canUseWidgetStudio: boolean;

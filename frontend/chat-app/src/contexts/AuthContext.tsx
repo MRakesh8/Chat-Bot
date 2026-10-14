@@ -10,6 +10,7 @@ type DbUser = {
   id: string;
   email: string;
   role: string;
+  defaultScreen?: string;
   features: {
     canCreateProject: boolean;
     canUseWidgetStudio: boolean;
@@ -23,6 +24,8 @@ type AuthContextType = {
   dbUser: DbUser | null;
   session: Session | null;
   isLoading: boolean;
+  defaultLandingScreen: string;
+  setDefaultLandingScreen: (screen: string) => Promise<boolean>;
   activeOrganizationId: string | null;
   setActiveOrganizationId: (id: string) => void;
   signOut: () => Promise<void>;
@@ -45,6 +48,7 @@ const DEMO_DB_USER: DbUser = {
   id: "00000000-0000-4000-8000-000000000001",
   email: "demo@example.com",
   role: "user",
+  defaultScreen: "/projects",
   features: {
     canCreateProject: true,
     canUseWidgetStudio: true,
@@ -67,6 +71,8 @@ const AuthContext = createContext<AuthContextType>({
   dbUser: null,
   session: null,
   isLoading: true,
+  defaultLandingScreen: "/projects",
+  setDefaultLandingScreen: async () => true,
   activeOrganizationId: null,
   setActiveOrganizationId: () => {},
   signOut: async () => {},
@@ -87,6 +93,45 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return null;
   });
 
+  const [defaultLandingScreen, setDefaultLandingScreenState] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("nova_default_landing_screen") || "/projects";
+    }
+    return "/projects";
+  });
+
+  const setDefaultLandingScreen = async (screen: string): Promise<boolean> => {
+    const validScreen = screen?.trim() || "/projects";
+    setDefaultLandingScreenState(validScreen);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("nova_default_landing_screen", validScreen);
+    }
+    setDbUser((prev) => (prev ? { ...prev, defaultScreen: validScreen } : null));
+
+    try {
+      const isDemo = typeof window !== "undefined" && sessionStorage.getItem("aria_demo_session") === "true";
+      const token = session?.access_token || (isDemo ? "local-demo-token" : null);
+      if (token) {
+        const res = await fetch(`${apiBaseUrl}/api/system/default-screen`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ defaultScreen: validScreen }),
+        });
+        if (!res.ok) {
+          console.warn("[NOVA Auth] Failed to save default landing screen to server");
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error("[NOVA Auth] Error updating default landing screen:", err);
+      return false;
+    }
+  };
+
   const setActiveOrganizationId = (id: string) => {
     setActiveOrgId(id);
     if (typeof window !== "undefined") {
@@ -98,10 +143,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (typeof window !== "undefined") {
       sessionStorage.setItem("aria_demo_session", "true");
     }
+    const storedDemoScreen = typeof window !== "undefined" ? localStorage.getItem("nova_default_landing_screen") || "/projects" : "/projects";
     setUser(DEMO_USER);
-    setDbUser(DEMO_DB_USER);
+    setDbUser({ ...DEMO_DB_USER, defaultScreen: storedDemoScreen });
     setSession(DEMO_SESSION);
     setActiveOrganizationId(DEMO_DB_USER.memberships![0].organizationId);
+    setDefaultLandingScreenState(storedDemoScreen);
     setIsLoading(false);
   };
 
@@ -126,6 +173,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (res.ok) {
           const data = await res.json();
           setDbUser(data);
+          if (data.defaultScreen) {
+            setDefaultLandingScreenState(data.defaultScreen);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("nova_default_landing_screen", data.defaultScreen);
+            }
+          }
           if (retryTimeoutRef.current) {
             clearTimeout(retryTimeoutRef.current);
             retryTimeoutRef.current = null;
@@ -282,7 +335,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, dbUser, session, isLoading, activeOrganizationId, setActiveOrganizationId, signOut, loginAsDemo, refreshDbUser }}>
+    <AuthContext.Provider value={{ user, dbUser, session, isLoading, defaultLandingScreen, setDefaultLandingScreen, activeOrganizationId, setActiveOrganizationId, signOut, loginAsDemo, refreshDbUser }}>
       {children}
     </AuthContext.Provider>
   );

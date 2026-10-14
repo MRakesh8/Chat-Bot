@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettingsTabPrefetch } from "@/hooks/use-tab-prefetch";
-import { Palette, Globe, Mic, Lock, CreditCard, Key, Settings } from "lucide-react";
+import { Palette, Globe, Mic, Lock, CreditCard, Key, Settings, Compass } from "lucide-react";
+import { DefaultLandingScreenSection } from "@/components/settings/default-landing-screen";
 
 type Project = {
   id: string;
@@ -92,6 +93,9 @@ export default function SettingsPage() {
             <TabsTrigger value="general" {...getTabTriggerProps("general")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Settings className="w-4 h-4 mr-2" /> General
             </TabsTrigger>
+            <TabsTrigger value="landing" className="shrink-0 flex-1 min-w-[130px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
+              <Compass className="w-4 h-4 mr-2" /> Landing Screen
+            </TabsTrigger>
             <TabsTrigger value="billing" {...getTabTriggerProps("billing")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <CreditCard className="w-4 h-4 mr-2" /> Billing
             </TabsTrigger>
@@ -101,6 +105,9 @@ export default function SettingsPage() {
           </TabsList>
 
           <TabsContent value="general" className="space-y-8 mt-0">
+            {/* Default Landing Screen Section */}
+            <DefaultLandingScreenSection />
+
             {/* Appearance & Named Palettes */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 border-b border-border/60 pb-3">
@@ -245,6 +252,10 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </section>
+          </TabsContent>
+
+          <TabsContent value="landing" className="space-y-8 mt-0">
+            <DefaultLandingScreenSection />
           </TabsContent>
 
           <TabsContent value="billing" className="mt-0">

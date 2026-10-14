@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link } from "wouter";
+import React, { useState, useEffect } from "react";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { NovaBrand } from "@/components/ui/nova-brand";
@@ -8,8 +8,9 @@ import { Sun, Moon } from "lucide-react";
 import "./home-landing.css";
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, defaultLandingScreen } = useAuth();
   const { theme, setTheme, mode } = useTheme();
+  const [, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isDark = theme === "dark" || mode === "dark";
@@ -21,7 +22,18 @@ export default function Home() {
     canonicalPath: "/",
   });
 
-  const authTarget = user ? "/projects" : "/sign-in";
+  const targetScreen = defaultLandingScreen || "/projects";
+  const authTarget = user ? targetScreen : "/sign-in";
+
+  // Auto-redirect authenticated users directly to their preferred workspace landing screen when opening the site
+  useEffect(() => {
+    if (user && typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (!searchParams.has("landing")) {
+        setLocation(targetScreen);
+      }
+    }
+  }, [user, targetScreen, setLocation]);
 
   return (
     <div className="nl-page">
@@ -155,7 +167,7 @@ export default function Home() {
             </p>
             <div className="row">
               <Link href={authTarget} className="btn p">
-                {user ? "Go to Projects" : "Try NOVA free"}
+                {user ? "Open Workspace" : "Try NOVA free"}
               </Link>
               <a href="#how" className="btn">
                 See how it works
@@ -366,7 +378,7 @@ export default function Home() {
         <div className="w">
           <div>NOVA Business AI · From Conversations to Business Actions</div>
           <div className="footer-links">
-            <Link href={authTarget}>{user ? "My Projects" : "Sign In"}</Link>
+            <Link href={authTarget}>{user ? "My Workspace" : "Sign In"}</Link>
             <Link href="/projects/demo">Interactive Demo</Link>
             <a href="#how">How it works</a>
             <a href="#features">Features</a>

@@ -82,12 +82,17 @@ export const supabaseAuthMiddleware = async (
           } as any);
         }
 
+        const [demoUserRecord] = await withBypassRLS(async (tx: any) => {
+          return await tx.select().from(users).where(eq(users.id, LOCAL_DEMO_USER_ID)).limit(1);
+        });
+
         (req as any).auth = { 
           userId: LOCAL_DEMO_USER_ID,
           dbUser: {
             id: LOCAL_DEMO_USER_ID,
             email: "local-demo@example.com",
             role: "user",
+            defaultScreen: demoUserRecord?.defaultScreen || "/projects",
             features: {
               canCreateProject: true,
               canUseWidgetStudio: true,
@@ -154,12 +159,17 @@ export const supabaseAuthMiddleware = async (
         } as any);
       }
 
+      const [demoUserRecord] = await withBypassRLS(async (tx: any) => {
+        return await tx.select().from(users).where(eq(users.id, LOCAL_DEMO_USER_ID)).limit(1);
+      });
+
       (req as any).auth = { 
         userId: LOCAL_DEMO_USER_ID,
         dbUser: {
           id: LOCAL_DEMO_USER_ID,
           email: "local-demo@example.com",
           role: "user",
+          defaultScreen: demoUserRecord?.defaultScreen || "/projects",
           features: {
             canCreateProject: true,
             canUseWidgetStudio: true,
@@ -202,6 +212,7 @@ export const supabaseAuthMiddleware = async (
           id: data.user.id, // Use Supabase ID
           email,
           role: "user",
+          defaultScreen: "/projects",
         }).returning();
       });
       dbUser = inserted[0];
