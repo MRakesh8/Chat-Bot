@@ -62,11 +62,11 @@ runCheck(3, "The Notifications tab is removed from Operations navigation", () =>
   assert(!opsItems.includes('"notifications"'), "Operations nav group items must NOT contain 'notifications'");
 });
 
-// 4. Reports, Analytics, Integrations, Agent Control, and Settings remain accessible.
-runCheck(4, "Reports, Analytics, Integrations, Agent Control, and Settings remain intact in Operations", () => {
+// 4. Analytics, Integrations, Agent Control, and Settings remain accessible in Operations; Reports preserved.
+runCheck(4, "Analytics, Integrations, Agent Control, and Settings remain intact in Operations; Reports preserved", () => {
   const opsGroupMatch = projectEditTsx.match(/id:\s*"operations"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
   const opsItems = opsGroupMatch[1];
-  assert(opsItems.includes('"reports"'), "Operations must include reports");
+  assert(!opsItems.includes('"reports"'), "Operations must NOT include reports in visible items");
   assert(opsItems.includes('"analytics"'), "Operations must include analytics");
   assert(opsItems.includes('"integrations"'), "Operations must include integrations");
   assert(opsItems.includes('"agent-control"'), "Operations must include agent-control");

@@ -61,10 +61,9 @@ const PROJECT_NAV_GROUPS: NavGroup[] = [
   {
     id: "ai-context",
     title: "AI & Context",
-    description: "Bot Testing & Context Engine",
+    description: "Bot Context Engine",
     icon: Brain,
     items: [
-      { id: "chat", label: "Test Chat", icon: MessageSquare },
       { id: "context-engine", label: "Context Engine", icon: Brain },
     ],
   },
@@ -81,10 +80,9 @@ const PROJECT_NAV_GROUPS: NavGroup[] = [
   {
     id: "operations",
     title: "Operations",
-    description: "Reports, Analytics, Integrations, Control & Settings",
+    description: "Analytics, Integrations, Control & Settings",
     icon: Wrench,
     items: [
-      { id: "reports", label: "Reports", icon: FileText },
       { id: "analytics", label: "Analytics", icon: LayoutDashboard },
       { id: "integrations", label: "Integrations", icon: Sparkles },
       { id: "agent-control", label: "Agent Control", icon: Cpu },
@@ -188,7 +186,18 @@ export default function ProjectEditPage() {
     setWebsiteConnectedSubtab(getInitialWebsiteConnectedSubtab());
   }, [projectId]);
 
-  const handleTabChange = (tab: string, subtab?: string) => {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePopState = () => {
+      const tabToSet = getInitialTab();
+      setActiveTab(tabToSet);
+      setWebsiteConnectedSubtab(getInitialWebsiteConnectedSubtab());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [projectId]);
+
+  const handleTabChange = (tab: string, subtab?: string, options?: { pushHistory?: boolean }) => {
     if (tab === "workspace") {
       tab = "overview";
     }
@@ -202,7 +211,11 @@ export default function ProjectEditPage() {
         const url = new URL(window.location.href);
         url.searchParams.set("tab", "website-connected");
         url.searchParams.set("subtab", tab);
-        window.history.replaceState(null, "", url.toString());
+        if (options?.pushHistory) {
+          window.history.pushState(null, "", url.toString());
+        } else {
+          window.history.replaceState(null, "", url.toString());
+        }
       }
       return;
     }
@@ -217,7 +230,11 @@ export default function ProjectEditPage() {
         const url = new URL(window.location.href);
         url.searchParams.set("tab", "website-connected");
         url.searchParams.set("subtab", subtab);
-        window.history.replaceState(null, "", url.toString());
+        if (options?.pushHistory) {
+          window.history.pushState(null, "", url.toString());
+        } else {
+          window.history.replaceState(null, "", url.toString());
+        }
       }
       return;
     }
@@ -230,7 +247,11 @@ export default function ProjectEditPage() {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", tab);
       url.searchParams.delete("subtab");
-      window.history.replaceState(null, "", url.toString());
+      if (options?.pushHistory) {
+        window.history.pushState(null, "", url.toString());
+      } else {
+        window.history.replaceState(null, "", url.toString());
+      }
     }
   };
 
@@ -939,6 +960,8 @@ export default function ProjectEditPage() {
                 activeTab === "api-keys";
 
               const isNotifications = activeTab === "notifications";
+              const isReports = activeTab === "reports";
+              const isChat = activeTab === "chat";
 
               const activeGroup = PROJECT_NAV_GROUPS.find((g) => g.items.some((item) => item.id === activeTab)) || PROJECT_NAV_GROUPS[0];
 
@@ -976,6 +999,16 @@ export default function ProjectEditPage() {
                       <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
                         <Bell className="w-3.5 h-3.5 shrink-0" />
                         <span>Smart Notification Center</span>
+                      </div>
+                    ) : isReports ? (
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
+                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                        <span>Project Reports</span>
+                      </div>
+                    ) : isChat ? (
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
+                        <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                        <span>Test Chatbot</span>
                       </div>
                     ) : (
                       activeGroup.items.map((item) => {
@@ -1085,16 +1118,28 @@ export default function ProjectEditPage() {
                     <p className="text-primary-foreground font-medium text-sm mb-2">
                       Shareable Project Link
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                       <code className="flex-1 text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 font-mono truncate border border-border">
                         {shareUrl}
                       </code>
-                      <Button type="button" size="sm" variant="outline" onClick={copyShareLink} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
-                        <Copy className="w-3 h-3" /> Copy
-                      </Button>
-                      <Button type="button" size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
-                        <Globe className="w-3 h-3" /> Open
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                        <Button type="button" size="sm" variant="outline" onClick={copyShareLink} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
+                          <Copy className="w-3 h-3" /> Copy
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")} className="border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 gap-1.5">
+                          <Globe className="w-3 h-3" /> Open
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleTabChange("chat", undefined, { pushHistory: true })}
+                          data-testid="dashboard-test-chat-btn"
+                          aria-label="Test Chatbot in interactive playground"
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shrink-0 gap-1.5 shadow-xs"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" /> Test Chat
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -78,7 +78,12 @@ console.log("✓ Test 5: Refresh and browser navigation preserve the selected de
 
 // 6. AI & Context, Website Experience, and Operations remain functional
 const aiGroupMatch = navGroupsCode.match(/id:\s*"ai-context"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
-assert(aiGroupMatch && aiGroupMatch[1].includes('"chat"') && aiGroupMatch[1].includes('"context-engine"'), "AI & Context must contain chat and context-engine");
+assert(
+  aiGroupMatch &&
+  !aiGroupMatch[1].includes('"chat"') &&
+  aiGroupMatch[1].includes('"context-engine"'),
+  "AI & Context must contain context-engine and must NOT contain chat (moved to Overview dashboard)"
+);
 
 const webGroupMatch = navGroupsCode.match(/id:\s*"website-experience"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
 assert(webGroupMatch && webGroupMatch[1].includes('"conversations"') && webGroupMatch[1].includes('"channels"'), "Website Experience must contain conversations and channels");
@@ -86,15 +91,15 @@ assert(webGroupMatch && webGroupMatch[1].includes('"conversations"') && webGroup
 const opsGroupMatch = navGroupsCode.match(/id:\s*"operations"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
 assert(
   opsGroupMatch &&
-  opsGroupMatch[1].includes('"reports"') &&
+  !opsGroupMatch[1].includes('"reports"') &&
   opsGroupMatch[1].includes('"analytics"') &&
   !opsGroupMatch[1].includes('"notifications"') &&
   opsGroupMatch[1].includes('"integrations"') &&
   opsGroupMatch[1].includes('"agent-control"') &&
   opsGroupMatch[1].includes('"settings"'),
-  "Operations must contain reports, analytics, integrations, agent-control, and settings, and must NOT contain notifications"
+  "Operations must contain analytics, integrations, agent-control, and settings, and must NOT contain reports or notifications"
 );
-console.log("✓ Test 6: AI & Context, Website Experience, and Operations remain functional (Notifications moved from Operations to Project Header Bell).");
+console.log("✓ Test 6: AI & Context, Website Experience, and Operations remain functional (Reports removed from Operations navigation; Notifications moved to Project Header Bell).");
 
 // 7. Website Connected, Widget Studio, Deployment, API Keys, and Knowledge Base remain accessible
 assert(
