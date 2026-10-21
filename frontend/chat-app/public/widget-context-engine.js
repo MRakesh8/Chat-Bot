@@ -581,41 +581,43 @@
     if (this._observer) return;
     var self = this;
 
-    this._observer = new IntersectionObserver(function (entries) {
-      for (var i = 0; i < entries.length; i++) {
-        var entry = entries[i];
-        var el = entry.target;
-        var inViewport = entry.isIntersecting;
-        var distance = 0;
-        if (!inViewport) {
-          var rect = entry.boundingClientRect;
-          var vpH = entry.rootBounds ? entry.rootBounds.height : window.innerHeight;
-          if (rect.bottom < 0) {
-            distance = Math.abs(rect.bottom);
-          } else if (rect.top > vpH) {
-            distance = rect.top - vpH;
+    if (typeof IntersectionObserver !== 'undefined') {
+      this._observer = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          var el = entry.target;
+          var inViewport = entry.isIntersecting;
+          var distance = 0;
+          if (!inViewport) {
+            var rect = entry.boundingClientRect;
+            var vpH = entry.rootBounds ? entry.rootBounds.height : window.innerHeight;
+            if (rect.bottom < 0) {
+              distance = Math.abs(rect.bottom);
+            } else if (rect.top > vpH) {
+              distance = rect.top - vpH;
+            }
+          }
+
+          self._info.set(el, {
+            ratio: entry.intersectionRatio,
+            inViewport: inViewport,
+            distance: distance
+          });
+
+          if (inViewport) {
+            self._visible.add(el);
+          } else {
+            self._visible.delete(el);
           }
         }
+      }, {
+        rootMargin: IO_ROOT_MARGIN,
+        threshold: IO_THRESHOLDS
+      });
 
-        self._info.set(el, {
-          ratio: entry.intersectionRatio,
-          inViewport: inViewport,
-          distance: distance
-        });
-
-        if (inViewport) {
-          self._visible.add(el);
-        } else {
-          self._visible.delete(el);
-        }
-      }
-    }, {
-      rootMargin: IO_ROOT_MARGIN,
-      threshold: IO_THRESHOLDS
-    });
-
-    // Observe existing semantic elements
-    this._observeElements(root);
+      // Observe existing semantic elements
+      this._observeElements(root);
+    }
   };
 
   /**

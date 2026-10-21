@@ -88,13 +88,13 @@ assert(
   opsGroupMatch &&
   opsGroupMatch[1].includes('"reports"') &&
   opsGroupMatch[1].includes('"analytics"') &&
-  opsGroupMatch[1].includes('"notifications"') &&
+  !opsGroupMatch[1].includes('"notifications"') &&
   opsGroupMatch[1].includes('"integrations"') &&
   opsGroupMatch[1].includes('"agent-control"') &&
   opsGroupMatch[1].includes('"settings"'),
-  "Operations must contain reports, analytics, notifications, integrations, agent-control, and settings"
+  "Operations must contain reports, analytics, integrations, agent-control, and settings, and must NOT contain notifications"
 );
-console.log("✓ Test 6: AI & Context, Website Experience, and Operations remain functional.");
+console.log("✓ Test 6: AI & Context, Website Experience, and Operations remain functional (Notifications moved from Operations to Project Header Bell).");
 
 // 7. Website Connected, Widget Studio, Deployment, API Keys, and Knowledge Base remain accessible
 assert(

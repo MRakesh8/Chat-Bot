@@ -93,7 +93,7 @@ export default function SettingsPage() {
             <TabsTrigger value="general" {...getTabTriggerProps("general")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Settings className="w-4 h-4 mr-2" /> General
             </TabsTrigger>
-            <TabsTrigger value="landing" className="shrink-0 flex-1 min-w-[130px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
+            <TabsTrigger value="landing" {...getTabTriggerProps("landing")} className="shrink-0 flex-1 min-w-[130px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
               <Compass className="w-4 h-4 mr-2" /> Landing Screen
             </TabsTrigger>
             <TabsTrigger value="billing" {...getTabTriggerProps("billing")} className="shrink-0 flex-1 min-w-[120px] rounded-xl font-semibold text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all">
@@ -105,9 +105,6 @@ export default function SettingsPage() {
           </TabsList>
 
           <TabsContent value="general" className="space-y-8 mt-0">
-            {/* Default Landing Screen Section */}
-            <DefaultLandingScreenSection />
-
             {/* Appearance & Named Palettes */}
             <section className="space-y-4">
               <div className="flex items-center gap-2 border-b border-border/60 pb-3">

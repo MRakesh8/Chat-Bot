@@ -119,74 +119,185 @@
     return `${apiBaseUrl}/${filename}`;
   }
 
+  let contextDebugInterval = null;
+
+  function shouldRenderDebugPanel() {
+    if (!config || !config.contextEngine || !config.contextEngine.developerDebugMode) {
+      return false;
+    }
+    // Public URL query parameters (e.g. ?debug=true) MUST NOT authorize privileged debug UI
+    // Only permit visual in-DOM debug panel in explicitly authorized developer environments:
+    // 1. Local development hostnames
+    try {
+      const hostname = window.location.hostname || '';
+      const isLocalhost = hostname === 'localhost' ||
+                          hostname === '127.0.0.1' ||
+                          hostname === '::1' ||
+                          hostname.endsWith('.local') ||
+                          hostname === '';
+      if (isLocalhost) return true;
+    } catch (e) {}
+
+    // 2. Explicit developer debug embed attribute on the script tag (opt-in by site developer)
+    if (scriptTag) {
+      const devAttr = scriptTag.getAttribute('data-developer-debug') || scriptTag.getAttribute('data-debug');
+      if (devAttr === 'true') return true;
+    }
+
+    // 3. Explicit programmatic test or developer harness flag set in window
+    if (typeof window !== 'undefined' && (window.__NOVA_DEV_DEBUG__ === true || window.__ARIA_DEV_DEBUG__ === true)) {
+      return true;
+    }
+
+    return false;
+  }
+
   async function initContextEngine() {
     if (!config || !config.contextEngine || !config.contextEngine.enabled) return;
-    
-    try {
-      const engineUrl = getSubAssetUrl('widget-context-engine.js');
-      
-      const script = document.createElement('script');
-      script.src = engineUrl;
-      script.async = true;
-      script.onload = () => {
-        if (window.AriaContextEngine) {
-          contextEngine = new window.AriaContextEngine({
-            maxPayloadBytes: config.contextEngine.maxContextSizeBytes || 6144
-          });
-          contextEngine.start(document.body);
-          
-          if (config.contextEngine.developerDebugMode) {
-            setInterval(async () => {
-              try {
-                const debugStatus = shadow.querySelector('#debug-status');
-                const debugStats = shadow.querySelector('#debug-stats');
-                if (debugStatus && debugStats) {
-                  const ctx = await contextEngine.getContext();
-                  const size = new Blob([JSON.stringify(ctx)]).size;
-                  
-                  debugStatus.innerHTML = `<span style="color:#0f0;">Status: Active</span><br/>Time: ${ctx.extractionDurationMs || 0}ms | Size: ${(size / 1024).toFixed(2)} KB`;
-                  
-                  debugStats.innerHTML = `
-                    <div style="margin-top:4px;">Forms: ${ctx.content?.forms?.length || 0}</div>
-                    <div>Tables: ${ctx.content?.tables?.length || 0}</div>
-                    <div>Cards: ${ctx.content?.cards?.length || 0}</div>
-                    <div>Errors: ${ctx.state?.visibleErrors?.length || 0}</div>
-                  `;
-                }
-              } catch(err) {
-                 const debugStatus = shadow.querySelector('#debug-status');
-                 if(debugStatus) debugStatus.innerText = "Status: Error extracting context";
-              }
-            }, 2000);
+
+    if (contextDebugInterval) {
+      clearInterval(contextDebugInterval);
+      contextDebugInterval = null;
+    }
+
+    const startEngineInstance = () => {
+      if (!window.AriaContextEngine) return;
+
+      if (contextEngine && typeof contextEngine.destroy === 'function') {
+        try {
+          contextEngine.destroy();
+        } catch (e) {}
+      }
+
+      contextEngine = new window.AriaContextEngine({
+        maxPayloadBytes: config.contextEngine.maxContextSizeBytes || 6144
+      });
+      contextEngine.start(document.body);
+
+      const updateDebugDisplay = async () => {
+        try {
+          const debugStatus = shadow.querySelector('#debug-status');
+          const debugStats = shadow.querySelector('#debug-stats');
+          if (!debugStatus || !debugStats) return;
+
+          const freshCtx = await contextEngine.getContext();
+          const ctx = freshCtx || (typeof contextEngine.getCachedContext === 'function' ? contextEngine.getCachedContext() : null);
+
+          if (ctx) {
+            let size = 0;
+            try {
+              size = new Blob([JSON.stringify(ctx)]).size;
+            } catch (e) {
+              size = (JSON.stringify(ctx) || '').length;
+            }
+            const isFresh = Boolean(freshCtx);
+            const statusLabel = isFresh ? 'Active' : 'Active (Cached)';
+            const duration = ctx.extractionDurationMs != null ? `${Math.round(ctx.extractionDurationMs)}ms` : 'cached';
+
+            debugStatus.innerHTML = `<span style="color:#0f0;">Status: ${statusLabel}</span><br/>Time: ${duration} | Size: ${(size / 1024).toFixed(2)} KB`;
+
+            const formsCount = Array.isArray(ctx.content?.forms) ? ctx.content.forms.length : 0;
+            const tablesCount = Array.isArray(ctx.content?.tables) ? ctx.content.tables.length : 0;
+            const cardsCount = Array.isArray(ctx.content?.cards) ? ctx.content.cards.length : 0;
+            const errorsCount = Array.isArray(ctx.state?.visibleErrors) ? ctx.state.visibleErrors.length : 0;
+
+            debugStats.innerHTML = `
+              <div style="margin-top:4px;">Forms: ${formsCount}</div>
+              <div>Tables: ${tablesCount}</div>
+              <div>Cards: ${cardsCount}</div>
+              <div>Errors: ${errorsCount}</div>
+            `;
+          } else {
+            debugStatus.innerHTML = `<span style="color:#eab308;">Status: Ready (Awaiting scan)</span>`;
+            debugStats.innerHTML = `
+              <div style="margin-top:4px;">Forms: 0</div>
+              <div>Tables: 0</div>
+              <div>Cards: 0</div>
+              <div>Errors: 0</div>
+            `;
+          }
+        } catch (err) {
+          const debugStatus = shadow.querySelector('#debug-status');
+          if (debugStatus) {
+            debugStatus.innerHTML = `<span style="color:#ef4444;">Status: Extraction error</span>`;
           }
         }
       };
-      script.onerror = () => {
-        if (!engineUrl.startsWith(apiBaseUrl)) {
-          const fallbackScript = document.createElement('script');
-          fallbackScript.src = `${apiBaseUrl}/widget-context-engine.js`;
-          fallbackScript.async = true;
-          document.head.appendChild(fallbackScript);
-        }
-      };
-      document.head.appendChild(script);
 
-      // Also load action engine
-      const actionEngineUrl = getSubAssetUrl('widget-action-engine.js');
-      const actionScript = document.createElement('script');
-      actionScript.src = actionEngineUrl;
-      actionScript.async = true;
-      actionScript.onerror = () => {
-        if (!actionEngineUrl.startsWith(apiBaseUrl)) {
-          const fallbackActionScript = document.createElement('script');
-          fallbackActionScript.src = `${apiBaseUrl}/widget-action-engine.js`;
-          fallbackActionScript.async = true;
-          document.head.appendChild(fallbackActionScript);
+      if (shouldRenderDebugPanel()) {
+        updateDebugDisplay().catch(() => {});
+        contextDebugInterval = setInterval(updateDebugDisplay, 2000);
+      } else if (config.contextEngine.developerDebugMode) {
+        // Safe console-only logging for developer inspection without polluting visitor DOM
+        try {
+          contextEngine.getContext().then(ctx => {
+            const resolved = ctx || (contextEngine.getCachedContext && contextEngine.getCachedContext());
+            if (resolved && typeof console !== 'undefined' && console.debug) {
+              console.debug("[NOVA Context Engine] Initialized:", {
+                url: resolved.page?.url,
+                cards: resolved.content?.cards?.length || 0,
+                forms: resolved.content?.forms?.length || 0,
+                tables: resolved.content?.tables?.length || 0
+              });
+            }
+          }).catch(() => {});
+        } catch (e) {}
+      }
+    };
+
+    if (window.AriaContextEngine) {
+      startEngineInstance();
+      return;
+    }
+
+    try {
+      const engineUrl = getSubAssetUrl('widget-context-engine.js');
+      const existingScript = document.querySelector(`script[src="${engineUrl}"], script[data-nova-engine="context"]`);
+
+      if (existingScript) {
+        existingScript.addEventListener('load', startEngineInstance, { once: true });
+      } else {
+        const script = document.createElement('script');
+        script.src = engineUrl;
+        script.async = true;
+        script.setAttribute('data-nova-engine', 'context');
+        script.onload = startEngineInstance;
+        script.onerror = () => {
+          if (!engineUrl.startsWith(apiBaseUrl)) {
+            const fallbackScript = document.createElement('script');
+            fallbackScript.src = `${apiBaseUrl}/widget-context-engine.js`;
+            fallbackScript.async = true;
+            fallbackScript.setAttribute('data-nova-engine', 'context');
+            fallbackScript.onload = startEngineInstance;
+            document.head.appendChild(fallbackScript);
+          }
+        };
+        document.head.appendChild(script);
+      }
+
+      // Also load action engine deduplicated
+      if (!window.AriaActionEngine) {
+        const actionEngineUrl = getSubAssetUrl('widget-action-engine.js');
+        const existingActionScript = document.querySelector(`script[src="${actionEngineUrl}"], script[data-nova-engine="action"]`);
+        if (!existingActionScript) {
+          const actionScript = document.createElement('script');
+          actionScript.src = actionEngineUrl;
+          actionScript.async = true;
+          actionScript.setAttribute('data-nova-engine', 'action');
+          actionScript.onerror = () => {
+            if (!actionEngineUrl.startsWith(apiBaseUrl)) {
+              const fallbackActionScript = document.createElement('script');
+              fallbackActionScript.src = `${apiBaseUrl}/widget-action-engine.js`;
+              fallbackActionScript.async = true;
+              fallbackActionScript.setAttribute('data-nova-engine', 'action');
+              document.head.appendChild(fallbackActionScript);
+            }
+          };
+          document.head.appendChild(actionScript);
         }
-      };
-      document.head.appendChild(actionScript);
+      }
     } catch (e) {
-      console.error("Failed to init context engine", e);
+      console.warn("NOVA AI Widget: Failed to initialize context engine:", e);
     }
   }
 
@@ -738,7 +849,7 @@
             </button>
           </div>
           <div class="messages" id="messages-container"></div>
-          ${config.contextEngine?.developerDebugMode ? `
+          ${shouldRenderDebugPanel() ? `
           <div class="debug-panel" id="debug-panel" style="font-size: 11px; background: #000; color: #0f0; padding: 8px; border-top: 1px solid #27272a; max-height: 120px; overflow-y: auto; font-family: monospace;">
             <div style="font-weight:bold; margin-bottom: 4px;">🛠️ Context Engine Debug</div>
             <div id="debug-status">Status: Waiting for engine...</div>
@@ -776,7 +887,7 @@
               </div>
             </div>
             <div class="messages" id="messages-container"></div>
-            ${config.contextEngine?.developerDebugMode ? `
+            ${shouldRenderDebugPanel() ? `
             <div class="debug-panel" id="debug-panel" style="font-size: 11px; background: #000; color: #0f0; padding: 8px; border-top: 1px solid #27272a; max-height: 120px; overflow-y: auto; font-family: monospace;">
               <div style="font-weight:bold; margin-bottom: 4px;">🛠️ Context Engine Debug</div>
               <div id="debug-status">Status: Waiting for engine...</div>

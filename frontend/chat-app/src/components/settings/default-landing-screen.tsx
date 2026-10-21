@@ -127,7 +127,8 @@ export function DefaultLandingScreenSection() {
     (s) => !s.adminOnly || dbUser?.role === "super_admin"
   );
 
-  const currentPath = defaultLandingScreen || "/projects";
+  const isKnown = screens.some((s) => s.path === defaultLandingScreen);
+  const currentPath = isKnown ? defaultLandingScreen : "/projects";
   const activeOption = screens.find((s) => s.path === currentPath) || screens[0];
   const ActiveIcon = activeOption.icon;
 
@@ -157,7 +158,7 @@ export function DefaultLandingScreenSection() {
   };
 
   return (
-    <section className="space-y-5" aria-labelledby="landing-screen-heading">
+    <section className="space-y-5" aria-labelledby="landing-screen-heading" data-testid="default-landing-screen-section">
       {/* ── Section Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
         <div className="flex items-center gap-2.5">
@@ -182,7 +183,7 @@ export function DefaultLandingScreenSection() {
       </div>
 
       {/* ── Active Screen Hero Card ── */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
+      <div data-testid="active-landing-screen-hero" className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
 
         <div className="flex items-center gap-3.5 min-w-0 z-10">
@@ -212,6 +213,7 @@ export function DefaultLandingScreenSection() {
           {currentPath !== "/projects" && (
             <Button
               type="button"
+              data-testid="reset-default-screen-btn"
               variant="ghost"
               size="sm"
               onClick={handleResetToDefault}
@@ -226,6 +228,7 @@ export function DefaultLandingScreenSection() {
 
           <Button
             type="button"
+            data-testid="open-screen-now-btn"
             variant="outline"
             size="sm"
             onClick={() => setLocation(activeOption.path)}
@@ -257,6 +260,7 @@ export function DefaultLandingScreenSection() {
             return (
               <button
                 key={opt.id}
+                data-testid={`landing-screen-option-${opt.id}`}
                 type="button"
                 onClick={() => handleSelectScreen(opt.path)}
                 disabled={isSaving}

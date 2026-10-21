@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, AlertCircle, RefreshCw, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, AlertCircle, RefreshCw, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox, Bell } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
@@ -86,7 +86,6 @@ const PROJECT_NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "reports", label: "Reports", icon: FileText },
       { id: "analytics", label: "Analytics", icon: LayoutDashboard },
-      { id: "notifications", label: "Notifications", icon: AlertTriangle },
       { id: "integrations", label: "Integrations", icon: Sparkles },
       { id: "agent-control", label: "Agent Control", icon: Cpu },
       { id: "settings", label: "Settings", icon: Settings },
@@ -287,6 +286,27 @@ export default function ProjectEditPage() {
       return (s === "PENDING" || s === "ANALYZING") ? 2500 : false;
     },
   });
+
+  const { data: projectUnreadData } = useQuery({
+    queryKey: ["project-notifications-unread", projectId],
+    queryFn: async () => {
+      if (!projectId || projectId === "new") return { unreadCount: 0 };
+      try {
+        const res = await authFetch(apiUrl(`/api/projects/${projectId}/notifications/unread-count`));
+        if (res.ok) {
+          const data = await res.json();
+          return { unreadCount: Number(data.unreadCount || 0) };
+        }
+      } catch {
+        // Safe fallback
+      }
+      return { unreadCount: 0 };
+    },
+    enabled: !!projectId && !isNew,
+    refetchInterval: 15000,
+  });
+
+  const projectUnreadCount = projectUnreadData?.unreadCount ?? 0;
 
   const [isStartingAnalysis, setIsStartingAnalysis] = useState(false);
 
@@ -596,10 +616,10 @@ export default function ProjectEditPage() {
                   </div>
                 </div>
 
-                {/* Right Action Button */}
-                <div className="flex items-center gap-3 shrink-0 self-start lg:self-center">
+                {/* Right Action Controls: Live Status, Visit Site & Project Header Notification Bell */}
+                <div className="flex items-center gap-2.5 shrink-0 self-start lg:self-center">
                   {isLive ? (
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5">
                       <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 font-semibold px-3 py-1 gap-1.5 rounded-full text-xs">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         Live
@@ -629,6 +649,34 @@ export default function ProjectEditPage() {
                       <Laptop className="w-3.5 h-3.5" /> Test Locally
                     </Button>
                   )}
+
+                  {/* Project Header Notifications Bell */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleTabChange("notifications")}
+                    {...getTabTriggerProps("notifications")}
+                    aria-label={projectUnreadCount > 0 ? `Project notifications (${projectUnreadCount} unread)` : "Project notifications"}
+                    title={projectUnreadCount > 0 ? `Notifications (${projectUnreadCount} unread)` : "Notifications"}
+                    data-testid="project-header-notification-bell"
+                    className={`h-9 w-9 rounded-xl relative transition-all border-border/80 hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary ${
+                      activeTab === "notifications"
+                        ? "bg-primary text-primary-foreground border-primary shadow-xs ring-2 ring-primary/40"
+                        : "bg-secondary/40 text-muted-foreground"
+                    }`}
+                  >
+                    <Bell className="w-4 h-4" />
+                    {projectUnreadCount > 0 && (
+                      <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center animate-in zoom-in shadow-xs pointer-events-none ${
+                        activeTab === "notifications"
+                          ? "bg-foreground text-background"
+                          : "bg-primary text-primary-foreground"
+                      }`}>
+                        {projectUnreadCount > 99 ? "99+" : projectUnreadCount}
+                      </span>
+                    )}
+                  </Button>
                 </div>
               </div>
 
@@ -890,6 +938,8 @@ export default function ProjectEditPage() {
                 activeTab === "deployment" ||
                 activeTab === "api-keys";
 
+              const isNotifications = activeTab === "notifications";
+
               const activeGroup = PROJECT_NAV_GROUPS.find((g) => g.items.some((item) => item.id === activeTab)) || PROJECT_NAV_GROUPS[0];
 
               const websiteConnectedTabs = [
@@ -922,6 +972,11 @@ export default function ProjectEditPage() {
                           </button>
                         );
                       })
+                    ) : isNotifications ? (
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
+                        <Bell className="w-3.5 h-3.5 shrink-0" />
+                        <span>Smart Notification Center</span>
+                      </div>
                     ) : (
                       activeGroup.items.map((item) => {
                         const Icon = item.icon;
@@ -1253,7 +1308,7 @@ export default function ProjectEditPage() {
           <TabsContent value="notifications">
             {projectId && (
               <div className="mt-8">
-                <Notifications projectId={projectId} onSelectTab={handleTabChange} />
+                <Notifications key={projectId} projectId={projectId} onSelectTab={handleTabChange} />
               </div>
             )}
           </TabsContent>

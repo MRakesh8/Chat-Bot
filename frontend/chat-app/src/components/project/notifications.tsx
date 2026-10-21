@@ -98,6 +98,7 @@ export function Notifications({ projectId, onSelectTab }: NotificationsProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["project-notifications", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-notifications-unread", projectId] });
       queryClient.invalidateQueries({ queryKey: ["top-nav-unread-summary"] });
     },
     onError: (err: any) => {
@@ -116,6 +117,7 @@ export function Notifications({ projectId, onSelectTab }: NotificationsProps) {
     },
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["project-notifications", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-notifications-unread", projectId] });
       queryClient.invalidateQueries({ queryKey: ["top-nav-unread-summary"] });
       toast({ title: "Success", description: `Marked ${res.markedCount || "all"} notifications as read.` });
     },
@@ -135,6 +137,7 @@ export function Notifications({ projectId, onSelectTab }: NotificationsProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["project-notifications", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-notifications-unread", projectId] });
       queryClient.invalidateQueries({ queryKey: ["top-nav-unread-summary"] });
       toast({ title: "Deleted", description: "Notification removed." });
     },
@@ -154,6 +157,7 @@ export function Notifications({ projectId, onSelectTab }: NotificationsProps) {
     },
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["project-notifications", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-notifications-unread", projectId] });
       queryClient.invalidateQueries({ queryKey: ["top-nav-unread-summary"] });
       toast({ title: "Cleared", description: `Removed ${res.clearedCount || 0} read notifications.` });
     },
