@@ -389,9 +389,15 @@ router.post("/api-keys/:keyId/test", async (req: any, res: Response) => {
     if (!existing) return res.status(404).json({ error: "Key not found" });
 
     const decryptedKey = dbCrypto.decrypt(existing.encryptedKey);
+    if (!decryptedKey) {
+      return res.status(422).json({
+        error: "Unable to decrypt stored API key. Please verify that the correct ENCRYPTION_KEY is configured on the server.",
+        code: "DECRYPTION_FAILED"
+      });
+    }
     
     try {
-      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey || existing.encryptedKey, existing.provider);
+      const verified = await ProviderVerifier.verifyAndFetchModels(decryptedKey, existing.provider);
       await db.update(projectApiKeys).set({ 
         status: "HEALTHY", 
         isEnabled: true, 

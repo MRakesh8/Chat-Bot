@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Request, Response, NextFunction } from "express";
 import { db, users, organizations, organizationMembers, withBypassRLS } from "@workspace/db";
@@ -12,6 +13,13 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 const LOCAL_DEMO_USER_ID = "00000000-0000-4000-8000-000000000001";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+interface CachedAuthSession {
+  auth: any;
+  timestamp: number;
+}
+const authSessionCache = new Map<string, CachedAuthSession>();
+const AUTH_CACHE_TTL_MS = 20000; // 20s TTL eliminates repetitive Supabase roundtrips on rapid polling
 
 export const supabaseAuthMiddleware = async (
   req: Request,
@@ -189,9 +197,18 @@ export const supabaseAuthMiddleware = async (
     }
   }
 
+  // Short-lived in-memory auth cache (20s) to avoid repetitive external Supabase round-trips & DB lookups during rapid polling
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const cachedAuth = authSessionCache.get(tokenHash);
+  if (cachedAuth && (Date.now() - cachedAuth.timestamp < AUTH_CACHE_TTL_MS)) {
+    (req as any).auth = cachedAuth.auth;
+    return next();
+  }
+
   const { data, error } = await supabase.auth.getUser(token);
 
   if (error || !data.user) {
+    authSessionCache.delete(tokenHash);
     res.status(401).json({ error: "Invalid token" });
     return;
   }
@@ -254,7 +271,7 @@ export const supabaseAuthMiddleware = async (
       } as any);
     }
 
-    (req as any).auth = { 
+    const resolvedAuth = { 
       userId: mappedUserId, 
       user: data.user, 
       dbUser,
@@ -263,6 +280,21 @@ export const supabaseAuthMiddleware = async (
         role: m.role
       }))
     };
+    (req as any).auth = resolvedAuth;
+
+    authSessionCache.set(tokenHash, {
+      auth: resolvedAuth,
+      timestamp: Date.now()
+    });
+
+    if (authSessionCache.size > 1000) {
+      const now = Date.now();
+      for (const [k, v] of authSessionCache.entries()) {
+        if (now - v.timestamp >= AUTH_CACHE_TTL_MS) {
+          authSessionCache.delete(k);
+        }
+      }
+    }
   } catch (err) {
     logger.error(err, "Failed to upsert user");
     res.status(500).json({ error: "Failed to initialize user session" });

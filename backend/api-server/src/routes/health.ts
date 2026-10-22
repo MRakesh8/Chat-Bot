@@ -24,41 +24,48 @@ router.get("/healthz", async (_req, res) => {
     dbStatus = cachedHealthResult.database;
     aiStatus = cachedHealthResult.ai;
   } else {
-    // Run database and AI dependency checks concurrently
-    const [dbResult, aiResult] = await Promise.allSettled([
-      pool.query('SELECT 1'),
-      (async () => {
-        const systemKeys = await db.select().from(userApiKeys).where(or(isNull(userApiKeys.userId), eq(userApiKeys.isSystem, true)));
-        const hasEnvKey = Boolean(process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
+    // Check database and AI dependencies in a single lightweight query with bounded 2s timeout
+    const DB_CHECK_TIMEOUT_MS = 2000;
+    let timeoutHandle: any;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error("Health check database query timed out")), DB_CHECK_TIMEOUT_MS);
+    });
 
-        if (systemKeys.length > 0) {
-          const allDead = systemKeys.every(k => k.status !== "HEALTHY");
-          const anyQuota = systemKeys.some(k => k.status === "QUOTA_EXCEEDED" || k.status === "COOLDOWN");
-          if (allDead) {
-            return anyQuota ? "degraded_quota" : (hasEnvKey ? "fallback_env_active" : "error");
-          }
-          return "ok";
-        } else if (!hasEnvKey) {
-          return "no_credentials_configured";
-        }
-        return "ok";
-      })()
-    ]);
+    try {
+      const systemKeysPromise = db
+        .select({
+          id: userApiKeys.id,
+          status: userApiKeys.status,
+        })
+        .from(userApiKeys)
+        .where(or(isNull(userApiKeys.userId), eq(userApiKeys.isSystem, true)));
 
-    if (dbResult.status === "fulfilled") {
+      const systemKeys = await Promise.race([systemKeysPromise, timeoutPromise]);
       dbStatus = "ok";
-    } else {
+
+      const hasEnvKey = Boolean(process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
+      if (systemKeys.length > 0) {
+        const allDead = systemKeys.every(k => k.status !== "HEALTHY");
+        const anyQuota = systemKeys.some(k => k.status === "QUOTA_EXCEEDED" || k.status === "COOLDOWN");
+        if (allDead) {
+          aiStatus = anyQuota ? "degraded_quota" : (hasEnvKey ? "fallback_env_active" : "error");
+        } else {
+          aiStatus = "ok";
+        }
+      } else if (!hasEnvKey) {
+        aiStatus = "no_credentials_configured";
+      } else {
+        aiStatus = "ok";
+      }
+    } catch (err: any) {
       dbStatus = "error";
+      aiStatus = "unknown";
       if (now - lastDbErrorLogTime > 60000) {
         lastDbErrorLogTime = now;
-        logger.error({ error: dbResult.reason }, "Health check failed (database unreachable)");
+        logger.error({ error: err?.message || err }, "Health check failed (database unreachable or timed out)");
       }
-    }
-
-    if (aiResult.status === "fulfilled") {
-      aiStatus = aiResult.value;
-    } else {
-      aiStatus = "unknown";
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
 
     cachedHealthResult = { database: dbStatus, ai: aiStatus };

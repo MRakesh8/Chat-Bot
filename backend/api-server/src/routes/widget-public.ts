@@ -49,7 +49,13 @@ async function executeLlmWithFailover(
   method: 'generateContent' | 'generateContentStream', 
   options: any, 
   projectId?: string, 
-  userId?: string | null
+  userId?: string | null,
+  retryOpts?: {
+    deadlineMs?: number;
+    maxRetries?: number;
+    maxDelayMs?: number;
+    signal?: AbortSignal;
+  }
 ): Promise<{ result: any, keyUsed: WidgetKey }> {
   
   const req = {
@@ -70,20 +76,19 @@ async function executeLlmWithFailover(
     chatMessages.unshift({ role: 'system', content: systemInst });
   }
 
+  const routerOpts = {
+    deadlineMs: retryOpts?.deadlineMs ?? (method === 'generateContentStream' ? 14000 : 12000),
+    maxRetries: retryOpts?.maxRetries ?? 1,
+    maxDelayMs: retryOpts?.maxDelayMs ?? 1500,
+    signal: retryOpts?.signal
+  };
+
   if (method === 'generateContent') {
-    const res = await UniversalRouterService.executeChat(req, chatMessages, options.config?.temperature, {
-      deadlineMs: 12000,
-      maxRetries: 1,
-      maxDelayMs: 1500
-    });
+    const res = await UniversalRouterService.executeChat(req, chatMessages, options.config?.temperature, routerOpts);
     const content = res.content || '';
     return { result: { text: content, getText: () => content }, keyUsed: {} };
   } else {
-    const stream = await UniversalRouterService.executeStream(req, chatMessages, options.config?.temperature, {
-      deadlineMs: 14000,
-      maxRetries: 1,
-      maxDelayMs: 1500
-    });
+    const stream = await UniversalRouterService.executeStream(req, chatMessages, options.config?.temperature, routerOpts);
     return { 
       result: (async function*() {
         for await (const chunk of stream) {
@@ -733,6 +738,9 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
     // INTENT DETECTION (FOR SERVER ACTIONS & DOM TOOLS)
     let intentType = "GENERAL_QUESTION";
+    let intentDetectionFailed = false;
+    let intentFallbackReason: string | null = null;
+
     if (req.body?.confirmationToken) {
       intentType = "ACTION_REQUEST";
     } else {
@@ -752,44 +760,83 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         if (cachedIntent) {
           intentType = cachedIntent;
         } else {
-          const detectIntentPromise = executeLlmWithFailover(keys, 'generateContent', {
-            contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
-            config: { responseMimeType: "application/json" }
-          }, projectId, userId);
-          // Attach no-op handler to prevent unhandled rejection if timeout abandons the underlying promise
-          detectIntentPromise.catch(() => {});
+          // Bounded intent detection with safe cancellation via AbortController
+          const INTENT_TIMEOUT_MS = 3000;
+          const intentAbortController = new AbortController();
+
+          // Also abort if client disconnected
+          const onDisconnect = () => intentAbortController.abort();
+          req.once("close", onDisconnect);
 
           let timeoutHandle: any;
           const timeoutPromise = new Promise<{ result: any, keyUsed: any }>((_, reject) => {
-            timeoutHandle = setTimeout(() => reject(new Error("Intent detection deadline exceeded")), 3500);
+            timeoutHandle = setTimeout(() => {
+              intentAbortController.abort();
+              reject(new Error("Intent detection deadline exceeded"));
+            }, INTENT_TIMEOUT_MS);
           });
+
+          const detectIntentPromise = executeLlmWithFailover(
+            keys,
+            'generateContent',
+            {
+              contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
+              config: { responseMimeType: "application/json" }
+            },
+            projectId,
+            userId,
+            {
+              deadlineMs: INTENT_TIMEOUT_MS,
+              maxRetries: 0, // Avoid retry storms on fast classifier
+              signal: intentAbortController.signal
+            }
+          );
+          // Attach no-op handler to prevent unhandled rejection if timeout abandons the underlying promise
+          detectIntentPromise.catch(() => {});
 
           let intentRes: any;
           try {
             const raceResult = await Promise.race([detectIntentPromise, timeoutPromise]);
             intentRes = raceResult.result;
+          } catch (e: any) {
+            intentDetectionFailed = true;
+            intentFallbackReason = (e?.message?.includes("deadline exceeded") || intentAbortController.signal.aborted)
+              ? "DEADLINE_EXCEEDED"
+              : "PROVIDER_ERROR";
+            req.log.warn({ err: e, reason: intentFallbackReason }, "Intent detection deadline exceeded / failed, defaulting to GENERAL_QUESTION");
           } finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
+            req.removeListener("close", onDisconnect);
           }
           
-          try {
-            const raw = (intentRes.text || "").trim();
-            const cleanText = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-            const parsed = JSON.parse(cleanText || "{}");
-            if (parsed.intent) {
-              intentType = parsed.intent;
-              await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL
+          if (intentRes) {
+            try {
+              const raw = (intentRes.text || "").trim();
+              const cleanText = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+              const parsed = JSON.parse(cleanText || "{}");
+              if (parsed.intent) {
+                intentType = parsed.intent;
+                await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL
+              }
+            } catch (e) {
+              req.log.warn({ err: e }, "Failed to parse intent JSON, defaulting to GENERAL_QUESTION");
+              intentDetectionFailed = true;
+              intentFallbackReason = "PARSE_ERROR";
             }
-          } catch (e) {
-            req.log.error({ err: e }, "Failed to parse intent JSON");
           }
         }
-      } catch (e) {
-        req.log.error({ err: e }, "Intent detection failed, defaulting to GENERAL_QUESTION");
+      } catch (e: any) {
+        intentDetectionFailed = true;
+        intentFallbackReason = e?.message || "UNEXPECTED_ERROR";
+        req.log.warn({ err: e }, "Intent detection failed, defaulting to GENERAL_QUESTION");
       }
     }
     
-    req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
+    if (intentDetectionFailed) {
+      req.log.info(`[WIDGET ROUTING] Intent detection fell back to default: ${intentType} (reason: ${intentFallbackReason})`);
+    } else {
+      req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
+    }
 
     try {
       // 1. Delegate strictly ACTION_REQUEST to CoordinatorAgent -> BusinessAgent pipeline

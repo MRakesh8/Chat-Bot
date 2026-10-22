@@ -4,6 +4,7 @@ export interface RetryOptions {
   maxDelayMs?: number; // default: 2000
   jitterMs?: number; // default: 200
   deadlineMs?: number; // default: 20000
+  signal?: AbortSignal;
 }
 
 export class AllAiProvidersFailedError extends Error {

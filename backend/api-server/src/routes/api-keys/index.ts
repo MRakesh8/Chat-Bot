@@ -297,6 +297,12 @@ router.post("/:id/verify", async (req, res): Promise<any> => {
     if (!key) return res.status(404).json({ error: "API Key not found" });
 
     const decryptedKey = crypto.decrypt(key.encryptedKey);
+    if (!decryptedKey) {
+      return res.status(422).json({
+        error: "Unable to decrypt stored API key. Please verify that the correct ENCRYPTION_KEY is configured on the server.",
+        code: "DECRYPTION_FAILED"
+      });
+    }
     const startTime = Date.now();
 
     const keyObj = {

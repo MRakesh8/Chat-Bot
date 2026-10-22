@@ -32,7 +32,8 @@ import {
   Cpu,
   Star,
   ShieldAlert,
-  Sparkles
+  Sparkles,
+  BarChart2
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,13 +47,35 @@ import {
 
 import { useAuthFetch } from "@/hooks/use-auth-fetch";
 
-export function DashboardOverview({ projectId }: { projectId: string }) {
+export function DashboardOverview({ 
+  projectId,
+  onSelectTab
+}: { 
+  projectId: string;
+  onSelectTab?: (tab: string, subtab?: string, options?: { pushHistory?: boolean }) => void;
+}) {
   const { session } = useAuth();
   const authFetch = useAuthFetch();
   const { toast } = useToast();
   const [isReAnalyzing, setIsReAnalyzing] = React.useState(false);
   const [realtimeEvents, setRealtimeEvents] = React.useState<any[]>([]);
   const [streamConnected, setStreamConnected] = React.useState(false);
+
+  // Compact Analytics Preview Query (7-day window)
+  const {
+    data: analyticsData,
+    isLoading: isLoadingAnalytics,
+    isError: isAnalyticsError
+  } = useQuery({
+    queryKey: ["widget-analytics", projectId, "7d"],
+    queryFn: async () => {
+      const res = await authFetch(apiUrl(`/api/projects/${projectId}/widget/analytics?timeframe=7d`));
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!projectId,
+    staleTime: 10000,
+  });
 
   const { data: dashboardData, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["admin-dashboard", projectId],
@@ -216,6 +239,9 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
     { date: "Current Period", conversations: overview.totalConversations || 0, aiResponses: overview.aiResponses || 0 }
   ];
 
+  const analyticsSummary = analyticsData?.summary;
+  const analyticsTimeSeries = analyticsData?.timeSeries || [];
+
   return (
     <div className="space-y-6 mt-6">
       {/* KPI Cards Grid */}
@@ -350,6 +376,159 @@ export function DashboardOverview({ projectId }: { projectId: string }) {
                   >
                     <Rocket className="w-3.5 h-3.5" /> Deploy Widget
                   </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Compact Analytics & Intelligence Preview Card */}
+          <Card className="bg-card border-border shadow-xs overflow-hidden">
+            <CardHeader className="pb-3 border-b border-border/50 bg-muted/20">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <BarChart2 className="w-4 h-4 text-primary" />
+                  <span>Chatbot Analytics & Intelligence Preview</span>
+                  <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground ml-1">
+                    7-Day Window
+                  </Badge>
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onSelectTab?.("analytics", undefined, { pushHistory: true })}
+                  data-testid="analytics-view-more-details-btn"
+                  aria-label="View Full Analytics and detailed breakdown"
+                  className="text-xs h-8 px-3 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 hover:text-primary font-semibold shadow-2xs self-start sm:self-auto"
+                >
+                  <span>View More Details</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <CardDescription className="text-xs text-muted-foreground mt-1">
+                Continuous monitoring of visitor queries, token expenditure, and responsiveness.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              {isLoadingAnalytics ? (
+                <div className="flex items-center justify-center p-8 text-xs text-muted-foreground gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span>Loading analytics insights...</span>
+                </div>
+              ) : isAnalyticsError ? (
+                <div className="p-4 rounded-xl border border-dashed border-red-500/20 bg-red-500/5 text-xs text-center text-muted-foreground">
+                  <p className="text-foreground font-medium mb-1">Analytics preview temporarily unavailable</p>
+                  <p className="text-[11px]">Could not load 7-day metrics. Please check network connection or click View More Details.</p>
+                </div>
+              ) : analyticsSummary ? (
+                <>
+                  {/* 4 Compact Metric Tiles */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground block">
+                        Total Messages
+                      </span>
+                      <div className="text-xl font-bold text-foreground">
+                        {Number(analyticsSummary.totalMessages || 0).toLocaleString()}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Avg {analyticsSummary.avgMessagesPerConv || "0.0"} msgs / conv
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground block">
+                        Unique Visitors
+                      </span>
+                      <div className="text-xl font-bold text-foreground">
+                        {Number(analyticsSummary.uniqueVisitors || 0).toLocaleString()}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Conv Rate: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{analyticsSummary.conversionRate || "0.0"}%</span>
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground block">
+                        Est. AI Cost
+                      </span>
+                      <div className="text-xl font-bold text-foreground">
+                        ${analyticsSummary.aiCost || "0.0000"}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        {Number(analyticsSummary.tokenUsage || 0).toLocaleString()} tokens (Est.)
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground block">
+                        Avg Latency
+                      </span>
+                      <div className="text-xl font-bold text-foreground">
+                        {analyticsSummary.avgResponseTimeMs || 350} ms
+                      </div>
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        Healthy
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Compact 7-Day Trend Sparkline */}
+                  {analyticsTimeSeries.length > 0 && (
+                    <div className="border border-border/50 rounded-xl p-3 bg-muted/20 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[11px] font-medium text-foreground flex items-center gap-1.5">
+                          <TrendingUp className="w-3.5 h-3.5 text-primary" />
+                          7-Day Message & Conversation Trajectory
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">Daily Aggregate</span>
+                      </div>
+                      <div className="h-[110px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={analyticsTimeSeries} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="colorPrevMsgs" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
+                                <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
+                              </linearGradient>
+                              <linearGradient id="colorPrevConv" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.35} />
+                                <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0.0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                            <YAxis tick={{ fontSize: 10 }} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "rgba(15, 23, 42, 0.9)", borderColor: "#334155", borderRadius: "8px", color: "#fff", fontSize: "11px" }}
+                            />
+                            <Area type="monotone" dataKey="messages" name="Messages" stroke="#10B981" strokeWidth={1.5} fillOpacity={1} fill="url(#colorPrevMsgs)" />
+                            <Area type="monotone" dataKey="conversations" name="Conversations" stroke="#8B5CF6" strokeWidth={1.5} fillOpacity={1} fill="url(#colorPrevConv)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Footer Deep-Dive Link */}
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-border/40 text-muted-foreground">
+                    <span>Looking for FAQ clusters, knowledge gaps, or lead follow-ups?</span>
+                    <button
+                      type="button"
+                      onClick={() => onSelectTab?.("analytics", undefined, { pushHistory: true })}
+                      className="text-primary hover:underline font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      Open Full Analytics <ArrowRight className="w-3 h-3 inline" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground text-xs">
+                  <BarChart2 className="w-6 h-6 text-muted-foreground/40 mb-2" />
+                  <p className="font-medium text-foreground">No Analytics Data Recorded Yet</p>
+                  <p className="text-[11px] text-muted-foreground mt-1 max-w-sm">
+                    Analytics will populate automatically as visitors interact with your deployed chatbot widget.
+                  </p>
                 </div>
               )}
             </CardContent>

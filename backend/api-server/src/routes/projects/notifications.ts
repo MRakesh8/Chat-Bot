@@ -63,6 +63,31 @@ router.get("/", async (req: any, res: Response): Promise<any> => {
   }
 });
 
+// In-flight query coalescing to eliminate duplicate concurrent DB hits for rapid polling
+const inFlightUnreadQueries = new Map<string, Promise<number>>();
+
+async function fetchCoalescedUnreadCount(
+  coalesceKey: string,
+  projectId: string,
+  organizationId: string
+): Promise<number> {
+  const existing = inFlightUnreadQueries.get(coalesceKey);
+  if (existing) {
+    return existing;
+  }
+
+  const queryPromise = (async () => {
+    try {
+      return await getUnreadCount(projectId, organizationId);
+    } finally {
+      inFlightUnreadQueries.delete(coalesceKey);
+    }
+  })();
+
+  inFlightUnreadQueries.set(coalesceKey, queryPromise);
+  return queryPromise;
+}
+
 /**
  * GET /api/projects/:projectId/notifications/unread-count
  * Fast endpoint for header badges.
@@ -87,7 +112,8 @@ router.get("/unread-count", async (req: any, res: Response): Promise<any> => {
     }
 
     const { authoritativeOrgId } = resolved;
-    const unreadCount = await getUnreadCount(projectId, authoritativeOrgId);
+    const coalesceKey = `${authoritativeOrgId}:${projectId}`;
+    const unreadCount = await fetchCoalescedUnreadCount(coalesceKey, projectId, authoritativeOrgId);
     return res.json({ unreadCount });
   } catch (err: any) {
     req.log?.error?.({ err, projectId }, "Failed to fetch unread count");

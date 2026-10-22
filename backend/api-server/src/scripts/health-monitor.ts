@@ -77,6 +77,10 @@ export async function runIntelligentHealthCheck() {
     try {
       console.log(`[Health Monitor] Verifying ${key.type} key: ${key.id} (Provider: ${key.provider})`);
       const decryptedKey = crypto.decrypt(key.encryptedKey);
+      if (!decryptedKey) {
+        console.warn(`[Health Monitor] Key ${key.id} could not be decrypted. Skipping verification to prevent marking valid key as invalid.`);
+        continue;
+      }
       
       const startTime = Date.now();
       let result;

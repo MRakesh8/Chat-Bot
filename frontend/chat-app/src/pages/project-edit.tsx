@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, AlertCircle, RefreshCw, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox, Bell } from "lucide-react";
+import { Loader2, Copy, Globe, MessageSquare, Database, LayoutDashboard, Settings, FileText, Paintbrush, Rocket, Key, Pencil, Brain, CreditCard, Sparkles, Share2, Check, Smartphone, ShieldCheck, ShieldAlert, AlertTriangle, AlertCircle, RefreshCw, ArrowLeft, Compass, ExternalLink, Laptop, CheckCircle2, ArrowRight, Cpu, ChevronDown, SlidersHorizontal, Wrench, Inbox, Bell, BarChart2 } from "lucide-react";
 import { DashboardOverview } from "../components/project/dashboard-overview";
 import { KnowledgeBase } from "../components/project/knowledge-base";
 import { WidgetStudio } from "../components/project/widget-studio";
@@ -80,10 +80,9 @@ const PROJECT_NAV_GROUPS: NavGroup[] = [
   {
     id: "operations",
     title: "Operations",
-    description: "Analytics, Integrations, Control & Settings",
+    description: "Integrations, Control & Settings",
     icon: Wrench,
     items: [
-      { id: "analytics", label: "Analytics", icon: LayoutDashboard },
       { id: "integrations", label: "Integrations", icon: Sparkles },
       { id: "agent-control", label: "Agent Control", icon: Cpu },
       { id: "settings", label: "Settings", icon: Settings },
@@ -324,6 +323,7 @@ export default function ProjectEditPage() {
       return { unreadCount: 0 };
     },
     enabled: !!projectId && !isNew,
+    staleTime: 10000,
     refetchInterval: 15000,
   });
 
@@ -962,6 +962,7 @@ export default function ProjectEditPage() {
               const isNotifications = activeTab === "notifications";
               const isReports = activeTab === "reports";
               const isChat = activeTab === "chat";
+              const isAnalytics = activeTab === "analytics";
 
               const activeGroup = PROJECT_NAV_GROUPS.find((g) => g.items.some((item) => item.id === activeTab)) || PROJECT_NAV_GROUPS[0];
 
@@ -995,6 +996,11 @@ export default function ProjectEditPage() {
                           </button>
                         );
                       })
+                    ) : isAnalytics ? (
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
+                        <BarChart2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>Chatbot Analytics & Intelligence</span>
+                      </div>
                     ) : isNotifications ? (
                       <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
                         <Bell className="w-3.5 h-3.5 shrink-0" />
@@ -1067,6 +1073,18 @@ export default function ProjectEditPage() {
                             <span>Knowledge Base (Step 2)</span>
                           </div>
                           {activeTab === "knowledge" && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleTabChange("analytics")}
+                          className={`cursor-pointer rounded-xl text-xs py-2 px-2.5 flex items-center justify-between gap-2 my-0.5 ${
+                            activeTab === "analytics" ? "bg-primary/15 text-primary font-semibold" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <BarChart2 className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                            <span>Chatbot Analytics</span>
+                          </div>
+                          {activeTab === "analytics" && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
                         </DropdownMenuItem>
                       </div>
 
@@ -1146,7 +1164,7 @@ export default function ProjectEditPage() {
                 
                 <br />
                 {/* Dashboard Overview */}
-                {projectId && <DashboardOverview key={projectId} projectId={projectId} />}
+                {projectId && <DashboardOverview key={projectId} projectId={projectId} onSelectTab={handleTabChange} />}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1345,7 +1363,7 @@ export default function ProjectEditPage() {
           <TabsContent value="analytics">
             {projectId && (
               <div className="mt-8">
-                <Analytics projectId={projectId} />
+                <Analytics projectId={projectId} onSelectTab={handleTabChange} />
               </div>
             )}
           </TabsContent>

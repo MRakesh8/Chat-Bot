@@ -46,17 +46,17 @@ runCheck(1, "Reports is absent from Operations navigation items and All Navigati
 });
 
 // 2. Remaining Operations destinations and count badge
-runCheck(2, "Operations contains exactly Analytics, Integrations, Agent Control, Settings with badge count 4", () => {
+runCheck(2, "Operations contains exactly Integrations, Agent Control, Settings with badge count 3 (Analytics unified into Overview)", () => {
   const opsMatch = projectEditTsx.match(/id:\s*"operations"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
   const opsItems = opsMatch[1];
   const itemIds = [...opsItems.matchAll(/id:\s*"([^"]+)"/g)].map(m => m[1]);
   assert.deepStrictEqual(
     itemIds,
-    ["analytics", "integrations", "agent-control", "settings"],
-    "Operations items must strictly match [analytics, integrations, agent-control, settings]"
+    ["integrations", "agent-control", "settings"],
+    "Operations items must strictly match [integrations, agent-control, settings]"
   );
 
-  // Verify count badge dynamically renders group.items.length (which is 4)
+  // Verify count badge dynamically renders group.items.length (which is 3)
   assert(
     projectEditTsx.includes("{group.items.length}"),
     "Category card badge must dynamically render group.items.length"
@@ -66,7 +66,7 @@ runCheck(2, "Operations contains exactly Analytics, Integrations, Agent Control,
 // 3. Analytics, Integrations, Agent Control, and Settings remain accessible
 runCheck(3, "Analytics, Integrations, Agent Control, and Settings have corresponding TabsContent", () => {
   assert(projectEditTsx.includes('<TabsContent value="analytics">'), "TabsContent analytics must exist");
-  assert(projectEditTsx.includes('<Analytics projectId={projectId} />'), "Analytics component must be mounted");
+  assert(projectEditTsx.includes('<Analytics projectId={projectId}'), "Analytics component must be mounted");
 
   assert(projectEditTsx.includes('<TabsContent value="integrations">'), "TabsContent integrations must exist");
   assert(projectEditTsx.includes('<IntegrationsList projectId={projectId} />'), "Integrations component must be mounted");
@@ -215,10 +215,11 @@ runCheck(8, "DOM level verification: Operations category card badge displays 4 a
   // Verify Operations card
   const opsCard = container.querySelector('[data-group-id="operations"]');
   assert(opsCard, "Operations card must exist in DOM");
-  assert.strictEqual(opsCard.querySelector(".group-badge").textContent, "4", "Operations badge must display '4'");
+  assert.strictEqual(opsCard.querySelector(".group-badge").textContent, "3", "Operations badge must display '3'");
 
   const opsTabs = [...opsCard.querySelectorAll(".subtabs button")].map(btn => btn.getAttribute("data-tab-id"));
-  assert.deepStrictEqual(opsTabs, ["analytics", "integrations", "agent-control", "settings"]);
+  assert.deepStrictEqual(opsTabs, ["integrations", "agent-control", "settings"]);
+  assert(!opsTabs.includes("analytics"), "Operations tabs in DOM must NOT contain 'analytics'");
   assert(!opsTabs.includes("reports"), "Operations tabs in DOM must NOT contain 'reports'");
 
   // Verify 'Reports' is nowhere in DOM

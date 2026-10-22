@@ -65,6 +65,7 @@ export function TopNav({ onOpenSearch }: { onOpenSearch?: () => void }) {
       return { totalUnread: 0 };
     },
     enabled: !!user,
+    staleTime: 10000,
     refetchInterval: 20000,
   });
 

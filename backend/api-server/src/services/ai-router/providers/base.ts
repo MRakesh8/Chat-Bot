@@ -10,6 +10,7 @@ export interface ChatCompletionRequest {
   temperature?: number;
   maxTokens?: number;
   model: ResolvedModel;
+  signal?: AbortSignal;
 }
 
 export interface ChatCompletionResponse {

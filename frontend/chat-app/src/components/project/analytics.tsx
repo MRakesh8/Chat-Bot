@@ -35,7 +35,8 @@ import {
   BarChart2,
   Sparkles,
   Edit3,
-  Check
+  Check,
+  ArrowLeft
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -53,7 +54,13 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
-export function Analytics({ projectId }: { projectId: string }) {
+export function Analytics({ 
+  projectId,
+  onSelectTab
+}: { 
+  projectId: string;
+  onSelectTab?: (tab: string, subtab?: string, options?: { pushHistory?: boolean }) => void;
+}) {
   const { session } = useAuth();
   const queryClient = useQueryClient();
   const [timeframe, setTimeframe] = useState<"24h" | "7d" | "30d" | "all">("7d");
@@ -283,6 +290,38 @@ export function Analytics({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6 mt-6">
+      {/* Top Navigation Bar: Back to Overview */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (onSelectTab) {
+                onSelectTab("overview", undefined, { pushHistory: true });
+              } else {
+                const overviewTab = document.querySelector('[data-value="overview"]') as HTMLElement || document.querySelector('[value="overview"]') as HTMLElement;
+                if (overviewTab) overviewTab.click();
+              }
+            }}
+            data-testid="analytics-back-to-overview-btn"
+            aria-label="Back to Overview Dashboard"
+            className="text-xs font-semibold gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Overview
+          </Button>
+          <span className="text-muted-foreground text-xs">/</span>
+          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <BarChart2 className="w-3.5 h-3.5 text-primary" />
+            Detailed Analytics & Intelligence
+          </span>
+        </div>
+        <Badge variant="outline" className="text-[10px] w-fit text-muted-foreground font-mono">
+          Project: {projectId}
+        </Badge>
+      </div>
+
       {/* Header Controls Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card border border-border p-4 rounded-xl shadow-xs">
         <div className="flex items-center gap-3">

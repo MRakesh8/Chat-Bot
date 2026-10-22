@@ -92,14 +92,14 @@ const opsGroupMatch = navGroupsCode.match(/id:\s*"operations"[\s\S]*?items:\s*\[
 assert(
   opsGroupMatch &&
   !opsGroupMatch[1].includes('"reports"') &&
-  opsGroupMatch[1].includes('"analytics"') &&
+  !opsGroupMatch[1].includes('"analytics"') &&
   !opsGroupMatch[1].includes('"notifications"') &&
   opsGroupMatch[1].includes('"integrations"') &&
   opsGroupMatch[1].includes('"agent-control"') &&
   opsGroupMatch[1].includes('"settings"'),
-  "Operations must contain analytics, integrations, agent-control, and settings, and must NOT contain reports or notifications"
+  "Operations must contain integrations, agent-control, and settings, and must NOT contain reports, notifications, or analytics"
 );
-console.log("✓ Test 6: AI & Context, Website Experience, and Operations remain functional (Reports removed from Operations navigation; Notifications moved to Project Header Bell).");
+console.log("✓ Test 6: AI & Context, Website Experience, and Operations remain functional (Analytics unified into Overview; Reports removed from Operations; Notifications moved to Project Header Bell).");
 
 // 7. Website Connected, Widget Studio, Deployment, API Keys, and Knowledge Base remain accessible
 assert(
@@ -138,7 +138,7 @@ console.log("✓ Test 9: No duplicate Overview component or navigation entry is 
 
 // 10. Project switching does not display stale dashboard data
 assert(
-  projectEditTsx.includes('<DashboardOverview key={projectId} projectId={projectId} />') &&
+  projectEditTsx.includes('<DashboardOverview key={projectId} projectId={projectId}') &&
   projectEditTsx.includes('useEffect(() => {\n    const tabToSet = getInitialTab();\n    setActiveTab(tabToSet);'),
   "DashboardOverview must be keyed by projectId and tab state reset on projectId change"
 );

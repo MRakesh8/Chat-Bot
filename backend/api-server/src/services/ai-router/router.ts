@@ -311,12 +311,16 @@ export class UniversalRouterService {
       let attempt = 0;
 
       while (attempt <= maxRetries) {
+        if (options?.signal?.aborted || Date.now() >= deadline) {
+          throw new Error("Request deadline exceeded or aborted");
+        }
         const startTime = Date.now();
         try {
           const response = await adapter.generateChat({
             messages,
             temperature,
-            model: resolvedCandidate
+            model: resolvedCandidate,
+            signal: options?.signal
           });
 
           if (wasRepaired) {
@@ -434,13 +438,17 @@ export class UniversalRouterService {
       let attempt = 0;
 
       while (attempt <= maxRetries) {
+        if (options?.signal?.aborted || Date.now() >= deadline) {
+          throw new Error("Request deadline exceeded or aborted");
+        }
         const startTime = Date.now();
         let chunkCount = 0;
         try {
           const stream = adapter.generateChatStream({
             messages,
             temperature,
-            model: resolvedCandidate
+            model: resolvedCandidate,
+            signal: options?.signal
           });
 
           for await (const chunk of stream) {

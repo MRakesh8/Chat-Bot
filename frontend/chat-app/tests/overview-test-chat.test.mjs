@@ -148,16 +148,16 @@ runCheck(9, "Overview, Website Experience, Operations, and Notifications remain 
     "Notifications header bell and component must be preserved"
   );
 
-  // Operations 4 items
+  // Operations 3 items (analytics unified into Overview)
   const opsMatch = navCode.match(/id:\s*"operations"[\s\S]*?items:\s*\[([\s\S]*?)\]/);
   assert(
     opsMatch &&
     !opsMatch[1].includes('"reports"') &&
-    opsMatch[1].includes('"analytics"') &&
+    !opsMatch[1].includes('"analytics"') &&
     opsMatch[1].includes('"integrations"') &&
     opsMatch[1].includes('"agent-control"') &&
     opsMatch[1].includes('"settings"'),
-    "Operations must contain 4 destinations without reports"
+    "Operations must contain 3 destinations without reports or analytics"
   );
 });
 

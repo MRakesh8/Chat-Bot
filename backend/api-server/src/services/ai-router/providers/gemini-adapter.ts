@@ -87,11 +87,19 @@ export class GeminiAdapter extends BaseProviderAdapter {
       body.config.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
 
+    if (request.signal?.aborted) {
+      throw new Error("Request was aborted");
+    }
+
     try {
       const response = await client.models.generateContent({
         model: request.model.modelId,
         ...body
       });
+
+      if (request.signal?.aborted) {
+        throw new Error("Request was aborted");
+      }
 
       return {
         content: response.text || "",
@@ -107,6 +115,9 @@ export class GeminiAdapter extends BaseProviderAdapter {
   }
 
   async *generateChatStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
+    if (request.signal?.aborted) {
+      return;
+    }
     const httpOptions = this.getHttpOptions(request.model.credential.baseUrl);
     const client = new GoogleGenAI({ apiKey: request.model.credential.apiKey, ...(httpOptions ? { httpOptions } : {}) });
     const contents = request.messages.filter(m => m.role !== "system").map(m => ({
@@ -131,6 +142,7 @@ export class GeminiAdapter extends BaseProviderAdapter {
         ...body
       });
       for await (const chunk of stream) {
+        if (request.signal?.aborted) break;
         if (chunk.text) yield { text: chunk.text };
       }
     } catch (e: any) {
