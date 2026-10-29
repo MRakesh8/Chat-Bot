@@ -36,6 +36,11 @@ import {
 
 const router = Router();
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(id: unknown): boolean {
+  return typeof id === "string" && UUID_REGEX.test(id);
+}
+
 async function userOwnsProject(projectId: string, userId: string, role?: string) {
   if (role === "super_admin" || role === "admin") {
     const [project] = await db
@@ -69,7 +74,8 @@ router.get("/conversations/search", async (req, res) => {
         and(
           like(chatSessions.title, `%${q}%`),
           eq(chatSessions.userId, userId),
-          ne(chatSessions.title, "Website Visitor Chat")
+          ne(chatSessions.title, "Website Visitor Chat"),
+          ne(chatSessions.title, "✨ NOVA AI Assistant")
         )
       )
       .orderBy(desc(chatSessions.createdAt))
@@ -108,6 +114,7 @@ router.get("/conversations", async (req, res) => {
         and(
           eq(chatSessions.userId, userId),
           ne(chatSessions.title, "Website Visitor Chat"),
+          ne(chatSessions.title, "✨ NOVA AI Assistant"),
           or(isNull(chatSessions.expiresAt), gt(chatSessions.expiresAt, new Date()))
         )
       )
@@ -152,8 +159,8 @@ router.get("/conversations/:id", async (req, res) => {
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = GetGeminiConversationParams.safeParse({ id: req.params.id });
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid id" });
+    if (!parsed.success || !isValidUuid(parsed.data.id)) {
+      res.status(400).json({ error: "Invalid conversation id. Expected a valid UUID." });
       return;
     }
     const [conversation] = await db
@@ -185,8 +192,8 @@ router.patch("/conversations/:id", async (req, res) => {
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const paramsParsed = UpdateGeminiConversationParams.safeParse({ id: req.params.id });
-    if (!paramsParsed.success) {
-      res.status(400).json({ error: "Invalid id" });
+    if (!paramsParsed.success || !isValidUuid(paramsParsed.data.id)) {
+      res.status(400).json({ error: "Invalid conversation id. Expected a valid UUID." });
       return;
     }
     const bodyParsed = UpdateGeminiConversationBody.safeParse(req.body);
@@ -240,8 +247,8 @@ router.patch("/conversations/:id/favorite", async (req, res) => {
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const paramsParsed = UpdateGeminiConversationParams.safeParse({ id: req.params.id });
-    if (!paramsParsed.success) {
-      res.status(400).json({ error: "Invalid id" });
+    if (!paramsParsed.success || !isValidUuid(paramsParsed.data.id)) {
+      res.status(400).json({ error: "Invalid conversation id. Expected a valid UUID." });
       return;
     }
     const isFavorite = Boolean(req.body.isFavorite);
@@ -274,8 +281,8 @@ router.delete("/conversations/:id", async (req, res) => {
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = DeleteGeminiConversationParams.safeParse({ id: req.params.id });
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid id" });
+    if (!parsed.success || !isValidUuid(parsed.data.id)) {
+      res.status(400).json({ error: "Invalid conversation id. Expected a valid UUID." });
       return;
     }
     const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, parsed.data.id));
@@ -296,8 +303,8 @@ router.get("/conversations/:id/messages", async (req, res) => {
   if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
     const parsed = ListGeminiMessagesParams.safeParse({ id: req.params.id });
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid id" });
+    if (!parsed.success || !isValidUuid(parsed.data.id)) {
+      res.status(400).json({ error: "Invalid conversation id. Expected a valid UUID." });
       return;
     }
     const [existing] = await db.select().from(chatSessions).where(eq(chatSessions.id, parsed.data.id));
@@ -508,6 +515,7 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
 // POST /gemini/conversations/:id/messages (SSE streaming)
 router.post("/conversations/:id/messages", async (req, res) => {
   let currentStep = "INITIALIZATION";
+  let conversationId = req.params.id;
   try {
     const paramsParsed = SendGeminiMessageParams.safeParse({ id: req.params.id });
     if (!paramsParsed.success) {
@@ -520,7 +528,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
       return;
     }
 
-    const conversationId = paramsParsed.data.id;
+    conversationId = paramsParsed.data.id;
     const { content = "", fileIds = [], projectIds = [], useNormalAi = false } = bodyParsed.data as any;
 
     const requestStartTime = performance.now();
@@ -541,14 +549,58 @@ router.post("/conversations/:id/messages", async (req, res) => {
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     currentStep = "CONVERSATION_LOOKUP";
-    // Verify conversation exists and belongs to user
-    const [conversation] = await db
-      .select()
-      .from(chatSessions)
-      .where(and(eq(chatSessions.id, conversationId), eq(chatSessions.userId, userId)));
-    if (!conversation) {
-      res.status(404).json({ error: "Conversation not found" });
-      return;
+    let conversation: any = null;
+
+    if (!isValidUuid(conversationId)) {
+      // Support Nova AI floating assistant sessions, legacy client session prefixes, or "new" session requests
+      if (conversationId.startsWith("nova-ai-session") || conversationId === "new") {
+        req.log.info({ requestedId: conversationId }, "[CONVERSATION_LOOKUP] Provisioning or looking up ✨ NOVA AI Assistant session");
+        
+        // Find existing recent Nova AI session for this user (created within 24h) or create new one
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const [recentSession] = await db
+          .select()
+          .from(chatSessions)
+          .where(
+            and(
+              eq(chatSessions.userId, userId),
+              eq(chatSessions.title, "✨ NOVA AI Assistant"),
+              gt(chatSessions.createdAt, oneDayAgo)
+            )
+          )
+          .orderBy(desc(chatSessions.createdAt))
+          .limit(1);
+
+        if (recentSession) {
+          conversation = recentSession;
+        } else {
+          const [newSession] = await db
+            .insert(chatSessions)
+            .values({
+              title: "✨ NOVA AI Assistant",
+              userId,
+              projectId: null,
+              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            })
+            .returning();
+          conversation = newSession;
+        }
+        conversationId = conversation.id;
+      } else {
+        res.status(400).json({ error: "Invalid conversation id. Expected a valid UUID." });
+        return;
+      }
+    } else {
+      // Verify conversation exists and belongs to user
+      const [foundSession] = await db
+        .select()
+        .from(chatSessions)
+        .where(and(eq(chatSessions.id, conversationId), eq(chatSessions.userId, userId)));
+      if (!foundSession) {
+        res.status(404).json({ error: "Conversation not found" });
+        return;
+      }
+      conversation = foundSession;
     }
 
     // Server-side Entitlement Check for project dashboard AI
@@ -1192,6 +1244,7 @@ ${liveContext}`;
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ conversationId })}\n\n`);
 
     let fullResponse = "";
 
@@ -1324,20 +1377,23 @@ ${liveContext}`;
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err: any) {
+    const isGeminiStep = currentStep === "GEMINI_REQUEST";
     const classified = classifyProviderError(err);
     req.log.error(
       { 
+        err, 
         errType: classified.type, 
         status: classified.status, 
         retryable: classified.retryable, 
-        currentStep 
+        currentStep,
+        conversationId: String(conversationId || req.params?.id)
       }, 
-      `Error in streaming message at step: ${currentStep}: ${classified.sanitizedMessage}`
+      `Error in streaming message at step: ${currentStep}: ${isGeminiStep ? classified.sanitizedMessage : (err?.message || classified.sanitizedMessage)}`
     );
-    logSystemError("chatbot", classified.sanitizedMessage, { 
+    logSystemError("chatbot", isGeminiStep ? classified.sanitizedMessage : (err?.message || classified.sanitizedMessage), { 
       currentStep, 
-      conversationId: req.params.id, 
-      errorType: classified.type 
+      conversationId: String(conversationId || req.params?.id), 
+      errorType: isGeminiStep ? classified.type : "INTERNAL_ERROR" 
     });
 
     if (!res.headersSent) {
@@ -1345,9 +1401,9 @@ ${liveContext}`;
         ? classified.status
         : 500;
       res.status(httpStatus).json({ 
-        error: classified.userMessage,
-        errorType: classified.type,
-        retryable: classified.retryable,
+        error: isGeminiStep ? classified.userMessage : "An unexpected error occurred while processing your request. Please try again.",
+        errorType: isGeminiStep ? classified.type : "INTERNAL_ERROR",
+        retryable: isGeminiStep ? classified.retryable : false,
         retryDelaySeconds: classified.retryDelaySeconds,
         step: currentStep
       });
@@ -1356,9 +1412,9 @@ ${liveContext}`;
     
     // Stream already started: Emit standard SSE error event and terminate stream
     res.write(`event: error\ndata: ${JSON.stringify({ 
-      error: classified.userMessage,
-      errorType: classified.type,
-      retryable: classified.retryable,
+      error: isGeminiStep ? classified.userMessage : "An unexpected error occurred while processing your request. Please try again.",
+      errorType: isGeminiStep ? classified.type : "INTERNAL_ERROR",
+      retryable: isGeminiStep ? classified.retryable : false,
       retryDelaySeconds: classified.retryDelaySeconds,
       step: currentStep
     })}\n\n`);

@@ -164,7 +164,7 @@ export function classifyProviderError(error: any): ClassifiedProviderError {
     status === 503 ||
     status === 502 ||
     status === 504 ||
-    status === 500 ||
+    (status === 500 && (errStatusStr === "UNAVAILABLE" || msgLower.includes("unavailable") || msgLower.includes("overloaded") || msgLower.includes("busy") || msgLower.includes("provider") || msgLower.includes("ai_provider"))) ||
     errStatusStr === "UNAVAILABLE" ||
     msgLower.includes("unavailable") ||
     msgLower.includes("overloaded") ||

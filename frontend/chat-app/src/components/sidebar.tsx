@@ -46,19 +46,25 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
   onMoveToProject: (id: string, projectId: string | null, e: React.MouseEvent) => void;
   onDelete: (id: string, isFavorite: boolean, e: React.MouseEvent) => void;
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-300 ease-out cursor-pointer mx-1 mb-1",
+        "group relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition-all duration-200 ease-out cursor-pointer mx-1 mb-1 min-w-0",
         isActive
           ? "bg-primary/15 text-primary font-medium shadow-2xs ring-1 ring-primary/20" 
-          : "text-sidebar-foreground/70 hover:bg-foreground/5 hover:text-sidebar-foreground"
+          : "text-sidebar-foreground/70 hover:bg-foreground/5 hover:text-sidebar-foreground",
+        isMenuOpen && "bg-foreground/5 text-sidebar-foreground"
       )}
       onClick={() => onLocationChange(conv.id)}
     >
-      <MessageSquare className="w-4 h-4 flex-shrink-0 text-muted-foreground group-hover:text-foreground" />
+      <MessageSquare className={cn(
+        "w-4 h-4 shrink-0 transition-colors",
+        isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+      )} />
       {isEditing ? (
-        <div className="flex-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+        <div className="flex-1 min-w-0 flex items-center gap-1" onClick={e => e.stopPropagation()}>
           <Input
             autoFocus
             value={editTitle}
@@ -67,63 +73,118 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
               if (e.key === 'Enter') onSaveEdit(conv.id);
               if (e.key === 'Escape') onCancelEdit();
             }}
-            className="h-6 px-1.5 py-0 bg-sidebar-accent border-border text-sidebar-foreground"
+            className="h-6 px-1.5 py-0 text-xs bg-sidebar-accent border-border text-sidebar-foreground"
+            aria-label="Edit conversation title"
           />
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-emerald-500" onClick={() => onSaveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-rose-500" onClick={onCancelEdit}><X className="w-3 h-3" /></Button>
+          <Button variant="ghost" size="icon" aria-label="Save title" className="h-6 w-6 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 shrink-0" onClick={() => onSaveEdit(conv.id)}><Check className="w-3 h-3" /></Button>
+          <Button variant="ghost" size="icon" aria-label="Cancel editing" className="h-6 w-6 text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 shrink-0" onClick={onCancelEdit}><X className="w-3 h-3" /></Button>
         </div>
       ) : (
-        <span className="flex-1 truncate select-none text-xs leading-relaxed">{conv.title}</span>
-      )}
-      
-      {/* Always-visible favorite indicator */}
-      {conv.isFavorite && !isEditing && (
-        <Button
-          variant="ghost" size="icon"
-          className="h-6 w-6 shrink-0 group-hover:hidden"
-          onClick={(e) => onToggleFavorite(conv.id, true, e)}
-          title="Remove from favorites"
+        <span
+          className="flex-1 min-w-0 truncate select-none text-xs leading-normal pr-1"
+          title={conv.title}
         >
-          <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
-        </Button>
+          {conv.title}
+        </span>
       )}
 
       {!isEditing && (
-        <div className={cn(
-          "flex items-center gap-0.5 transition-all duration-200 shrink-0",
-          conv.isFavorite ? "opacity-0 group-hover:opacity-100" : "opacity-0 group-hover:opacity-100",
-          isActive && "opacity-100" // Always show for active conversation
-        )}>
+        <div
+          className={cn(
+            "flex items-center gap-0.5 shrink-0 transition-opacity duration-150 ml-auto",
+            conv.isFavorite || isActive || isMenuOpen
+              ? "opacity-100"
+              : "opacity-75 md:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Favorite Toggle Button */}
           <Button
-            variant="ghost" size="icon"
-            className="h-6 w-6"
-            onClick={(e) => onToggleFavorite(conv.id, !!conv.isFavorite, e)}
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
             title={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            className={cn(
+              "h-7 w-7 rounded-lg transition-colors flex items-center justify-center",
+              conv.isFavorite
+                ? "text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                : "text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 hidden md:inline-flex md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
+              pendingFavorite && "opacity-50 cursor-wait"
+            )}
+            onClick={(e) => onToggleFavorite(conv.id, !!conv.isFavorite, e)}
           >
-            <Heart className={cn(
-              "w-3.5 h-3.5 transition-colors",
-              conv.isFavorite ? "fill-rose-500 text-rose-500" : "text-muted-foreground hover:text-rose-500",
-              pendingFavorite && "opacity-70",
-            )} />
+            <Heart
+              className={cn(
+                "w-3.5 h-3.5 transition-transform active:scale-90",
+                conv.isFavorite ? "fill-rose-500 text-rose-500" : "text-muted-foreground group-hover:text-rose-500"
+              )}
+            />
           </Button>
-          
-          <DropdownMenu>
+
+          {/* Three-Dot Menu */}
+          <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
             <DropdownMenuTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 text-muted-foreground hover:text-sidebar-foreground"
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Conversation actions"
+                title="Conversation actions"
+                className={cn(
+                  "h-7 w-7 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-foreground/10 transition-colors",
+                  "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus:outline-none",
+                  isMenuOpen && "opacity-100 bg-foreground/10 text-sidebar-foreground"
+                )}
                 onClick={(e) => e.stopPropagation()}
               >
-                <MoreVertical className="w-4 h-4" />
+                <MoreVertical className="w-3.5 h-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-popover border-border text-popover-foreground">
-              <DropdownMenuItem onClick={(e) => onStartEdit(conv.id, conv.title, e)} className="hover:bg-accent cursor-pointer">
-                <Edit2 className="w-4 h-4 mr-2" /> Rename
+            <DropdownMenuContent
+              align="end"
+              side="bottom"
+              sideOffset={6}
+              className="w-48 bg-popover/95 backdrop-blur-xl border border-border/80 text-popover-foreground shadow-xl rounded-xl p-1 z-50 animate-in fade-in-0 zoom-in-95"
+            >
+              <DropdownMenuItem
+                onClick={(e) => {
+                  setIsMenuOpen(false);
+                  onStartEdit(conv.id, conv.title, e);
+                }}
+                className="cursor-pointer rounded-lg text-xs py-2 px-2.5 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Rename</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => onDelete(conv.id, !!conv.isFavorite, e)} className="text-destructive focus:bg-destructive focus:text-destructive-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors group">
-                <Trash2 className="w-4 h-4 mr-2 group-hover:text-destructive group-focus:text-destructive-foreground" /> Delete
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  setIsMenuOpen(false);
+                  onToggleFavorite(conv.id, !!conv.isFavorite, e);
+                }}
+                className="cursor-pointer rounded-lg text-xs py-2 px-2.5 hover:bg-accent focus:bg-accent flex items-center gap-2.5 transition-colors"
+              >
+                <Heart
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    conv.isFavorite ? "fill-rose-500 text-rose-500" : "text-muted-foreground"
+                  )}
+                />
+                <span>{conv.isFavorite ? "Remove from Favorites" : "Add to Favorites"}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator className="my-1 bg-border/50" />
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  setIsMenuOpen(false);
+                  onDelete(conv.id, !!conv.isFavorite, e);
+                }}
+                className="cursor-pointer rounded-lg text-xs py-2 px-2.5 text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive flex items-center gap-2.5 transition-colors font-medium group"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                <span>Delete</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -459,27 +520,79 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
             />
           </div>
           <Button
+            type="button"
             variant="ghost"
             size="icon"
             onClick={() => setShowFavorites(!showFavorites)}
-            className={cn("h-8 w-8 rounded-lg transition-all duration-200 border border-transparent", showFavorites ? "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20" : "bg-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}
-            title="Toggle Favorites"
+            aria-label={showFavorites ? "Favorites filter active. Click to show all conversations." : "Filter conversations by favorites"}
+            aria-pressed={showFavorites}
+            title={showFavorites ? "Favorites: Active (Click to show all)" : "Filter by Favorites"}
+            className={cn(
+              "relative h-8 w-8 shrink-0 rounded-lg flex items-center justify-center transition-all duration-200 border",
+              showFavorites
+                ? "bg-rose-500/15 border-rose-500/40 text-rose-400 hover:bg-rose-500/25 shadow-xs ring-1 ring-rose-500/30"
+                : "bg-foreground/5 border-border/40 text-muted-foreground hover:text-foreground hover:bg-foreground/10 hover:border-border/60",
+              "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar focus:outline-none"
+            )}
           >
-            <Heart className={cn("w-3.5 h-3.5", showFavorites && "fill-current")} />
+            <Heart
+              className={cn(
+                "w-4 h-4 transition-transform duration-200",
+                showFavorites ? "fill-rose-500 text-rose-400 scale-105" : "text-muted-foreground/90 group-hover:text-foreground"
+              )}
+            />
+            {showFavorites && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500 ring-2 ring-sidebar" />
+              </span>
+            )}
           </Button>
         </div>
       </div>
 
-      {/* Recent Conversations List */}
-      <div className="px-4 pt-3 pb-1 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">Recent Conversations</span>
+      {/* Recent Conversations List Header */}
+      <div className="px-3 pt-3 pb-1 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 truncate">
+            {showFavorites ? "Favorite Conversations" : "Recent Conversations"}
+          </span>
+          {showFavorites && (
+            <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20 shrink-0">
+              Filtered
+            </span>
+          )}
+        </div>
+        {showFavorites && (
+          <button
+            type="button"
+            onClick={() => setShowFavorites(false)}
+            className="text-[11px] text-muted-foreground hover:text-rose-400 transition-colors flex items-center gap-1 shrink-0 ml-1"
+            title="Clear favorites filter"
+            aria-label="Clear favorites filter and show all conversations"
+          >
+            <span>Show all</span>
+            <X className="w-3 h-3" />
+          </button>
+        )}
       </div>
       <ScrollArea className="flex-1 px-2 py-1">
         <div className="space-y-0.5">
           {isLoading ? (
             <div className="text-xs text-muted-foreground p-3 text-center">Loading chats...</div>
           ) : filteredConversations?.length === 0 ? (
-            <div className="text-xs text-muted-foreground p-3 text-center">No chats found</div>
+            <div className="text-xs text-muted-foreground p-4 text-center space-y-1.5">
+              {showFavorites ? (
+                <>
+                  <Heart className="w-5 h-5 text-muted-foreground/40 mx-auto" />
+                  <p className="font-medium text-foreground/80">No favorite conversations</p>
+                  <p className="text-[11px] text-muted-foreground/70">Click the heart on any conversation to add it here.</p>
+                </>
+              ) : search ? (
+                <p>No conversations match &ldquo;{search}&rdquo;</p>
+              ) : (
+                <p>No chats found</p>
+              )}
+            </div>
           ) : (
             filteredConversations?.map((conv) => (
               <MemoizedConversationItem

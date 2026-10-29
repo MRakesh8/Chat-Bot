@@ -48,7 +48,7 @@ export function NovaAiAssistantFloating() {
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const conversationIdRef = useRef<string>(`nova-ai-session-${Date.now()}`);
+  const conversationIdRef = useRef<string | null>(null);
 
   // Extract current project ID if present in URL
   const projectMatch = location.match(/\/projects\/([^\/]+)/);
@@ -229,18 +229,47 @@ export function NovaAiAssistantFloating() {
       },
     ]);
 
+    // Ensure we have a valid conversation session
+    let convId = conversationIdRef.current;
+    if (!convId) {
+      try {
+        const convRes = await authFetch(apiUrl("/api/gemini/conversations"), {
+          method: "POST",
+          body: JSON.stringify({
+            title: "✨ NOVA AI Assistant",
+            projectId: currentProjectId || undefined,
+          }),
+        });
+        if (convRes.ok) {
+          const convData = await convRes.json();
+          if (convData?.id) {
+            convId = convData.id;
+            conversationIdRef.current = convData.id;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not pre-create session, falling back to auto-provisioning", err);
+      }
+    }
+
     try {
-      const res = await authFetch(apiUrl(`/api/gemini/conversations/${conversationIdRef.current}/messages`), {
+      const targetSessionId = convId || "nova-ai-session";
+      const res = await authFetch(apiUrl(`/api/gemini/conversations/${targetSessionId}/messages`), {
         method: "POST",
         body: JSON.stringify({
           content: queryText,
-          useNormalAi: true,
+          useNormalAi: false,
           currentContext,
         }),
       });
 
       if (!res.ok) {
-        throw new Error(`Server status ${res.status}`);
+        let errMsg = `Server status ${res.status}`;
+        try {
+          const errJson = await res.json();
+          if (errJson?.error) errMsg = errJson.error;
+        } catch {}
+        throw new Error(errMsg);
       }
 
       const reader = res.body?.getReader();
@@ -261,6 +290,9 @@ export function NovaAiAssistantFloating() {
                   const dataStr = line.replace("data: ", "").trim();
                   if (!dataStr || dataStr === "[DONE]") continue;
                   const parsed = JSON.parse(dataStr);
+                  if (parsed.conversationId && !conversationIdRef.current) {
+                    conversationIdRef.current = parsed.conversationId;
+                  }
                   if (parsed.content) {
                     streamedText += parsed.content;
                     setMessages((prev) =>
@@ -297,7 +329,9 @@ export function NovaAiAssistantFloating() {
             ? {
                 ...msg,
                 isStreaming: false,
-                content: "I'm having trouble connecting right now. Please try again in a few moments.",
+                content: err?.message && !err.message.includes("Server status")
+                  ? `⚠️ ${err.message}`
+                  : "I'm having trouble connecting right now. Please try again in a few moments.",
               }
             : msg
         )
