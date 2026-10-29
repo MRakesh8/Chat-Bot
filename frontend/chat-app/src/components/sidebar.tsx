@@ -91,13 +91,38 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
       {!isEditing && (
         <div
           className={cn(
-            "flex items-center shrink-0 transition-opacity duration-150 ml-auto",
-            isActive || isMenuOpen
+            "flex items-center gap-0.5 shrink-0 transition-opacity duration-150 ml-auto",
+            conv.isFavorite || isActive || isMenuOpen
               ? "opacity-100"
               : "opacity-75 md:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
           )}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Favorite Toggle Button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            title={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            className={cn(
+              "h-7 w-7 rounded-lg transition-colors flex items-center justify-center",
+              conv.isFavorite
+                ? "text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                : "text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10",
+              pendingFavorite && "opacity-50 cursor-wait",
+              "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus:outline-none"
+            )}
+            onClick={(e) => onToggleFavorite(conv.id, !!conv.isFavorite, e)}
+          >
+            <Heart
+              className={cn(
+                "w-3.5 h-3.5 transition-transform active:scale-90",
+                conv.isFavorite ? "fill-rose-500 text-rose-500" : "text-muted-foreground group-hover:text-rose-500"
+              )}
+            />
+          </Button>
+
           {/* Three-Dot Menu */}
           <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
             <DropdownMenuTrigger asChild>
@@ -561,7 +586,7 @@ export function Sidebar({ className, onClose, onDesktopClose }: { className?: st
                 <>
                   <Heart className="w-5 h-5 text-muted-foreground/40 mx-auto" />
                   <p className="font-medium text-foreground/80">No favorite conversations</p>
-                  <p className="text-[11px] text-muted-foreground/70">Use the conversation actions menu (•••) to add chats to favorites.</p>
+                  <p className="text-[11px] text-muted-foreground/70">Click the heart on any conversation to add it here.</p>
                 </>
               ) : search ? (
                 <p>No conversations match &ldquo;{search}&rdquo;</p>

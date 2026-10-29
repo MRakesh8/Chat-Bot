@@ -92,17 +92,30 @@ runCheck(8, "Delete flow preserves favorite protection and AlertDialog confirmat
   assert(sidebarTsx.includes('To delete it, please remove it from Favorites first'), "Must protect favorite conversations");
 });
 
-// 9. Favorite action moved to three-dot menu; no standalone heart button in conversation row
-runCheck(9, "Favorite toggle is inside three-dot menu and no standalone heart button exists in row", () => {
-  assert(!sidebarTsx.includes('aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}'), "Must NOT render standalone favorite button in conversation row");
-  assert(sidebarTsx.includes('{conv.isFavorite ? "Remove from Favorites" : "Add to Favorites"}'), "Three-dot menu must contain dynamic favorite action label");
-  assert(sidebarTsx.includes('onToggleFavorite(conv.id'), "Three-dot menu must call onToggleFavorite");
+// 9. Both favorite toggle button and three-dot menu are on the conversation row without duplicate flickering elements
+runCheck(9, "Both favorite toggle button and three-dot menu are present on conversation row", () => {
+  assert(!sidebarTsx.includes('group-hover:hidden'), "Must NOT use duplicate group-hover:hidden heart button");
+  assert(sidebarTsx.includes('aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}'), "Row favorite button must have accessible label");
+  assert(sidebarTsx.includes('title={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}'), "Row favorite button must have title tooltip");
+  assert(sidebarTsx.includes('aria-label="Conversation actions"'), "Three-dot button must have accessible label");
+  assert(sidebarTsx.includes('MoreVertical'), "Three-dot menu must render MoreVertical icon");
 });
 
 // 10. Favorites empty state provides helpful instructions
 runCheck(10, "Favorites empty state displays helpful guide when filter yields no chats", () => {
   assert(sidebarTsx.includes('No favorite conversations'), "Must display helpful message when no favorites match");
-  assert(sidebarTsx.includes('add chats to favorites'), "Must provide hint on how to add favorites");
+  assert(sidebarTsx.includes('Click the heart on any conversation to add it here'), "Must provide hint on how to add favorites");
+});
+
+// 11. DOM Layout verification: Long titles truncate cleanly without pushing action buttons
+runCheck(11, "DOM Layout verification: title truncates and action buttons remain pinned to right edge", () => {
+  // Test 11 verifies that the row structure adheres to flexbox containment rules
+  const hasRowMinW0 = sidebarTsx.includes('min-w-0') && sidebarTsx.includes('group relative flex items-center');
+  const hasTitleTruncate = sidebarTsx.includes('flex-1 min-w-0 truncate');
+  const hasActionsPinned = sidebarTsx.includes('shrink-0') && sidebarTsx.includes('ml-auto');
+  assert(hasRowMinW0, "Row must have min-w-0 to prevent flex expansion");
+  assert(hasTitleTruncate, "Title span must have flex-1 min-w-0 truncate");
+  assert(hasActionsPinned, "Actions container must have shrink-0 and ml-auto to remain pinned to right");
 });
 
 console.log("\n========================================================================");
