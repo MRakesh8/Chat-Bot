@@ -538,6 +538,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
     conversationId = paramsParsed.data.id;
     const { content = "", fileIds = [], projectIds = [], useNormalAi = false } = bodyParsed.data as any;
+    const bodyContext = (req.body as any)?.currentContext || {};
 
     const requestStartTime = performance.now();
 
@@ -742,7 +743,6 @@ router.post("/conversations/:id/messages", async (req, res) => {
         const confirmationToken = (req.body as any)?.confirmationToken;
         const actionId = (req.body as any)?.actionId;
 
-        const bodyContext = (req.body as any)?.currentContext || {};
         const activeProjectId = primaryProject?.id || (bodyContext.currentProjectId && bodyContext.currentProjectId !== "demo" ? bodyContext.currentProjectId : null);
 
         // Resolve user's authorized projects for project-aware navigation and ambiguity resolution
@@ -792,123 +792,136 @@ router.post("/conversations/:id/messages", async (req, res) => {
         if (coordRes.success && coordRes.data?.intent) {
           const bData = coordRes.data;
 
-          res.setHeader("Content-Type", "text/event-stream");
-          res.setHeader("Cache-Control", "no-cache");
-          res.setHeader("Connection", "keep-alive");
-          res.setHeader("X-Accel-Buffering", "no");
+          // If CoordinatorAgent returned fallback_to_stream or the RAG knowledge fallback string,
+          // do NOT terminate the stream. Fall through to standard streaming with full platform awareness.
+          if (
+            bData.intent === "fallback_to_stream" ||
+            bData.response?.includes("couldn't find that information in this website's connected knowledge") ||
+            bData.response?.includes("could not find that information in this website's connected knowledge")
+          ) {
+            req.log.info({ conversationId, intent: bData.intent }, "[NOVA_AI] No specific project RAG chunk found, falling through to streaming AI model");
+          } else {
+            if (!res.headersSent) {
+              res.setHeader("Content-Type", "text/event-stream");
+              res.setHeader("Cache-Control", "no-cache");
+              res.setHeader("Connection", "keep-alive");
+              res.setHeader("X-Accel-Buffering", "no");
+              res.write(`data: ${JSON.stringify({ conversationId })}\n\n`);
+            }
 
-          if (bData.status === "PENDING_CONFIRMATION") {
-            const confirmMsg = `⚠️ **Action Requires Confirmation**\n\n**Tool:** \`${bData.toolExecuted}\`\n**Risk Level:** \`${bData.riskLevel}\`\n\n${bData.response}\n\n*Please confirm to execute this action.*`;
+            if (bData.status === "PENDING_CONFIRMATION") {
+              const confirmMsg = `⚠️ **Action Requires Confirmation**\n\n**Tool:** \`${bData.toolExecuted}\`\n**Risk Level:** \`${bData.riskLevel}\`\n\n${bData.response}\n\n*Please confirm to execute this action.*`;
 
-            res.write(`data: ${JSON.stringify({
-              status: "PENDING_CONFIRMATION",
-              requiresConfirmation: true,
-              confirmationToken: bData.confirmationToken,
-              actionId: bData.actionId,
-              riskLevel: bData.riskLevel,
-              toolExecuted: bData.toolExecuted,
-              content: confirmMsg
-            })}\n\n`);
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
+              res.write(`data: ${JSON.stringify({
+                status: "PENDING_CONFIRMATION",
+                requiresConfirmation: true,
+                confirmationToken: bData.confirmationToken,
+                actionId: bData.actionId,
+                riskLevel: bData.riskLevel,
+                toolExecuted: bData.toolExecuted,
+                content: confirmMsg
+              })}\n\n`);
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+              res.end();
 
-            await db.insert(messages).values({
-              sessionId: conversationId as any,
-              sender: "assistant",
-              content: confirmMsg,
-            });
-            return;
-          }
+              await db.insert(messages).values({
+                sessionId: conversationId as any,
+                sender: "assistant",
+                content: confirmMsg,
+              });
+              return;
+            }
 
-          if (bData.intent === "guide_explain" || bData.intent === "screen_explanation") {
-            const finalMsg = bData.response || `Here is an explanation of ${bData.screen || "this screen"}.`;
-            res.write(`data: ${JSON.stringify({
-              intent: "guide_explain",
-              screen: bData.screen,
-              status: bData.status || "COMPLETED",
-              content: finalMsg
-            })}\n\n`);
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
+            if (bData.intent === "guide_explain" || bData.intent === "screen_explanation") {
+              const finalMsg = bData.response || `Here is an explanation of ${bData.screen || "this screen"}.`;
+              res.write(`data: ${JSON.stringify({
+                intent: "guide_explain",
+                screen: bData.screen,
+                status: bData.status || "COMPLETED",
+                content: finalMsg
+              })}\n\n`);
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+              res.end();
 
-            req.log.info({
-              conversationId,
-              screen: bData.screen,
-              durationMs: Math.round(performance.now() - requestStartTime)
-            }, "[NOVA_AI] Handled guide_explain screen response");
+              req.log.info({
+                conversationId,
+                screen: bData.screen,
+                durationMs: Math.round(performance.now() - requestStartTime)
+              }, "[NOVA_AI] Handled guide_explain screen response");
 
-            await db.insert(messages).values({
-              sessionId: conversationId as any,
-              sender: "assistant",
-              content: finalMsg,
-            });
-            return;
-          }
+              await db.insert(messages).values({
+                sessionId: conversationId as any,
+                sender: "assistant",
+                content: finalMsg,
+              });
+              return;
+            }
 
-          if (bData.intent === "navigation") {
-            const finalMsg = bData.response || `Opened ${bData.action?.targetFeature || "feature"}.`;
-            res.write(`data: ${JSON.stringify({
-              intent: "navigation",
-              status: bData.status,
-              action: bData.action,
-              content: finalMsg
-            })}\n\n`);
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
+            if (bData.intent === "navigation") {
+              const finalMsg = bData.response || `Opened ${bData.action?.targetFeature || "feature"}.`;
+              res.write(`data: ${JSON.stringify({
+                intent: "navigation",
+                status: bData.status,
+                action: bData.action,
+                content: finalMsg
+              })}\n\n`);
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+              res.end();
 
-            await db.insert(messages).values({
-              sessionId: conversationId as any,
-              sender: "assistant",
-              content: finalMsg,
-            });
-            return;
-          }
+              await db.insert(messages).values({
+                sessionId: conversationId as any,
+                sender: "assistant",
+                content: finalMsg,
+              });
+              return;
+            }
 
-          if (bData.intent === "action") {
-            const finalMsg = bData.response || (bData.status === "COMPLETED" ? `Successfully executed ${bData.toolExecuted}.` : "Action failed to execute.");
-            res.write(`data: ${JSON.stringify({
-              status: bData.status,
-              toolExecuted: bData.toolExecuted,
-              result: bData.result,
-              content: finalMsg
-            })}\n\n`);
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
+            if (bData.intent === "action") {
+              const finalMsg = bData.response || (bData.status === "COMPLETED" ? `Successfully executed ${bData.toolExecuted}.` : "Action failed to execute.");
+              res.write(`data: ${JSON.stringify({
+                status: bData.status,
+                toolExecuted: bData.toolExecuted,
+                result: bData.result,
+                content: finalMsg
+              })}\n\n`);
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+              res.end();
 
-            await db.insert(messages).values({
-              sessionId: conversationId as any,
-              sender: "assistant",
-              content: finalMsg,
-            });
-            return;
-          }
+              await db.insert(messages).values({
+                sessionId: conversationId as any,
+                sender: "assistant",
+                content: finalMsg,
+              });
+              return;
+            }
 
-          if (bData.intent === "clarification" || bData.intent === "unsupported") {
-            const responseMsg = bData.response || "This capability is currently unavailable.";
-            res.write(`data: ${JSON.stringify({ content: responseMsg })}\n\n`);
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
+            if (bData.intent === "clarification" || bData.intent === "unsupported") {
+              const responseMsg = bData.response || "This capability is currently unavailable.";
+              res.write(`data: ${JSON.stringify({ content: responseMsg })}\n\n`);
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+              res.end();
 
-            await db.insert(messages).values({
-              sessionId: conversationId as any,
-              sender: "assistant",
-              content: responseMsg,
-            });
-            return;
-          }
+              await db.insert(messages).values({
+                sessionId: conversationId as any,
+                sender: "assistant",
+                content: responseMsg,
+              });
+              return;
+            }
 
-          if (bData.intent === "business_information" || bData.intent === "general_conversation") {
-            const responseMsg = bData.response || "I am ready to assist with your project.";
-            res.write(`data: ${JSON.stringify({ content: responseMsg })}\n\n`);
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
+            if (bData.intent === "business_information" || bData.intent === "general_conversation") {
+              const responseMsg = bData.response || "I am ready to assist with your project.";
+              res.write(`data: ${JSON.stringify({ content: responseMsg })}\n\n`);
+              res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+              res.end();
 
-            await db.insert(messages).values({
-              sessionId: conversationId as any,
-              sender: "assistant",
-              content: responseMsg,
-            });
-            return;
+              await db.insert(messages).values({
+                sessionId: conversationId as any,
+                sender: "assistant",
+                content: responseMsg,
+              });
+              return;
+            }
           }
         }
       } catch (agentErr: any) {
@@ -1253,7 +1266,7 @@ CRITICAL INSTRUCTIONS:
 1. CHECK ENTIRE KNOWLEDGE BASE: Thoroughly review the Knowledge Base Context before answering. Use Category names, Tags, Notes, and Content details to fully understand the context.
 2. STRUCTURED & ACCURATE: Provide a properly structured, accurate, and detailed answer using all available information (including categories, tags, and specific notes).
 3. NO UNASKED SUMMARIES: DO NOT provide a summary of the entire project or context unless explicitly requested. ONLY answer the specific question asked.
-4. NO HALLUCINATION: If the answer is completely missing from the context, state clearly that you don't have the information. Do not guess or hallucinate.
+4. NO HALLUCINATION: If the question is specifically about this project/business and the information is completely missing from the context, state clearly that you don't have that specific project information. For general knowledge, coding, or conversational questions, answer accurately and helpfully using your knowledge.
 
 ${liveContext}`;
       enableSearchGrounding = true;
@@ -1263,6 +1276,19 @@ ${liveContext}`;
         ? `${SYSTEM_PROMPT}\n\n[CRITICAL OVERRIDE: USER CUSTOM KNOWLEDGE]\nThe user has provided the following custom knowledge base. You MUST use this information as absolute truth. If they ask about your developer, your admin, or your features, use this custom knowledge over your default features.\n\n${customNormalAiPrompt}${liveContext}` 
         : `${SYSTEM_PROMPT}${liveContext}`;
       enableSearchGrounding = true;
+    }
+
+    if (bodyContext?.currentScreen) {
+      finalSystemPrompt += `\n\n[PLATFORM CONTEXT: ACTIVE SCREEN AWARENESS]
+You are acting as the ✨ NOVA AI Platform Assistant.
+Active Screen: ${bodyContext.currentScreen}
+Active Route: ${bodyContext.currentRoute || "/"}
+${bodyContext.currentProjectName ? `Active Project: ${bodyContext.currentProjectName}` : ""}
+
+ASSISTANT GUIDELINES:
+1. SCREEN AWARENESS: You are aware of the screen the user is viewing and can explain the controls, tools, and actions available on this screen.
+2. GENERAL QUESTIONS: For general questions (such as programming, business concepts, technology, or greetings), answer helpfully, clearly, and directly using your intelligence.
+3. PROJECT SPECIFICS: For questions specifically about this project's private business data, prioritize the connected project knowledge base.`;
     }
 
     // Build full chat history for Gemini
@@ -1282,11 +1308,13 @@ ${liveContext}`;
 
     currentStep = "GEMINI_REQUEST";
     // SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
+    if (!res.headersSent) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+    }
     res.write(`data: ${JSON.stringify({ conversationId })}\n\n`);
 
     let fullResponse = "";

@@ -713,10 +713,39 @@ I am your **✨ NOVA AI Platform Assistant**. I understand all sections of your 
       // ─── STEP 0: FAST DETERMINISTIC STANDALONE GENERAL CONVERSATION GUARD ─────────
       // Must match standalone conversational phrases ONLY. If message contains action verbs/inquiries (e.g. "hi, cancel my order"), it MUST NOT match here.
       const cleanLowerMsg = userMessage.trim().toLowerCase().replace(/[^\w\s]/g, "");
-      const isGreeting = /^(hi|hello|hey|greetings|howdy|sup|good morning|good afternoon|good evening|good night|hello there|hi there|hey there)$/i.test(cleanLowerMsg);
-      const isThanks = /^(thanks|thank you|thanks a lot|thank you so much|thx|ty)$/i.test(cleanLowerMsg);
-      const isFarewell = /^(bye|goodbye|see you|see ya|later|take care|good night)$/i.test(cleanLowerMsg);
-      const isSmalltalk = /^(how are you|how are you today|how are you doing|hows it going|nice to meet you|okay|ok|great|cool|awesome|hello how are you|hi how are you|hello how are you today|hi how are you today)$/i.test(cleanLowerMsg);
+
+      // 0.1 Identity & Capabilities Fast-Path
+      const isIdentityInquiry = /^(who are you|what are you|who is nova|what is nova|what can you do|what do you do|how can you help me|how can you help|introduce yourself|tell me about yourself|help me|what are your capabilities|what features do you have)( nova| assistant)?$/i.test(cleanLowerMsg);
+      if (isIdentityInquiry) {
+        const currentContext = payload?.currentContext || {};
+        const screenLabel = (currentContext.currentScreen || "").trim();
+        const projectName = currentContext.currentProjectName || null;
+        const screenMsg = screenLabel
+          ? `\n\nRight now, you are on the **${screenLabel}** screen${projectName ? ` for project **${projectName}**` : ""}. You can ask me what this screen does, how to configure features, or to navigate anywhere in the platform.`
+          : "";
+
+        return {
+          success: true,
+          data: {
+            intent: "general_conversation",
+            response: `I am your **✨ NOVA AI Platform Assistant**, your intelligent co-pilot for managing and configuring your AI assistants and business workflows.
+
+### What I Can Do:
+• **Explain Screens & Features**: Ask me "What is this screen?" or ask about any feature on your current page.
+• **Navigate Anywhere**: Tell me "Go to Knowledge Base", "Open API Keys", or "Navigate to Settings".
+• **Project Knowledge & RAG**: Connect documents, websites, and data sources to train custom AI models.
+• **General Intelligence**: Ask me general questions, programming problems, or business strategy questions.${screenMsg}
+
+How can I help you today?`,
+          },
+        };
+      }
+
+      // 0.2 Greetings, Thanks, Farewells, and Smalltalk Fast-Path
+      const isGreeting = /^(hi|hello|hey|greetings|howdy|sup|good morning|good afternoon|good evening|good night|hello there|hi there|hey there)( nova| assistant)?$/i.test(cleanLowerMsg);
+      const isThanks = /^(thanks|thank you|thanks a lot|thank you so much|thx|ty)( nova| assistant)?$/i.test(cleanLowerMsg);
+      const isFarewell = /^(bye|goodbye|see you|see ya|later|take care|good night)( nova| assistant)?$/i.test(cleanLowerMsg);
+      const isSmalltalk = /^(how are you|how are you today|how are you doing|hows it going|nice to meet you|okay|ok|great|cool|awesome|hello how are you|hi how are you|hello how are you today|hi how are you today)( nova| assistant)?$/i.test(cleanLowerMsg);
 
       if (isGreeting || isThanks || isFarewell || isSmalltalk) {
         let generalReply = "Hello! How can I help you today?";
@@ -934,10 +963,10 @@ DIRECTIVES:
             };
           }
           return {
-            success: true,
+            success: false,
             data: {
-              intent: "business_information",
-              response: "I couldn't find that information in this website's connected knowledge.",
+              intent: "fallback_to_stream",
+              reason: "No project-specific knowledge found, falling back to streaming LLM",
             },
           };
         }
@@ -975,11 +1004,24 @@ RULES:
           contents: [{ role: "user", parts: [{ text: synthesisPrompt }] }],
         });
 
+        const synthText = synthRes.text || "";
+        const isNotFound = synthText.includes("couldn't find that information in this website's connected knowledge") || synthText.includes("could not find that information in this website's connected knowledge");
+        if (isNotFound) {
+          return {
+            success: false,
+            data: {
+              intent: "fallback_to_stream",
+              reason: "Knowledge base does not contain the answer, falling back to streaming model",
+              response: synthText,
+            },
+          };
+        }
+
         return {
           success: true,
           data: {
             intent: llmDecision.intent,
-            response: synthRes.text,
+            response: synthText,
             retrievedIds: ragRes?.retrievedIds || [],
           },
         };

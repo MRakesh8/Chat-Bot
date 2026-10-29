@@ -47,6 +47,7 @@ export function NovaAiAssistantFloating() {
   const [inputMsg, setInputMsg] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [lastFailedQuery, setLastFailedQuery] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -249,33 +250,10 @@ export function NovaAiAssistantFloating() {
       },
     ]);
 
-    // Ensure we have a valid conversation session
-    let convId = conversationIdRef.current;
-    if (!convId) {
-      try {
-        const convRes = await authFetch(apiUrl("/api/gemini/conversations"), {
-          method: "POST",
-          signal: controller.signal,
-          timeoutMs: 15000,
-          body: JSON.stringify({
-            title: "✨ NOVA AI Assistant",
-            projectId: currentProjectId || undefined,
-          }),
-        } as any);
-        if (convRes.ok) {
-          const convData = await convRes.json();
-          if (convData?.id) {
-            convId = convData.id;
-            conversationIdRef.current = convData.id;
-          }
-        }
-      } catch (err) {
-        console.warn("Could not pre-create session, falling back to auto-provisioning", err);
-      }
-    }
+    // Use cached conversationId if already established, or let backend auto-provision atomically
+    const targetSessionId = conversationIdRef.current || "nova-ai-session";
 
     try {
-      const targetSessionId = convId || "nova-ai-session";
       const res = await authFetch(apiUrl(`/api/gemini/conversations/${targetSessionId}/messages`), {
         method: "POST",
         signal: controller.signal,
@@ -314,7 +292,7 @@ export function NovaAiAssistantFloating() {
                   const dataStr = line.replace("data: ", "").trim();
                   if (!dataStr || dataStr === "[DONE]") continue;
                   const parsed = JSON.parse(dataStr);
-                  if (parsed.conversationId && !conversationIdRef.current) {
+                  if (parsed.conversationId) {
                     conversationIdRef.current = parsed.conversationId;
                   }
                   if (parsed.content) {
@@ -355,11 +333,27 @@ export function NovaAiAssistantFloating() {
         return;
       }
 
-      const displayError = isTimeout
-        ? "⚠️ The request took longer than expected to complete. Please try asking again."
-        : (err?.message && !err.message.includes("Server status") && !err.message.includes("signal is aborted")
-            ? `⚠️ ${err.message}`
-            : "I'm having trouble connecting right now. Please try again in a few moments.");
+      setLastFailedQuery(queryText);
+
+      const errLower = (err?.message || "").toLowerCase();
+      let displayError = "⚠️ I'm having trouble connecting to the server. Please try again in a few moments.";
+
+      if (isTimeout) {
+        displayError = "⚠️ The request took longer than expected to complete. The server may be busy or waking up. Please try asking again.";
+      } else if (errLower.includes("failed to fetch") || errLower.includes("networkerror") || errLower.includes("load failed")) {
+        displayError = "⚠️ Unable to reach the server. The backend service may be waking up or your internet connection was interrupted. Please try again.";
+      } else if (errLower.includes("401") || errLower.includes("unauthorized")) {
+        displayError = "⚠️ Your session has expired. Please refresh the page or sign in again.";
+      } else if (errLower.includes("429") || errLower.includes("rate limit") || errLower.includes("quota")) {
+        displayError = "⚠️ Message rate limit reached. Please wait a moment before sending another message.";
+      } else if (err?.message && !err.message.includes("Server status") && !err.message.includes("signal is aborted") && err.message.length < 120) {
+        displayError = `⚠️ ${err.message}`;
+      }
+
+      // If status indicates missing or invalid session, clear ref so next message auto-provisions cleanly
+      if (errLower.includes("404") || errLower.includes("invalid conversation")) {
+        conversationIdRef.current = null;
+      }
 
       setMessages((prev) =>
         prev.map((msg) =>
@@ -466,6 +460,20 @@ export function NovaAiAssistantFloating() {
                     </button>
                   </div>
                 )}
+
+                {msg.role === "assistant" && msg.content?.startsWith("⚠️") && lastFailedQuery && (
+                  <div className="mt-2 pt-1 border-t border-border/40 flex items-center justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSendMessage(lastFailedQuery)}
+                      disabled={isSending}
+                      className="h-6 px-2 text-[10px] gap-1 text-primary border-primary/30 hover:bg-primary/10 rounded-md"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Retry
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {msg.role === "user" && (
@@ -483,6 +491,12 @@ export function NovaAiAssistantFloating() {
                 <Compass className="w-3 h-3 text-primary" /> Suggested Prompts:
               </p>
               <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => handlePromptSuggestion("Who are you?")}
+                  className="px-2.5 py-1 rounded-full bg-secondary/60 hover:bg-primary/10 border border-border/80 text-foreground hover:text-primary text-[11px] font-medium transition-colors"
+                >
+                  "Who are you?"
+                </button>
                 <button
                   onClick={() => handlePromptSuggestion("What is this screen?")}
                   className="px-2.5 py-1 rounded-full bg-secondary/60 hover:bg-primary/10 border border-border/80 text-foreground hover:text-primary text-[11px] font-medium transition-colors"
