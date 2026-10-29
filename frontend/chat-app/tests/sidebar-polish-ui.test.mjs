@@ -92,16 +92,17 @@ runCheck(8, "Delete flow preserves favorite protection and AlertDialog confirmat
   assert(sidebarTsx.includes('To delete it, please remove it from Favorites first'), "Must protect favorite conversations");
 });
 
-// 9. Single favorite button per row prevents DOM flicker
-runCheck(9, "Single favorite toggle button per row without duplicate flickering elements", () => {
-  assert(!sidebarTsx.includes('group-hover:hidden'), "Must NOT use duplicate group-hover:hidden heart button");
-  assert(sidebarTsx.includes('aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}'), "Favorite button has accessible label");
+// 9. Favorite action moved to three-dot menu; no standalone heart button in conversation row
+runCheck(9, "Favorite toggle is inside three-dot menu and no standalone heart button exists in row", () => {
+  assert(!sidebarTsx.includes('aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}'), "Must NOT render standalone favorite button in conversation row");
+  assert(sidebarTsx.includes('{conv.isFavorite ? "Remove from Favorites" : "Add to Favorites"}'), "Three-dot menu must contain dynamic favorite action label");
+  assert(sidebarTsx.includes('onToggleFavorite(conv.id'), "Three-dot menu must call onToggleFavorite");
 });
 
 // 10. Favorites empty state provides helpful instructions
 runCheck(10, "Favorites empty state displays helpful guide when filter yields no chats", () => {
   assert(sidebarTsx.includes('No favorite conversations'), "Must display helpful message when no favorites match");
-  assert(sidebarTsx.includes('Click the heart on any conversation to add it here'), "Must provide hint on how to add favorites");
+  assert(sidebarTsx.includes('add chats to favorites'), "Must provide hint on how to add favorites");
 });
 
 console.log("\n========================================================================");

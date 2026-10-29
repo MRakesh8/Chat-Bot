@@ -245,6 +245,9 @@ export class CoordinatorAgent extends BaseAgent {
 
   async execute(context: AgentContext): Promise<AgentResult> {
     try {
+      if (context.signal?.aborted) {
+        return { success: false, error: "Request was aborted" };
+      }
       const { projectId, sessionId, payload, userId } = context;
 
       // 1. Resume Execution from Legacy Client Browser Workflow Result

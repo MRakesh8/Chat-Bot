@@ -63,9 +63,15 @@ export function useAuthFetch() {
     // 3. Request execution with bounded default timeout if caller didn't pass one
     let timeoutId: any;
     let signal = options.signal;
-    if (!signal && typeof AbortController !== "undefined") {
+    const timeoutDuration = typeof (options as any)?.timeoutMs === "number"
+      ? (options as any).timeoutMs
+      : 25000;
+
+    if (!signal && timeoutDuration > 0 && typeof AbortController !== "undefined") {
       const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 25000); // 25s bounded network timeout
+      timeoutId = setTimeout(() => {
+        controller.abort(new DOMException(`Request timed out after ${timeoutDuration}ms`, "TimeoutError"));
+      }, timeoutDuration);
       signal = controller.signal;
     }
 
@@ -83,14 +89,23 @@ export function useAuthFetch() {
 
     // 4. Self-healing token refresh on 401 Unauthorized (deduplicated across concurrent requests)
     if (res.status === 401 && !url.includes("/api/system/me")) {
+      // Never reuse an already-aborted signal for retries
+      if (options.signal?.aborted) {
+        return res;
+      }
       try {
         const freshToken = await getSharedRefreshedToken();
         if (freshToken) {
+          if (options.signal?.aborted) {
+            return res;
+          }
           let retryTimeoutId: any;
           let retrySignal = options.signal;
-          if (!retrySignal && typeof AbortController !== "undefined") {
+          if (!retrySignal && timeoutDuration > 0 && typeof AbortController !== "undefined") {
             const controller = new AbortController();
-            retryTimeoutId = setTimeout(() => controller.abort(), 25000);
+            retryTimeoutId = setTimeout(() => {
+              controller.abort(new DOMException(`Retry request timed out after ${timeoutDuration}ms`, "TimeoutError"));
+            }, timeoutDuration);
             retrySignal = controller.signal;
           }
 

@@ -49,6 +49,7 @@ export function NovaAiAssistantFloating() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Extract current project ID if present in URL
   const projectMatch = location.match(/\/projects\/([^\/]+)/);
@@ -118,6 +119,16 @@ export function NovaAiAssistantFloating() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, isMinimized, toggleMinimize]);
 
+  // Clean up any in-flight request when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+
   if (!isOpen) return null;
 
   // Minimized Pill Launcher
@@ -173,6 +184,15 @@ export function NovaAiAssistantFloating() {
   const handleSendMessage = async (textToSend?: string) => {
     const queryText = (textToSend || inputMsg).trim();
     if (!queryText || isSending) return;
+
+    // Cleanly cancel any in-flight assistant request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `assistant-${Date.now()}`;
@@ -235,11 +255,13 @@ export function NovaAiAssistantFloating() {
       try {
         const convRes = await authFetch(apiUrl("/api/gemini/conversations"), {
           method: "POST",
+          signal: controller.signal,
+          timeoutMs: 15000,
           body: JSON.stringify({
             title: "✨ NOVA AI Assistant",
             projectId: currentProjectId || undefined,
           }),
-        });
+        } as any);
         if (convRes.ok) {
           const convData = await convRes.json();
           if (convData?.id) {
@@ -256,12 +278,14 @@ export function NovaAiAssistantFloating() {
       const targetSessionId = convId || "nova-ai-session";
       const res = await authFetch(apiUrl(`/api/gemini/conversations/${targetSessionId}/messages`), {
         method: "POST",
+        signal: controller.signal,
+        timeoutMs: 90000,
         body: JSON.stringify({
           content: queryText,
           useNormalAi: false,
           currentContext,
         }),
-      });
+      } as any);
 
       if (!res.ok) {
         let errMsg = `Server status ${res.status}`;
@@ -322,21 +346,36 @@ export function NovaAiAssistantFloating() {
         )
       );
     } catch (err: any) {
-      // Safe error handling (Requirement 15)
+      // Differentiate user cancellation vs timeout vs other errors
+      const isAbort = err?.name === "AbortError" || err?.message?.toLowerCase().includes("aborted");
+      const isTimeout = err?.name === "TimeoutError" || err?.message?.toLowerCase().includes("timed out");
+
+      // Intentional aborts from user actions (unmount, panel close, new query) should not flash an error
+      if (isAbort && !isTimeout && controller.signal.aborted) {
+        return;
+      }
+
+      const displayError = isTimeout
+        ? "⚠️ The request took longer than expected to complete. Please try asking again."
+        : (err?.message && !err.message.includes("Server status") && !err.message.includes("signal is aborted")
+            ? `⚠️ ${err.message}`
+            : "I'm having trouble connecting right now. Please try again in a few moments.");
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMsgId
             ? {
                 ...msg,
                 isStreaming: false,
-                content: err?.message && !err.message.includes("Server status")
-                  ? `⚠️ ${err.message}`
-                  : "I'm having trouble connecting right now. Please try again in a few moments.",
+                content: displayError,
               }
             : msg
         )
       );
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       setIsSending(false);
     }
   };

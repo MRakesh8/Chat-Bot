@@ -516,6 +516,14 @@ async function buildFileParts(fileIds: string[]): Promise<GeminiPart[]> {
 router.post("/conversations/:id/messages", async (req, res) => {
   let currentStep = "INITIALIZATION";
   let conversationId = req.params.id;
+  const clientAbortController = new AbortController();
+  let isClientDisconnected = false;
+
+  req.once("close", () => {
+    isClientDisconnected = true;
+    clientAbortController.abort();
+  });
+
   try {
     const paramsParsed = SendGeminiMessageParams.safeParse({ id: req.params.id });
     if (!paramsParsed.success) {
@@ -751,6 +759,7 @@ router.post("/conversations/:id/messages", async (req, res) => {
           projectId: activeProjectId || "00000000-0000-4000-8000-000000000000",
           sessionId: conversationId,
           userId,
+          signal: clientAbortController.signal,
           customerContext: {
             isBusinessAdmin: true,
             verified: true,
@@ -774,6 +783,11 @@ router.post("/conversations/:id/messages", async (req, res) => {
             }
           }
         });
+
+        if (isClientDisconnected || clientAbortController.signal.aborted) {
+          req.log.info({ conversationId }, "[NOVA_AI] Client disconnected before agent response dispatch");
+          return;
+        }
 
         if (coordRes.success && coordRes.data?.intent) {
           const bData = coordRes.data;
@@ -802,6 +816,31 @@ router.post("/conversations/:id/messages", async (req, res) => {
               sessionId: conversationId as any,
               sender: "assistant",
               content: confirmMsg,
+            });
+            return;
+          }
+
+          if (bData.intent === "guide_explain" || bData.intent === "screen_explanation") {
+            const finalMsg = bData.response || `Here is an explanation of ${bData.screen || "this screen"}.`;
+            res.write(`data: ${JSON.stringify({
+              intent: "guide_explain",
+              screen: bData.screen,
+              status: bData.status || "COMPLETED",
+              content: finalMsg
+            })}\n\n`);
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+
+            req.log.info({
+              conversationId,
+              screen: bData.screen,
+              durationMs: Math.round(performance.now() - requestStartTime)
+            }, "[NOVA_AI] Handled guide_explain screen response");
+
+            await db.insert(messages).values({
+              sessionId: conversationId as any,
+              sender: "assistant",
+              content: finalMsg,
             });
             return;
           }
@@ -872,7 +911,11 @@ router.post("/conversations/:id/messages", async (req, res) => {
             return;
           }
         }
-      } catch (agentErr) {
+      } catch (agentErr: any) {
+        if (clientAbortController.signal.aborted || isClientDisconnected) {
+          req.log.info({ conversationId }, "[NOVA_AI] Client disconnected during agent execution");
+          return;
+        }
         req.log.error({ err: agentErr }, "CoordinatorAgent execution error in normal chat, falling back to standard streaming");
       }
     }

@@ -3,6 +3,7 @@ export interface AgentContext {
   sessionId: string;
   userId?: string;
   payload?: any;
+  signal?: AbortSignal;
   customerContext?: {
     customerId?: string;
     email?: string;
