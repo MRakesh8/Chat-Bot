@@ -1210,7 +1210,9 @@
 
           if (!websiteContext) {
             websiteContext = {
-              version: "1.0.0",
+              version: "2.0",
+              timestamp: Date.now(),
+              extractionDurationMs: 0,
               url: window.location.href,
               title: document.title || "",
               segments: {}
@@ -1506,7 +1508,10 @@
             }
           } else {
             console.error("NOVA AI Widget Chat Error:", err);
-            addMessage('bot', 'Sorry, I am having trouble connecting right now.');
+            const userMsg = (err && err.message && err.message !== "Failed to fetch" && err.message !== "API Error")
+              ? err.message
+              : (streamErrorMsg || "Sorry, I am having trouble connecting right now.");
+            addMessage('bot', userMsg);
           }
         } finally {
           if (mySeq === activeRequestSeq) {

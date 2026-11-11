@@ -355,6 +355,9 @@ router.post("/upload", (req, res, next) => {
     });
 
     enqueueKnowledgeProcessing(record.id);
+    await invalidateKnowledgeCache(projectId).catch((err) =>
+      req.log.warn({ err, projectId }, "Non-fatal: knowledge cache invalidation failed after file upload")
+    );
 
     res.status(201).json(record);
   } catch (err: any) {
@@ -527,6 +530,10 @@ router.post("/url", async (req, res) => {
       }
     });
 
+    await invalidateKnowledgeCache(projectId).catch((err) =>
+      req.log.warn({ err, projectId }, "Non-fatal: knowledge cache invalidation failed after saving sources")
+    );
+
     res.status(201).json(records.length === 1 ? records[0] : records);
   } catch (err: any) {
     req.log.error({ err }, "Error saving source");
@@ -664,6 +671,11 @@ router.post("/:id/reprocess", async (req, res) => {
 
     enqueueKnowledgeProcessing(record.id);
 
+    // C2 Fix: Invalidate cache when reprocess is triggered
+    await invalidateKnowledgeCache(result.project.id).catch((err) =>
+      req.log.warn({ err, projectId: result.project.id }, "Non-fatal: knowledge cache invalidation failed after reprocess")
+    );
+
     res.json(record);
   } catch (err: any) {
     req.log.error({ err }, "Error reprocessing source");
@@ -767,6 +779,12 @@ router.patch("/:id", async (req, res) => {
       enqueueKnowledgeProcessing(record.id);
     }
 
+    // C2 Fix: Invalidate cached RAG results for this project on any metadata or content change.
+    // This ensures widget visitors immediately see updated knowledge, not stale cached responses.
+    await invalidateKnowledgeCache(record.projectId).catch((err) =>
+      req.log.warn({ err, projectId: record.projectId }, "Non-fatal: knowledge cache invalidation failed after PATCH")
+    );
+
     res.json(record);
   } catch (err: any) {
     req.log.error({ err }, "Error updating source");
@@ -818,6 +836,11 @@ router.patch("/:id/category", async (req, res) => {
         .returning();
       return updated;
     });
+
+    // C2 Fix: Invalidate knowledge cache after moving category
+    await invalidateKnowledgeCache(result.source.projectId).catch((err) =>
+      req.log.warn({ err, projectId: result.source.projectId }, "Non-fatal: knowledge cache invalidation failed after moving category")
+    );
 
     res.json(record);
   } catch (err: any) {

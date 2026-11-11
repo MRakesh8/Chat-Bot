@@ -46,6 +46,7 @@ export class ContextFuser {
     conversationHistory?: Array<{ role: string; content: string }>;
     signal?: AbortSignal;
     embeddingApiKey?: string;
+    widgetOnly?: boolean;  // P2 Fix: propagated to searchProjectKnowledge
     onTiming?: (stage: string, durationMs: number, meta?: Record<string, any>) => void;
   }): Promise<FusedContext> {
     const {
@@ -58,6 +59,7 @@ export class ContextFuser {
       conversationHistory,
       signal,
       embeddingApiKey,
+      widgetOnly,
       onTiming,
     } = params;
 
@@ -95,6 +97,7 @@ export class ContextFuser {
           limit: 4,
           signal,
           embeddingApiKey,
+          widgetOnly,
           onTiming,
         });
         kbContextString = searchResult.contextString;

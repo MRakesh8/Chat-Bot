@@ -98,11 +98,23 @@ async function checkProjectHasExecutableCapabilities(projectId: string): Promise
 function looksLikeActionRequest(text: string): boolean {
   if (!text) return false;
   const trimmed = text.trim();
-  if (/^\s*(how\s+(do|can|to)|what\s+(is|are)|why|who|where|when|tell\s+me\s+about|explain|describe)\b/i.test(trimmed) &&
-      !/\b(click|press|tap|fill|navigate|go\s+to|submit|scroll|cancel\s+my|track\s+my|check\s+my|refund\s+my)\b/i.test(trimmed)) {
+
+  // Informational questions asking WHAT, WHERE, WHICH, HOW, WHO, WHY, or asking for advice/explanation
+  // are NOT action execution requests, even if they mention action words like "click" or "button".
+  if (/^\s*(how\s+(do|can|to|would)|what\s+(is|are|action|button|link)|why|who|where|when|tell\s+me|explain|describe|which\s+(button|link|page|option|action))\b/i.test(trimmed)) {
+    // Only classify as action if user explicitly commands the assistant to perform it ("can you click", "please click", "click the")
+    if (!/\b(can\s+you|please|could\s+you)\s+(click|press|fill|submit|navigate|go\s+to|open)\b/i.test(trimmed)) {
+      return false;
+    }
+  }
+
+  // Common visitor question pattern: "what button should I click", "which link do I click", etc.
+  if (/\b(what|which|where)\s+(?:action\s+|button\s+|link\s+)?(?:should|do|can|to)\s+i\s+(?:click|press|tap|go|use|open)\b/i.test(trimmed)) {
     return false;
   }
-  return /\b(click|press|tap|fill(\s+out|\s+in)?|navigate|go\s+to|redirect|open\s+(the\s+)?(page|link|form|modal|tab|dashboard|checkout)|submit(\s+the)?\s+form|create\s+(a|an|new)|update\s+(my|the)|delete\s+(my|the)|remove\s+(my|the)|cancel\s+(my|the|order)|refund\s+(my|the|order)|book\s+(a|an|the)|schedule\s+(a|an|the)|track\s+(my|the)\s+order|check\s+(my|the)\s+(order|booking|ticket|status)|execute|run\s+workflow)\b/i.test(trimmed);
+
+  // Match imperative or direct delegated action requests:
+  return /\b(click\s+(?:the|on|that|this)|press\s+(?:the|this|that)|tap\s+(?:the|this|that)|fill(\s+out|\s+in)?\s+(?:the|this|that|form)|navigate\s+to|go\s+to\s+the|redirect\s+me|open\s+(the\s+)?(page|link|form|modal|tab|dashboard|checkout)|submit(\s+the)?\s+form|create\s+(a|an|new)|update\s+(my|the)|delete\s+(my|the)|remove\s+(my|the)|cancel\s+(my|the|order)|refund\s+(my|the|order)|book\s+(a|an|the)|schedule\s+(a|an|the)|track\s+(my|the)\s+order|check\s+(my|the)\s+(order|booking|ticket|status)|execute|run\s+workflow)\b/i.test(trimmed);
 }
 
 async function fetchAndManageWidgetKeys(projectId: string, userId: string | null): Promise<WidgetKey[]> {
@@ -972,7 +984,10 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           userMessage: lastUserMessage,
           websiteContext: finalWebsiteContext,
           projectId,
-          userId,
+          // C2 Fix: use "public_visitor" as userId for widget RAG lookups so the per-owner cache
+          // scope is never activated for anonymous website visitors.  The real owner userId is
+          // only used for authenticated dashboard sessions (gemini/index.ts), not widget traffic.
+          userId: customerId ? userId : "public_visitor",
           customerId,
           settings: contextSettings as any,
           apiKeys: keys,
@@ -980,6 +995,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           signal: requestAbortController.signal,
           embeddingApiKey,
           onTiming: recordTiming,
+          widgetOnly: true,  // P2 Fix: only retrieve isWidgetExposed=true sources for widget visitors
         });
       } catch (err: any) {
         req.log.error({ err, correlationId }, "Failed contextFuser() step...");

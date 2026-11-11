@@ -1,4 +1,4 @@
-﻿import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { db } from "@workspace/db";
 import { knowledgeCategories, projects } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -187,6 +187,9 @@ router.delete("/:id", async (req: Request, res: Response, next: NextFunction) =>
       res.status(404).json({ error: "Category not found" });
       return;
     }
+    await invalidateKnowledgeCache(deleted.projectId).catch((err) =>
+      logger.warn({ err, projectId: deleted.projectId }, "Non-fatal: knowledge cache invalidation failed after category delete")
+    );
     res.status(204).send();
     return;
   } catch (error) {

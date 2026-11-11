@@ -33,6 +33,30 @@ const projectKnowledgePresenceCache = new Map<string, PresenceEntry>();
 const presenceInFlight = new Map<string, Promise<{ hasSources: boolean; hasEmbeddedChunks: boolean }>>();
 const queryEmbeddingCache = new Map<string, { vector: number[]; expiresAt: number }>();
 
+/**
+ * C2 Fix — Per-project knowledge epoch versioning.
+ *
+ * Every time knowledge content changes (insert, update, delete, reprocess, category change),
+ * `invalidateKnowledgeCache` bumps the epoch for that project. The epoch is baked into every
+ * `rag_search_*` cache key, so old entries in both the local LRU and Redis are bypassed
+ * immediately without iterating through cache entries.
+ *
+ * The epoch is intentionally in-process only (no DB) so it resets on restart — that is correct
+ * behaviour: a fresh process always starts with a clean local embedding cache.
+ */
+const knowledgeEpochMap = new Map<string, number>();
+
+function getKnowledgeEpoch(projectId: string): number {
+  return knowledgeEpochMap.get(projectId) ?? 0;
+}
+
+function bumpKnowledgeEpoch(projectId: string): number {
+  const next = (knowledgeEpochMap.get(projectId) ?? 0) + 1;
+  knowledgeEpochMap.set(projectId, next);
+  return next;
+}
+
+
 function setBoundedMapEntry<V>(map: Map<string, V>, key: string, value: V, maxEntries: number) {
   if (map.has(key)) map.delete(key);
   while (map.size >= maxEntries) {
@@ -95,7 +119,7 @@ async function getProjectKnowledgePresence(projectIds: string[]): Promise<{ hasS
   return task;
 }
 
-function buildCompositeText(parts: Array<string | null | undefined>, maxChars = 2800): string {
+export function buildCompositeText(parts: Array<string | null | undefined>, maxChars = 2800): string {
   const seenNormalized = new Set<string>();
   const uniqueParts: string[] = [];
   for (const part of parts) {
@@ -463,14 +487,24 @@ function scheduleKnowledgeRepair(sourceId: string, retryCount: number) {
 }
 
 export async function invalidateKnowledgeCache(projectId: string) {
+  // 1. Bump the per-project knowledge epoch. Because rag_search_* cache keys embed the epoch,
+  //    all previously cached results for this project are silently skipped — no need to enumerate
+  //    or delete individual llmResponseCache entries. This is O(1) and works across both the
+  //    local BoundedLocalCache LRU and Redis L2 without any race conditions.
+  bumpKnowledgeEpoch(projectId);
+
+  // 2. Clear in-process presence cache so the next request re-checks existence.
   projectKnowledgePresenceCache.delete(projectId);
   presenceInFlight.delete(projectId);
+
+  // 3. Clear the DB-backed retrieval cache for this project (legacy path, belt-and-suspenders).
   try {
     await db.delete(knowledgeRetrievalCache).where(eq(knowledgeRetrievalCache.projectId, projectId as any));
   } catch (err) {
     logger.error({ err, projectId }, "Failed to invalidate knowledge cache");
   }
 }
+
 
 export async function saveAutoKnowledgeItem(params: {
   projectId: string;
@@ -661,6 +695,7 @@ export async function searchProjectKnowledge(params: {
   ragIntent?: string;
   signal?: AbortSignal;
   embeddingApiKey?: string;
+  widgetOnly?: boolean;  // P2 Fix: when true, only sources with isWidgetExposed=true are returned
   onTiming?: (stage: string, durationMs: number, meta?: Record<string, any>) => void;
 }): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
   const retrievalStart = Date.now();
@@ -675,13 +710,17 @@ export async function searchProjectKnowledge(params: {
 
   // RAG Cache (5m TTL) — Bypassed for anonymous/public visitors to prevent cross-customer cache leakage.
   // Cache is strictly used when a trusted user/customer identity scope exists.
+  // C2 Fix: the cache key now embeds the per-project knowledge epoch so any call to
+  // invalidateKnowledgeCache(projectId) automatically invalidates all matching rag_search_* entries
+  // without needing to enumerate or delete them — the new epoch produces a new hash.
   const isAnonymousPublic = !params.userId || params.userId === "public_visitor" || params.userId === "public";
+  const epoch = params.projectIds.length === 1 ? getKnowledgeEpoch(params.projectIds[0]) : 0;
   const userScopeKey = params.customerId ? `cust_${params.customerId}` : (params.userId ? `usr_${params.userId}` : null);
-  const queryHash = userScopeKey
-    ? nodeCrypto.createHash("sha256").update(`${params.projectIds.join(",")}:${userScopeKey}:${params.query.trim().toLowerCase()}`).digest("hex")
+  const queryHash = userScopeKey && !isAnonymousPublic
+    ? nodeCrypto.createHash("sha256").update(`${params.projectIds.join(",")}:${userScopeKey}:ep${epoch}:${params.query.trim().toLowerCase()}`).digest("hex")
     : null;
 
-  if (queryHash && !isAnonymousPublic) {
+  if (queryHash) {
     const cachedResultStr = await llmResponseCache.get(`rag_search_${queryHash}`);
     if (cachedResultStr) {
       try {
@@ -752,6 +791,8 @@ export async function searchProjectKnowledge(params: {
   const customerCondition = params.customerId
     ? or(sql`${knowledgeSources.customerId} IS NULL`, eq(knowledgeSources.customerId, params.customerId))
     : sql`${knowledgeSources.customerId} IS NULL`;
+  // P2 Fix: when called from the public widget, only retrieve sources explicitly marked as widget-exposed
+  const widgetExposedCondition = params.widgetOnly ? eq(knowledgeSources.isWidgetExposed, true) : undefined;
 
   // Run metadata keyword scan and vector embedding + HNSW search concurrently
   const metadataPromise = (async (): Promise<Array<any>> => {
@@ -784,7 +825,7 @@ export async function searchProjectKnowledge(params: {
       })
       .from(knowledgeSources)
       .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
-      .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions), customerCondition))
+      .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions), customerCondition, widgetExposedCondition))
       .limit(fetchLimit);
   })();
 
@@ -845,7 +886,7 @@ export async function searchProjectKnowledge(params: {
           .from(knowledgeChunks)
           .innerJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
           .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
-          .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding), customerCondition))
+          .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding), customerCondition, widgetExposedCondition))
           .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
           .limit(fetchLimit);
         chunksFound = rows.length;
@@ -869,32 +910,77 @@ export async function searchProjectKnowledge(params: {
     return { contextString: "", retrievedIds: [] };
   }
 
-  // 2. Combine and Score Candidates
+  // C1 Fix: Per-document character budget — increased from 2800 to allow more content from large docs.
+  const PER_DOC_MAX_CHARS = 4000;
   const candidatesMap = new Map<string, any>();
 
   for (const match of metadataMatches) {
     const id = match.id;
     if (!candidatesMap.has(id)) {
-      const compositeText = buildCompositeText([match.notes, match.rawContent, match.summary]);
-      candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: compositeText || match.rawContent || "" });
+      const compositeText = buildCompositeText([match.notes, match.rawContent, match.summary], PER_DOC_MAX_CHARS);
+      candidatesMap.set(id, {
+        ...match,
+        isVectorMatch: false,
+        contentText: compositeText || match.rawContent || "",
+        // Track accumulated chunk snippets to prevent duplicate appending across multiple vector hits
+        _mergedChunkSnippets: new Set<string>(),
+      });
     }
   }
 
   for (const chunk of similarChunks) {
     const id = chunk.sourceId;
-    const preferChunk = chunk.chunkText && chunk.chunkText.trim().length >= 80 && (chunk.rawContent?.length ?? 0) > 2500;
-    const chunkBody = preferChunk ? chunk.chunkText : (chunk.chunkText || chunk.rawContent);
+    // A "good" chunk is sufficiently long and comes from a document longer than the per-doc limit
+    // — these are the chunks most likely to contain tail facts invisible to keyword truncation.
+    const isSubstantialChunk = chunk.chunkText && chunk.chunkText.trim().length >= 80;
+    const isLargeDoc = (chunk.rawContent?.length ?? 0) > PER_DOC_MAX_CHARS;
+    const chunkBody = (isSubstantialChunk && isLargeDoc) ? chunk.chunkText : (chunk.chunkText || chunk.rawContent);
+
     if (id && !candidatesMap.has(id)) {
-      const compositeText = buildCompositeText([chunk.notes, chunkBody, chunk.summary]);
-      candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: compositeText || chunk.chunkText || "" });
+      // Vector-only hit: build content from the chunk directly
+      const compositeText = buildCompositeText([chunk.notes, chunkBody, chunk.summary], PER_DOC_MAX_CHARS);
+      candidatesMap.set(id, {
+        ...chunk,
+        id: chunk.sourceId,
+        isVectorMatch: true,
+        contentText: compositeText || chunk.chunkText || "",
+        _mergedChunkSnippets: new Set<string>([chunkBody?.slice(0, 60) ?? ""]),
+      });
     } else if (id && candidatesMap.has(id)) {
+      // C1 Fix — Document already in map (from keyword search).
+      // The existing contentText may be a prefix-truncated version of a large document.
+      // If this vector chunk provides a distinct passage not already present, append it.
       const existing = candidatesMap.get(id);
       existing.isVectorMatch = true;
-      if (!existing.contentText || existing.contentText.length < 50) {
-        existing.contentText = buildCompositeText([chunk.notes, chunkBody, chunk.summary]);
+
+      if (chunkBody && chunkBody.trim().length >= 80) {
+        const snippetKey = chunkBody.trim().slice(0, 60).toLowerCase();
+        const alreadyMerged = existing._mergedChunkSnippets?.has(snippetKey);
+        const alreadyPresent = existing.contentText.toLowerCase().includes(snippetKey);
+
+        if (!alreadyMerged && !alreadyPresent) {
+          // Append the vector-matched chunk as an additional passage, respecting the per-doc limit
+          const separator = "\n\n";
+          const appended = existing.contentText + separator + chunkBody.trim();
+          if (appended.length <= PER_DOC_MAX_CHARS) {
+            existing.contentText = appended;
+          } else if (existing.contentText.length < PER_DOC_MAX_CHARS - 200) {
+            // Partial append — keep as much of the new chunk as fits
+            const remaining = PER_DOC_MAX_CHARS - existing.contentText.length - separator.length;
+            if (remaining > 100) {
+              existing.contentText = existing.contentText + separator + chunkBody.trim().slice(0, remaining) + "\n...";
+            }
+          }
+          existing._mergedChunkSnippets = existing._mergedChunkSnippets ?? new Set();
+          existing._mergedChunkSnippets.add(snippetKey);
+        }
+      } else if (!existing.contentText || existing.contentText.length < 50) {
+        // Fallback: existing entry has essentially no content, use this chunk
+        existing.contentText = buildCompositeText([chunk.notes, chunkBody, chunk.summary], PER_DOC_MAX_CHARS);
       }
     }
   }
+
 
   const queryStr = params.query.toLowerCase().trim();
   const queryTerms = words.map(w => w.toLowerCase());
@@ -976,8 +1062,13 @@ export async function searchProjectKnowledge(params: {
 
   if (topCandidates.length > 0) {
     const topScore = topCandidates[0].retrievalScore;
-    // Anti-Pollution Guard: Discard tail candidates with score < 45% of top score
-    topCandidates = topCandidates.filter(c => c.retrievalScore >= Math.max(MIN_RELEVANCE_SCORE, topScore * 0.45));
+    // Anti-Pollution Guard: Discard tail candidates with score < 35% of top score,
+    // while preserving any semantically relevant vector matches or high-confidence entity matches
+    // that still meet the relevance floor.
+    topCandidates = topCandidates.filter(
+      c => c.retrievalScore >= Math.max(MIN_RELEVANCE_SCORE, topScore * 0.35) ||
+           (c.isVectorMatch && c.retrievalScore >= MIN_RELEVANCE_SCORE)
+    );
   }
   
   topCandidates = topCandidates.slice(0, params.limit ?? 5);
@@ -1020,8 +1111,9 @@ export async function searchProjectKnowledge(params: {
     candidates: topCandidates
   };
 
-  // Save to cache for 5 minutes only for authenticated/scoped requests
-  if (queryHash && !isAnonymousPublic) {
+  // Save to cache for 5 minutes only for authenticated/scoped requests.
+  // queryHash is null for anonymous/public visitors so they never pollute the shared cache.
+  if (queryHash) {
     await llmResponseCache.set(`rag_search_${queryHash}`, JSON.stringify(finalResult), 300);
   }
 

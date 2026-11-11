@@ -89,7 +89,13 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       };
     } catch (e: any) {
       if (request.signal?.aborted) throw new Error("Request was aborted");
-      throw new Error(this.classifyError(e));
+      const classification = this.classifyError(e);
+      const err: any = new Error(e?.message || classification);
+      err.status = e?.status || e?.statusCode;
+      err.code = e?.code || classification;
+      err.headers = e?.headers;
+      err.providerClassification = classification;
+      throw err;
     }
   }
 
@@ -115,16 +121,63 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       }
     } catch (e: any) {
       if (request.signal?.aborted) return;
-      throw new Error(this.classifyError(e));
+      const classification = this.classifyError(e);
+      const err: any = new Error(e?.message || classification);
+      err.status = e?.status || e?.statusCode;
+      err.code = e?.code || classification;
+      err.headers = e?.headers;
+      err.providerClassification = classification;
+      throw err;
     }
   }
 
   classifyError(error: any): any {
-    const status = error?.status;
-    if (status === 404) return "MODEL_NOT_FOUND";
-    if (status === 429) return "RATE_LIMITED";
-    if (status === 401 || status === 403) return "INVALID_CREDENTIAL";
-    if (status >= 500) return "PROVIDER_UNAVAILABLE";
+    if (!error) return "UNKNOWN_ERROR";
+    if (error.providerClassification) return error.providerClassification;
+
+    const msg = String(error.message || "").toLowerCase();
+    if (msg === "rate_limited" || msg === "model_not_found" || msg === "invalid_credential" || msg === "provider_unavailable") {
+      return error.message;
+    }
+
+    const status = error.status || error.statusCode || error.response?.status;
+    if (status === 404 || status === "404" || msg.includes("model_not_found") || msg.includes("does not exist") || (msg.includes("model") && msg.includes("not found"))) {
+      return "MODEL_NOT_FOUND";
+    }
+    if (status === 429 || status === "429" || msg.includes("rate_limit") || msg.includes("quota") || msg.includes("too many requests") || msg.includes("resource_exhausted")) {
+      return "RATE_LIMITED";
+    }
+    if (
+      status === 401 ||
+      status === 403 ||
+      status === "401" ||
+      status === "403" ||
+      msg.includes("invalid_api_key") ||
+      msg.includes("incorrect api key") ||
+      msg.includes("unauthorized") ||
+      msg.includes("authentication") ||
+      msg.includes("permission_denied")
+    ) {
+      return "INVALID_CREDENTIAL";
+    }
+    if (
+      (typeof status === "number" && status >= 500) ||
+      status === 500 ||
+      status === 502 ||
+      status === 503 ||
+      status === 504 ||
+      status === "500" ||
+      status === "502" ||
+      status === "503" ||
+      status === "504" ||
+      msg.includes("server_error") ||
+      msg.includes("overloaded") ||
+      msg.includes("unavailable") ||
+      msg.includes("bad gateway") ||
+      msg.includes("gateway timeout")
+    ) {
+      return "PROVIDER_UNAVAILABLE";
+    }
     return "UNKNOWN_ERROR";
   }
 }
