@@ -923,8 +923,30 @@
     const panel = shadow.querySelector('.chat-panel');
     const form = shadow.querySelector('#chat-form');
     const input = shadow.querySelector('#chat-input');
+    const sendBtn = shadow.querySelector('.send-btn');
     const messagesContainer = shadow.querySelector('#messages-container');
     const typingIndicator = shadow.querySelector('#typing-indicator');
+    const defaultSendBtnHtml = sendBtn ? sendBtn.innerHTML : '';
+
+    let activeAbortController = null;
+    let isSending = false;
+    let activeRequestSeq = 0;
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', (e) => {
+        if (isSending && activeAbortController) {
+          e.preventDefault();
+          e.stopPropagation();
+          activeAbortController.abort();
+        }
+      });
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (activeAbortController) {
+        activeAbortController.abort();
+      }
+    });
 
     let isDragging = false;
     let dragStartX = 0;
@@ -1134,8 +1156,22 @@
     if (form) {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (isSending) return;
         const text = input.value.trim();
         if (!text) return;
+
+        const mySeq = ++activeRequestSeq;
+        isSending = true;
+        activeAbortController = new AbortController();
+        const clientReqStart = performance.now();
+        let clientTtftMs = null;
+        let chunkCount = 0;
+
+        if (sendBtn) {
+          sendBtn.title = "Stop response";
+          sendBtn.setAttribute("aria-label", "Stop response");
+          sendBtn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+        }
 
         input.value = '';
         addMessage('user', text);
@@ -1145,6 +1181,21 @@
         typingIndicator.classList.add('visible');
         messagesContainer.appendChild(typingIndicator); // Move to bottom
         scrollToBottom();
+
+        let botMsgDiv = null;
+        let botResponse = "";
+        let hasActionPayload = false;
+        let streamErrorMsg = null;
+
+        const ensureBotMsgDiv = () => {
+          if (!botMsgDiv) {
+            typingIndicator.classList.remove('visible');
+            botMsgDiv = document.createElement('div');
+            botMsgDiv.className = 'message bot';
+            messagesContainer.insertBefore(botMsgDiv, typingIndicator);
+          }
+          return botMsgDiv;
+        };
 
         try {
           let websiteContext = null;
@@ -1190,118 +1241,156 @@
           const res = await fetch(`${apiBaseUrl}/api/widget/${widgetToken}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody),
+            signal: activeAbortController.signal
           });
           
-          if (!res.ok) throw new Error("API Error");
+          if (!res.ok) {
+            let errDetail = "API Error";
+            try {
+              const errJson = await res.json();
+              if (errJson && errJson.error) errDetail = errJson.error;
+            } catch (_) {}
+            throw new Error(errDetail);
+          }
           
-          typingIndicator.classList.remove('visible');
-          
-          const botMsgDiv = document.createElement('div');
-          botMsgDiv.className = 'message bot';
-          messagesContainer.insertBefore(botMsgDiv, typingIndicator);
-          scrollToBottom();
-          
+          if (!res.body || typeof res.body.getReader !== 'function') {
+            throw new Error("Streaming not supported by response");
+          }
+
           const reader = res.body.getReader();
           const decoder = new TextDecoder("utf-8");
-          let botResponse = "";
           let buffer = "";
+          let currentEvent = "message";
+
+          const processSseLine = (rawLine) => {
+            const trimmed = rawLine.trim();
+            if (!trimmed) {
+              currentEvent = "message";
+              return;
+            }
+            if (trimmed.startsWith("event:")) {
+              currentEvent = trimmed.substring(6).trim() || "message";
+              return;
+            }
+            if (!trimmed.startsWith("data:")) return;
+
+            const payloadStr = trimmed.substring(5).trim();
+            if (!payloadStr) return;
+
+            try {
+              const data = JSON.parse(payloadStr);
+              if (currentEvent === "error" || data.error) {
+                streamErrorMsg = data.error || "Sorry, I encountered an issue connecting to the AI assistant.";
+              }
+              if (data.content) {
+                if (clientTtftMs === null) {
+                  clientTtftMs = Math.round(performance.now() - clientReqStart);
+                }
+                chunkCount++;
+                botResponse += data.content;
+                const targetDiv = ensureBotMsgDiv();
+                targetDiv.innerHTML = formatMessageText(botResponse);
+                scrollToBottom();
+              }
+              if (data.action) {
+                hasActionPayload = true;
+                typingIndicator.classList.remove('visible');
+                if (clientTtftMs === null) {
+                  clientTtftMs = Math.round(performance.now() - clientReqStart);
+                }
+                if (!window.AriaActionEngineInstance && window.AriaActionEngine) {
+                   window.AriaActionEngineInstance = new window.AriaActionEngine();
+                }
+                if (window.AriaActionEngineInstance) {
+                    const progressDiv = document.createElement('div');
+                    progressDiv.className = 'message bot';
+                    progressDiv.style.fontSize = '12px';
+                    progressDiv.style.opacity = '0.8';
+                    const actionLabel = data.action.actionType || data.action.type;
+                    progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
+                    messagesContainer.insertBefore(progressDiv, typingIndicator);
+                    scrollToBottom();
+                    
+                    if (data.security && data.security.requiresConfirmation) {
+                       progressDiv.innerHTML = `⚠️ <b>Action Requires Approval</b><br>${data.security.reason}<br>
+                       <button id="approve-btn-${data.action.id}" style="margin-top:4px; padding: 4px 8px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">Approve</button>
+                       <button id="reject-btn-${data.action.id}" style="margin-top:4px; margin-left: 4px; padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Reject</button>`;
+                       
+                       const approveBtn = progressDiv.querySelector(`#approve-btn-${data.action.id}`);
+                       const rejectBtn = progressDiv.querySelector(`#reject-btn-${data.action.id}`);
+                       
+                       approveBtn.addEventListener('click', function() {
+                          progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
+                          window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl, data.security.confirmationToken)
+                           .then(res => { progressDiv.innerHTML = `✅ <em>Completed: ${actionLabel}</em>`; })
+                           .catch(err => { progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`; });
+                       });
+                       
+                       rejectBtn.addEventListener('click', function() {
+                          progressDiv.innerHTML = `❌ <em>Rejected by user</em>`;
+                          // Post rejection result
+                          fetch(apiBaseUrl + '/api/widget/' + widgetToken + '/action-result', {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({
+                                executionId: data.executionId,
+                                actionId: data.action.id,
+                                status: 'failed',
+                                tool: actionLabel,
+                                error: 'User rejected the action'
+                             })
+                          });
+                       });
+                    } else {
+                       window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl)
+                         .then(res => {
+                            progressDiv.innerHTML = res.status === 'failed' ? `❌ <em>Failed: ${res.error}</em>` : `✅ <em>Completed: ${actionLabel}</em>`;
+                         })
+                         .catch(err => {
+                            progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`;
+                         });
+                    }
+                }
+              }
+            } catch (e) {
+              // Ignore partial or non-JSON SSE keepalive frame
+            }
+          };
           
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
+            const lines = buffer.split(/\r?\n/);
             buffer = lines.pop() || "";
             
             for (const line of lines) {
-              const trimmed = line.trim();
-              if (trimmed.startsWith("data: ")) {
-                try {
-                  const data = JSON.parse(trimmed.substring(6));
-                  if (data.content) {
-                    botResponse += data.content;
-                    botMsgDiv.innerHTML = formatMessageText(botResponse);
-                    scrollToBottom();
-                  }
-                  if (data.action) {
-                    if (!window.AriaActionEngineInstance && window.AriaActionEngine) {
-                       window.AriaActionEngineInstance = new window.AriaActionEngine();
-                    }
-                    if (window.AriaActionEngineInstance) {
-                        const progressDiv = document.createElement('div');
-                        progressDiv.className = 'message bot';
-                        progressDiv.style.fontSize = '12px';
-                        progressDiv.style.opacity = '0.8';
-                        const actionLabel = data.action.actionType || data.action.type;
-                        progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
-                        messagesContainer.insertBefore(progressDiv, typingIndicator);
-                        scrollToBottom();
-                        
-                        if (data.security && data.security.requiresConfirmation) {
-                           progressDiv.innerHTML = `⚠️ <b>Action Requires Approval</b><br>${data.security.reason}<br>
-                           <button id="approve-btn-${data.action.id}" style="margin-top:4px; padding: 4px 8px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">Approve</button>
-                           <button id="reject-btn-${data.action.id}" style="margin-top:4px; margin-left: 4px; padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Reject</button>`;
-                           
-                           const approveBtn = progressDiv.querySelector(`#approve-btn-${data.action.id}`);
-                           const rejectBtn = progressDiv.querySelector(`#reject-btn-${data.action.id}`);
-                           
-                           approveBtn.addEventListener('click', function() {
-                              progressDiv.innerHTML = `<em>⚙️ Executing: ${actionLabel}...</em>`;
-                              window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl, data.security.confirmationToken)
-                               .then(res => { progressDiv.innerHTML = `✅ <em>Completed: ${actionLabel}</em>`; })
-                               .catch(err => { progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`; });
-                           });
-                           
-                           rejectBtn.addEventListener('click', function() {
-                              progressDiv.innerHTML = `❌ <em>Rejected by user</em>`;
-                              // Post rejection result
-                              fetch(apiBaseUrl + '/api/widget/' + widgetToken + '/action-result', {
-                                 method: 'POST',
-                                 headers: { 'Content-Type': 'application/json' },
-                                 body: JSON.stringify({
-                                    executionId: data.executionId,
-                                    actionId: data.action.id,
-                                    status: 'failed',
-                                    tool: actionLabel,
-                                    error: 'User rejected the action'
-                                 })
-                              });
-                           });
-                        } else {
-                           window.AriaActionEngineInstance.executeAction(data.action, widgetToken, data.executionId, apiBaseUrl)
-                             .then(res => {
-                                progressDiv.innerHTML = res.status === 'failed' ? `❌ <em>Failed: ${res.error}</em>` : `✅ <em>Completed: ${actionLabel}</em>`;
-                             })
-                             .catch(err => {
-                                progressDiv.innerHTML = `❌ <em>Failed: ${err.message}</em>`;
-                             });
-                        }
-                    }
-                  }
-                } catch (e) {
-                  // Ignore parse error
-                }
-              }
+              processSseLine(line);
             }
           }
           
-          // Flush remainder
-          if (buffer.startsWith("data: ")) {
-             try {
-               const data = JSON.parse(buffer.substring(6));
-               if (data.content) {
-                 botResponse += data.content;
-                 botMsgDiv.innerHTML = formatMessageText(botResponse);
-                 scrollToBottom();
-               }
-             } catch(e) {}
+          // Flush any trailing decoder bytes and buffered SSE line
+          buffer += decoder.decode();
+          if (buffer.trim()) {
+            for (const line of buffer.split(/\r?\n/)) {
+              processSseLine(line);
+            }
           }
+
+          window.__novaWidgetLastTiming = {
+            ttftMs: clientTtftMs,
+            totalMs: Math.round(performance.now() - clientReqStart),
+            chunkCount
+          };
+
+          typingIndicator.classList.remove('visible');
           
-          if (!botResponse) {
-            botMsgDiv.textContent = "Sorry, I received an empty response.";
-          } else {
+          if (!botResponse && !hasActionPayload) {
+            const fallbackDiv = ensureBotMsgDiv();
+            fallbackDiv.textContent = streamErrorMsg || "Sorry, I received an empty response.";
+          } else if (botResponse && mySeq === activeRequestSeq) {
             chatHistory.push({ role: 'assistant', content: botResponse });
             saveHistory(chatHistory);
             
@@ -1407,9 +1496,29 @@
             });
           }
         } catch (err) {
-          console.error("NOVA AI Widget Chat Error:", err);
           typingIndicator.classList.remove('visible');
-          addMessage('bot', 'Sorry, I am having trouble connecting right now.');
+          if (err && err.name === 'AbortError') {
+            if (botResponse && mySeq === activeRequestSeq) {
+              chatHistory.push({ role: 'assistant', content: botResponse });
+              saveHistory(chatHistory);
+            } else if (!botMsgDiv) {
+              addMessage('bot', 'Response generation stopped.');
+            }
+          } else {
+            console.error("NOVA AI Widget Chat Error:", err);
+            addMessage('bot', 'Sorry, I am having trouble connecting right now.');
+          }
+        } finally {
+          if (mySeq === activeRequestSeq) {
+            isSending = false;
+            activeAbortController = null;
+            typingIndicator.classList.remove('visible');
+            if (sendBtn) {
+              sendBtn.innerHTML = defaultSendBtnHtml;
+              sendBtn.title = "Send message";
+              sendBtn.setAttribute("aria-label", "Send message");
+            }
+          }
         }
       });
     }

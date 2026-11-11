@@ -19,7 +19,6 @@ import type {
   ChartContext,
 } from "./types";
 import { searchProjectKnowledge, sanitizeRetrievedText } from "../knowledge";
-import { intentClassifier } from "./intent-classifier";
 import { redactSensitiveContext } from "../../security";
 
 // ---------------------------------------------------------------------------
@@ -45,22 +44,25 @@ export class ContextFuser {
     settings: ContextSettings;
     apiKeys?: any[];
     conversationHistory?: Array<{ role: string; content: string }>;
+    signal?: AbortSignal;
+    embeddingApiKey?: string;
+    onTiming?: (stage: string, durationMs: number, meta?: Record<string, any>) => void;
   }): Promise<FusedContext> {
-    const { userMessage, websiteContext, projectId, userId, customerId, settings, apiKeys, conversationHistory } = params;
+    const {
+      userMessage,
+      websiteContext,
+      projectId,
+      userId,
+      customerId,
+      settings,
+      conversationHistory,
+      signal,
+      embeddingApiKey,
+      onTiming,
+    } = params;
 
-    // ── 0. Intent Classification ──
-    let userIntent: any = "General Question";
-    if (apiKeys && apiKeys.length > 0) {
-      try {
-        const activeKey = apiKeys[0].decryptedKey || apiKeys[0].encryptedKey;
-        userIntent = await intentClassifier.classify({
-          userMessage,
-          apiKey: activeKey
-        });
-      } catch {
-        userIntent = "General Question";
-      }
-    }
+    // Default intent preserved without redundant pre-retrieval LLM roundtrip
+    const userIntent: any = "General Question";
 
     const needsWebsiteContext = true;
     const needsKbContext = true; // Always query KB for relevant grounded answers
@@ -83,7 +85,7 @@ export class ContextFuser {
     // ── 4. Knowledge base search ──
     let kbContextString = "";
     let knowledgeChunks: any[] = [];
-    if (needsKbContext) {
+    if (needsKbContext && !signal?.aborted) {
       try {
         const searchResult = await searchProjectKnowledge({
           projectIds: [projectId],
@@ -91,11 +93,16 @@ export class ContextFuser {
           customerId,
           query: augmentedQuery,
           limit: 4,
+          signal,
+          embeddingApiKey,
+          onTiming,
         });
         kbContextString = searchResult.contextString;
         knowledgeChunks = searchResult.candidates || [];
       } catch (err) {
-        console.error("Context fuser: KB search failed:", err);
+        if (!signal?.aborted) {
+          console.error("Context fuser: KB search failed:", err);
+        }
       }
     }
 

@@ -10,6 +10,19 @@ export interface QuotaCheckResult {
   limit?: number;
 }
 
+export interface PreloadedQuotaContext {
+  organizationId?: string | null;
+  license?: {
+    planId?: string | null;
+    licenseStatus?: string | null;
+    paymentStatus?: string | null;
+  } | null;
+  /** True when license lookup was already performed (even if null) */
+  hasLicenseSnapshot?: boolean;
+}
+
+const planLimitsCache = new Map<string, { limits: { messages: number; crawls: number; actions: number }; expiresAt: number }>();
+
 /**
   * Validates and increments tenant usage counts inside the active billing cycle.
   * Writes to usage_events for audit trail.
@@ -18,7 +31,8 @@ export async function checkAndIncrementUsage(
   projectId: string,
   eventType: "message" | "crawl" | "parse" | "action",
   quantity: number = 1,
-  isSuperAdmin?: boolean
+  isSuperAdmin?: boolean,
+  preloaded?: PreloadedQuotaContext
 ): Promise<QuotaCheckResult> {
   if (isSuperAdmin) {
     return { allowed: true, reason: "Super Admin bypass" };
@@ -26,35 +40,50 @@ export async function checkAndIncrementUsage(
 
   try {
     return await withBypassRLS(async (tx: any) => {
-      // 1. Resolve project details & organizationId
-      const [project] = await tx
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
+      // 1. Resolve organizationId (reuse preloaded project context when available)
+      let organizationId = preloaded?.organizationId;
+      if (organizationId === undefined) {
+        const [project] = await tx
+          .select({ organizationId: projects.organizationId })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
 
-      if (!project) {
-        return { allowed: false, reason: "Project not found" };
+        if (!project) {
+          return { allowed: false, reason: "Project not found" };
+        }
+        organizationId = project.organizationId;
       }
 
-      const organizationId = project.organizationId;
       if (!organizationId) {
         // Fallback for unlinked legacy rows: bypass RLS limits
         return { allowed: true };
       }
 
-      // 2. Fetch active paid license to check plan features
-      const [license] = await tx
-        .select()
-        .from(projectLicenses)
-        .where(
-          and(
-            eq(projectLicenses.projectId, projectId),
-            eq(projectLicenses.licenseStatus, "active"),
-            eq(projectLicenses.paymentStatus, "paid")
+      // 2. Fetch active paid license to check plan features (skip DB query if preloaded)
+      let license: PreloadedQuotaContext["license"] | undefined = undefined;
+      if (preloaded?.hasLicenseSnapshot) {
+        if (
+          preloaded.license &&
+          preloaded.license.licenseStatus === "active" &&
+          preloaded.license.paymentStatus === "paid"
+        ) {
+          license = preloaded.license;
+        }
+      } else {
+        const [dbLicense] = await tx
+          .select()
+          .from(projectLicenses)
+          .where(
+            and(
+              eq(projectLicenses.projectId, projectId),
+              eq(projectLicenses.licenseStatus, "active"),
+              eq(projectLicenses.paymentStatus, "paid")
+            )
           )
-        )
-        .limit(1);
+          .limit(1);
+        license = dbLicense;
+      }
 
       let limits = {
         messages: 100, // Trial limit
@@ -63,26 +92,38 @@ export async function checkAndIncrementUsage(
       };
 
       if (license && license.planId) {
-        const [plan] = await tx
-          .select()
-          .from(plans)
-          .where(eq(plans.id, license.planId))
-          .limit(1);
-
-        if (plan && plan.features) {
-          const feat = typeof plan.features === "string" ? JSON.parse(plan.features) : plan.features;
-          limits = {
-            messages: feat.messagesLimit ?? 10000,
-            crawls: feat.crawlsLimit ?? 500,
-            actions: feat.actionsLimit ?? 5000
-          };
+        const cachedPlan = planLimitsCache.get(license.planId);
+        if (cachedPlan && cachedPlan.expiresAt > Date.now()) {
+          limits = cachedPlan.limits;
         } else {
-          limits = {
-            messages: 10000,
-            crawls: 500,
-            actions: 5000
-          };
+          const [plan] = await tx
+            .select()
+            .from(plans)
+            .where(eq(plans.id, license.planId))
+            .limit(1);
+
+          if (plan && plan.features) {
+            const feat = typeof plan.features === "string" ? JSON.parse(plan.features) : plan.features;
+            limits = {
+              messages: feat.messagesLimit ?? 10000,
+              crawls: feat.crawlsLimit ?? 500,
+              actions: feat.actionsLimit ?? 5000
+            };
+          } else {
+            limits = {
+              messages: 10000,
+              crawls: 500,
+              actions: 5000
+            };
+          }
+          planLimitsCache.set(license.planId, { limits, expiresAt: Date.now() + 5 * 60_000 });
         }
+      } else if (license) {
+        limits = {
+          messages: 10000,
+          crawls: 500,
+          actions: 5000
+        };
       }
 
       // 3. Resolve active billing cycle

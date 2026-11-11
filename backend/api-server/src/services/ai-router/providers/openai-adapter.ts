@@ -1,14 +1,39 @@
 import { OpenAI } from "openai";
+import nodeCrypto from "crypto";
 import { BaseProviderAdapter, ChatCompletionRequest, ChatCompletionResponse } from "./base";
 import { NormalizedModel } from "../types";
+
+const MAX_OPENAI_CLIENT_CACHE = 100;
+const openaiClientCache = new Map<string, OpenAI>();
 
 export class OpenAIAdapter extends BaseProviderAdapter {
   readonly providerId = "openai";
 
-  async discoverModels(apiKey: string, baseUrl?: string): Promise<NormalizedModel[]> {
+  private getClient(apiKey: string, baseURL?: string): OpenAI {
+    const keyHash = nodeCrypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+    const cacheKey = `${keyHash}:${baseURL || "default"}`;
+    let client = openaiClientCache.get(cacheKey);
+    if (!client) {
+      if (openaiClientCache.size >= MAX_OPENAI_CLIENT_CACHE) {
+        const oldestKey = openaiClientCache.keys().next().value;
+        if (oldestKey) openaiClientCache.delete(oldestKey);
+      }
+      client = new OpenAI({ apiKey, baseURL });
+      openaiClientCache.set(cacheKey, client);
+    }
+    return client;
+  }
+
+  async discoverModels(apiKey: string, baseUrl?: string, signal?: AbortSignal): Promise<NormalizedModel[]> {
     const url = baseUrl || "https://api.openai.com/v1";
+    const timeoutSignal = AbortSignal.timeout(5000);
+    const combinedSignal = signal
+      ? (typeof (AbortSignal as any).any === "function" ? (AbortSignal as any).any([signal, timeoutSignal]) : signal)
+      : timeoutSignal;
+
     const response = await fetch(`${url}/models`, {
-      headers: { "Authorization": `Bearer ${apiKey}` }
+      headers: { "Authorization": `Bearer ${apiKey}` },
+      signal: combinedSignal
     });
     
     if (!response.ok) {
@@ -42,14 +67,17 @@ export class OpenAIAdapter extends BaseProviderAdapter {
   }
 
   async generateChat(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-    const client = new OpenAI({ apiKey: request.model.credential.apiKey, baseURL: request.model.credential.baseUrl });
+    if (request.signal?.aborted) {
+      throw new Error("Request was aborted");
+    }
+    const client = this.getClient(request.model.credential.apiKey, request.model.credential.baseUrl);
     try {
       const response = await client.chat.completions.create({
         model: request.model.modelId,
         messages: request.messages as any,
         temperature: request.temperature ?? 0.7,
         max_tokens: request.maxTokens
-      });
+      }, request.signal ? { signal: request.signal } : undefined);
 
       return {
         content: response.choices[0]?.message?.content || "",
@@ -60,12 +88,16 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         }
       };
     } catch (e: any) {
+      if (request.signal?.aborted) throw new Error("Request was aborted");
       throw new Error(this.classifyError(e));
     }
   }
 
   async *generateChatStream(request: ChatCompletionRequest): AsyncIterable<{ text: string }> {
-    const client = new OpenAI({ apiKey: request.model.credential.apiKey, baseURL: request.model.credential.baseUrl });
+    if (request.signal?.aborted) {
+      return;
+    }
+    const client = this.getClient(request.model.credential.apiKey, request.model.credential.baseUrl);
     try {
       const stream = await client.chat.completions.create({
         model: request.model.modelId,
@@ -73,14 +105,16 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         temperature: request.temperature ?? 0.7,
         max_tokens: request.maxTokens,
         stream: true
-      });
+      }, request.signal ? { signal: request.signal } : undefined);
 
       for await (const chunk of stream) {
+        if (request.signal?.aborted) break;
         if (chunk.choices[0]?.delta?.content) {
           yield { text: chunk.choices[0].delta.content };
         }
       }
     } catch (e: any) {
+      if (request.signal?.aborted) return;
       throw new Error(this.classifyError(e));
     }
   }

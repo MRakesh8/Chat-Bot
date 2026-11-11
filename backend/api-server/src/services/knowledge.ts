@@ -15,6 +15,140 @@ import { llmResponseCache } from "./cache-provider";
 
 const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000, 120 * 60_000, 720 * 60_000];
 const MAX_RETRY_COUNT = RETRY_DELAYS_MS.length;
+
+const PRESENCE_CACHE_PRESENT_TTL_MS = 60_000;
+const PRESENCE_CACHE_EMPTY_TTL_MS = 15_000;
+const MAX_PRESENCE_CACHE_ENTRIES = 1000;
+const QUERY_EMBED_CACHE_TTL_MS = 15 * 60_000;
+const MAX_QUERY_EMBED_CACHE_ENTRIES = 500;
+const EMBED_TIMEOUT_MS = 2500;
+
+interface PresenceEntry {
+  hasSources: boolean;
+  hasEmbeddedChunks: boolean;
+  expiresAt: number;
+}
+
+const projectKnowledgePresenceCache = new Map<string, PresenceEntry>();
+const presenceInFlight = new Map<string, Promise<{ hasSources: boolean; hasEmbeddedChunks: boolean }>>();
+const queryEmbeddingCache = new Map<string, { vector: number[]; expiresAt: number }>();
+
+function setBoundedMapEntry<V>(map: Map<string, V>, key: string, value: V, maxEntries: number) {
+  if (map.has(key)) map.delete(key);
+  while (map.size >= maxEntries) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) break;
+    map.delete(oldestKey);
+  }
+  map.set(key, value);
+}
+
+async function getProjectKnowledgePresence(projectIds: string[]): Promise<{ hasSources: boolean; hasEmbeddedChunks: boolean }> {
+  if (projectIds.length !== 1) {
+    return { hasSources: true, hasEmbeddedChunks: true };
+  }
+  const projectId = projectIds[0];
+  const now = Date.now();
+  const cached = projectKnowledgePresenceCache.get(projectId);
+  if (cached && cached.expiresAt > now) {
+    return { hasSources: cached.hasSources, hasEmbeddedChunks: cached.hasEmbeddedChunks };
+  }
+
+  const inflight = presenceInFlight.get(projectId);
+  if (inflight) return inflight;
+
+  const task = (async () => {
+    try {
+      const [sourceRows, chunkRows] = await Promise.all([
+        db
+          .select({ id: knowledgeSources.id })
+          .from(knowledgeSources)
+          .where(eq(knowledgeSources.projectId, projectId))
+          .limit(1),
+        db
+          .select({ id: knowledgeChunks.id })
+          .from(knowledgeChunks)
+          .where(and(eq(knowledgeChunks.projectId, projectId), isNotNull(knowledgeChunks.embedding)))
+          .limit(1),
+      ]);
+      const result = {
+        hasSources: Array.isArray(sourceRows) && sourceRows.length > 0,
+        hasEmbeddedChunks: Array.isArray(chunkRows) && chunkRows.length > 0,
+      };
+      const ttl = result.hasSources ? PRESENCE_CACHE_PRESENT_TTL_MS : PRESENCE_CACHE_EMPTY_TTL_MS;
+      setBoundedMapEntry(
+        projectKnowledgePresenceCache,
+        projectId,
+        { ...result, expiresAt: Date.now() + ttl },
+        MAX_PRESENCE_CACHE_ENTRIES
+      );
+      return result;
+    } catch {
+      // Fail open on probe error so retrieval still executes
+      return { hasSources: true, hasEmbeddedChunks: true };
+    } finally {
+      presenceInFlight.delete(projectId);
+    }
+  })();
+
+  presenceInFlight.set(projectId, task);
+  return task;
+}
+
+function buildCompositeText(parts: Array<string | null | undefined>, maxChars = 2800): string {
+  const seenNormalized = new Set<string>();
+  const uniqueParts: string[] = [];
+  for (const part of parts) {
+    if (!part) continue;
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const norm = trimmed.toLowerCase().replace(/\s+/g, " ");
+    if (seenNormalized.has(norm)) continue;
+    // Skip substring duplication when an existing larger section already includes this exact summary/snippet
+    if (uniqueParts.some((p) => p.toLowerCase().replace(/\s+/g, " ").includes(norm))) continue;
+    seenNormalized.add(norm);
+    uniqueParts.push(trimmed);
+  }
+  const combined = uniqueParts.join("\n\n");
+  return combined.length > maxChars ? `${combined.slice(0, maxChars)}\n...` : combined;
+}
+
+async function embedWithTimeout(
+  userId: string | null,
+  query: string,
+  embeddingApiKey?: string,
+  signal?: AbortSignal,
+  timeoutMs = EMBED_TIMEOUT_MS
+): Promise<number[] | null> {
+  if (signal?.aborted) return null;
+  let timer: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    const embedPromise = ai.models.embedContent(userId, {
+      model: "text-embedding-004",
+      contents: query,
+      ...(embeddingApiKey ? { apiKey: embeddingApiKey } : {}),
+      config: {
+        outputDimensionality: 768,
+        ...(signal ? { abortSignal: signal } : {}),
+      },
+    });
+    const guardPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Embedding timeout after ${timeoutMs}ms`)), timeoutMs);
+      if (signal) {
+        onAbort = () => reject(new Error("Embedding aborted"));
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    });
+    const embedRes: any = await Promise.race([embedPromise, guardPromise]);
+    const values = embedRes?.embeddings?.[0]?.values;
+    return Array.isArray(values) && values.length > 0 ? values : null;
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 const SUPPORTED_FILE_EXTENSIONS = new Set([
   // Documents
   "pdf", "docx", "doc", "txt", "md", "csv", "pptx", "ppt", "xls", "xlsx", "rtf", "tsv",
@@ -329,6 +463,8 @@ function scheduleKnowledgeRepair(sourceId: string, retryCount: number) {
 }
 
 export async function invalidateKnowledgeCache(projectId: string) {
+  projectKnowledgePresenceCache.delete(projectId);
+  presenceInFlight.delete(projectId);
   try {
     await db.delete(knowledgeRetrievalCache).where(eq(knowledgeRetrievalCache.projectId, projectId as any));
   } catch (err) {
@@ -523,8 +659,19 @@ export async function searchProjectKnowledge(params: {
   query: string;
   limit?: number;
   ragIntent?: string;
+  signal?: AbortSignal;
+  embeddingApiKey?: string;
+  onTiming?: (stage: string, durationMs: number, meta?: Record<string, any>) => void;
 }): Promise<{ contextString: string, retrievedIds: string[], candidates?: any[] }> {
-  if (params.projectIds.length === 0 || !params.query.trim()) return { contextString: "", retrievedIds: [] };
+  const retrievalStart = Date.now();
+  const emitRetrievalTiming = (meta?: Record<string, any>) => {
+    params.onTiming?.("knowledge_retrieval", Date.now() - retrievalStart, meta);
+  };
+
+  if (params.projectIds.length === 0 || !params.query.trim() || params.signal?.aborted) {
+    emitRetrievalTiming({ skipped: true, retrievedCount: 0 });
+    return { contextString: "", retrievedIds: [] };
+  }
 
   // RAG Cache (5m TTL) — Bypassed for anonymous/public visitors to prevent cross-customer cache leakage.
   // Cache is strictly used when a trusted user/customer identity scope exists.
@@ -540,12 +687,20 @@ export async function searchProjectKnowledge(params: {
       try {
         const parsed = JSON.parse(cachedResultStr);
         if (parsed && parsed.contextString !== undefined) {
+          emitRetrievalTiming({ cacheHit: true, retrievedCount: parsed.retrievedIds?.length ?? 0 });
           return parsed;
         }
-      } catch (e) {
+      } catch {
         // Ignore parse error and proceed with search
       }
     }
+  }
+
+  // Fast presence probe: avoid table ilike scans and remote embedding API calls when project KB is empty
+  const presence = await getProjectKnowledgePresence(params.projectIds);
+  if (!presence.hasSources) {
+    emitRetrievalTiming({ skippedEmptyKb: true, retrievedCount: 0 });
+    return { contextString: "", retrievedIds: [] };
   }
 
   // 1. Candidate Generation with Domain-Aware Query Expansion
@@ -594,9 +749,13 @@ export async function searchProjectKnowledge(params: {
   }
 
   const words = uniqueStrings(Array.from(expandedTerms), 15);
+  const customerCondition = params.customerId
+    ? or(sql`${knowledgeSources.customerId} IS NULL`, eq(knowledgeSources.customerId, params.customerId))
+    : sql`${knowledgeSources.customerId} IS NULL`;
 
-  let metadataMatches: Array<any> = [];
-  if (words.length > 0) {
+  // Run metadata keyword scan and vector embedding + HNSW search concurrently
+  const metadataPromise = (async (): Promise<Array<any>> => {
+    if (words.length === 0 || params.signal?.aborted) return [];
     const conditions = words.flatMap((word) => [
       ilike(knowledgeCategories.name, `%${word}%`),
       ilike(knowledgeSources.tag, `%${word}%`),
@@ -608,11 +767,7 @@ export async function searchProjectKnowledge(params: {
       ilike(knowledgeSources.sourceUrl, `%${word}%`),
     ]);
 
-    const customerCondition = params.customerId
-      ? or(sql`${knowledgeSources.customerId} IS NULL`, eq(knowledgeSources.customerId, params.customerId))
-      : sql`${knowledgeSources.customerId} IS NULL`;
-
-    metadataMatches = await db
+    return db
       .select({
         id: knowledgeSources.id,
         title: knowledgeSources.title,
@@ -631,49 +786,88 @@ export async function searchProjectKnowledge(params: {
       .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
       .where(and(inArray(knowledgeSources.projectId, params.projectIds), or(...conditions), customerCondition))
       .limit(fetchLimit);
-  }
+  })();
 
-  let similarChunks: Array<any> = [];
-  try {
-    const embedRes = await ai.models.embedContent(params.userId, {
-      model: "text-embedding-004",
-      contents: params.query,
-      config: { outputDimensionality: 768 },
-    });
-    const userVector = embedRes.embeddings?.[0]?.values;
-    if (userVector) {
-      const customerCondition = params.customerId
-        ? or(sql`${knowledgeSources.customerId} IS NULL`, eq(knowledgeSources.customerId, params.customerId))
-        : sql`${knowledgeSources.customerId} IS NULL`;
-
-      similarChunks = await db
-        .select({
-          chunkText: knowledgeChunks.chunkText,
-          sourceId: knowledgeChunks.knowledgeSourceId,
-          title: knowledgeSources.title,
-          tag: knowledgeSources.tag,
-          sourceType: knowledgeSources.sourceType,
-          sourceUrl: knowledgeSources.sourceUrl,
-          websiteLinks: knowledgeSources.websiteLinks,
-          videoLinks: knowledgeSources.videoLinks,
-          githubLinks: knowledgeSources.githubLinks,
-          categoryName: knowledgeCategories.name,
-          rawContent: knowledgeSources.rawContent,
-          summary: knowledgeSources.summary,
-          notes: knowledgeSources.notes,
-        })
-        .from(knowledgeChunks)
-        .innerJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
-        .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
-        .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding), customerCondition))
-        .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
-        .limit(fetchLimit);
+  const vectorPromise = (async (): Promise<Array<any>> => {
+    if (!presence.hasEmbeddedChunks || params.signal?.aborted) {
+      return [];
     }
-  } catch (err) {
-    logger.error({ err }, "Vector knowledge search failed");
-  }
+    const vectorStart = Date.now();
+    let embedCacheHit = false;
+    let chunksFound = 0;
+    try {
+      const normQuery = params.query.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 500);
+      const keyFingerprint = params.embeddingApiKey
+        ? nodeCrypto.createHash("sha256").update(params.embeddingApiKey).digest("hex").slice(0, 12)
+        : "env";
+      const embedCacheKey = nodeCrypto.createHash("sha256").update(`${keyFingerprint}:${normQuery}`).digest("hex");
+      const cachedEmbed = queryEmbeddingCache.get(embedCacheKey);
 
-  if (metadataMatches.length === 0 && similarChunks.length === 0) return { contextString: "", retrievedIds: [] };
+      let userVector: number[] | null = null;
+      if (cachedEmbed && cachedEmbed.expiresAt > Date.now()) {
+        embedCacheHit = true;
+        userVector = cachedEmbed.vector;
+      } else {
+        userVector = await embedWithTimeout(
+          params.userId,
+          params.query,
+          params.embeddingApiKey,
+          params.signal,
+          EMBED_TIMEOUT_MS
+        );
+        if (userVector) {
+          setBoundedMapEntry(
+            queryEmbeddingCache,
+            embedCacheKey,
+            { vector: userVector, expiresAt: Date.now() + QUERY_EMBED_CACHE_TTL_MS },
+            MAX_QUERY_EMBED_CACHE_ENTRIES
+          );
+        }
+      }
+
+      if (userVector && !params.signal?.aborted) {
+        const rows = await db
+          .select({
+            chunkText: knowledgeChunks.chunkText,
+            sourceId: knowledgeChunks.knowledgeSourceId,
+            title: knowledgeSources.title,
+            tag: knowledgeSources.tag,
+            sourceType: knowledgeSources.sourceType,
+            sourceUrl: knowledgeSources.sourceUrl,
+            websiteLinks: knowledgeSources.websiteLinks,
+            videoLinks: knowledgeSources.videoLinks,
+            githubLinks: knowledgeSources.githubLinks,
+            categoryName: knowledgeCategories.name,
+            rawContent: knowledgeSources.rawContent,
+            summary: knowledgeSources.summary,
+            notes: knowledgeSources.notes,
+          })
+          .from(knowledgeChunks)
+          .innerJoin(knowledgeSources, eq(knowledgeChunks.knowledgeSourceId, knowledgeSources.id))
+          .leftJoin(knowledgeCategories, eq(knowledgeSources.categoryId, knowledgeCategories.id))
+          .where(and(inArray(knowledgeChunks.projectId, params.projectIds), isNotNull(knowledgeChunks.embedding), customerCondition))
+          .orderBy(sql`${knowledgeChunks.embedding} <=> ${JSON.stringify(userVector)}`)
+          .limit(fetchLimit);
+        chunksFound = rows.length;
+        return rows;
+      }
+      return [];
+    } catch (err) {
+      if (!params.signal?.aborted) {
+        logger.error({ err }, "Vector knowledge search failed");
+      }
+      return [];
+    } finally {
+      params.onTiming?.("vector_search", Date.now() - vectorStart, { embedCacheHit, chunksFound });
+    }
+  })();
+
+  const [metadataMatches, similarChunks] = await Promise.all([metadataPromise, vectorPromise]);
+
+  if (metadataMatches.length === 0 && similarChunks.length === 0) {
+    emitRetrievalTiming({ retrievedCount: 0 });
+    return { contextString: "", retrievedIds: [] };
+  }
 
   // 2. Combine and Score Candidates
   const candidatesMap = new Map<string, any>();
@@ -681,22 +875,23 @@ export async function searchProjectKnowledge(params: {
   for (const match of metadataMatches) {
     const id = match.id;
     if (!candidatesMap.has(id)) {
-      // Build composite rich text that preserves notes, rawContent, and summary
-      const compositeText = [match.notes, match.rawContent, match.summary].filter(Boolean).join("\n\n");
+      const compositeText = buildCompositeText([match.notes, match.rawContent, match.summary]);
       candidatesMap.set(id, { ...match, isVectorMatch: false, contentText: compositeText || match.rawContent || "" });
     }
   }
 
   for (const chunk of similarChunks) {
     const id = chunk.sourceId;
+    const preferChunk = chunk.chunkText && chunk.chunkText.trim().length >= 80 && (chunk.rawContent?.length ?? 0) > 2500;
+    const chunkBody = preferChunk ? chunk.chunkText : (chunk.chunkText || chunk.rawContent);
     if (id && !candidatesMap.has(id)) {
-      const compositeText = [chunk.notes, chunk.chunkText || chunk.rawContent, chunk.summary].filter(Boolean).join("\n\n");
+      const compositeText = buildCompositeText([chunk.notes, chunkBody, chunk.summary]);
       candidatesMap.set(id, { ...chunk, id: chunk.sourceId, isVectorMatch: true, contentText: compositeText || chunk.chunkText || "" });
     } else if (id && candidatesMap.has(id)) {
       const existing = candidatesMap.get(id);
       existing.isVectorMatch = true;
       if (!existing.contentText || existing.contentText.length < 50) {
-        existing.contentText = [chunk.notes, chunk.chunkText || chunk.rawContent, chunk.summary].filter(Boolean).join("\n\n");
+        existing.contentText = buildCompositeText([chunk.notes, chunkBody, chunk.summary]);
       }
     }
   }
@@ -787,15 +982,15 @@ export async function searchProjectKnowledge(params: {
   
   topCandidates = topCandidates.slice(0, params.limit ?? 5);
 
-  // 4. Logging
-  let debugLog = `Query: ${params.query}\n\n`;
+  // 4. Logging (avoid logging raw private visitor query text)
+  let debugLog = `QueryChars: ${params.query.length}\n\n`;
   topCandidates.forEach((c, index) => {
     debugLog += `Candidate ${index + 1}:\nCategory: ${c.categoryName || "Uncategorized"}\nTag: ${c.tag || "None"}\nScore: ${c.retrievalScore}\n\n`;
   });
   logger.info(`[Retrieval Ranking]\n${debugLog.trim()}`);
 
   // 5. Context Formatting — Clean signal without noisy internal tags, sanitized against prompt injection
-  const MAX_CHARS = 10000;
+  const MAX_CHARS = 7000;
   let currentChars = 0;
 
   const finalItems: string[] = [];
@@ -829,6 +1024,12 @@ export async function searchProjectKnowledge(params: {
   if (queryHash && !isAnonymousPublic) {
     await llmResponseCache.set(`rag_search_${queryHash}`, JSON.stringify(finalResult), 300);
   }
+
+  emitRetrievalTiming({
+    cacheHit: false,
+    retrievedCount: finalResult.retrievedIds.length,
+    contextChars: finalResult.contextString.length,
+  });
 
   return finalResult;
 }

@@ -2,7 +2,27 @@ import { submitMessageFeedback, submitProjectFeedback } from '../services/feedba
 import { Router, Request, Response } from "express";
 import { logger } from "../lib/logger";
 import { db, crypto, withBypassRLS } from "@workspace/db";
-import { projectWidgetSettings, projects, knowledgeSources, knowledgeChunks, projectApiKeys, userApiKeys, widgetAnalytics, apiLogs, widgetLeads, chatSessions, messages as messagesTable, customers, workflowExecutions, executionSteps, projectLocalSessions } from "@workspace/db/schema";
+import {
+  projectWidgetSettings,
+  projects,
+  knowledgeSources,
+  knowledgeChunks,
+  projectApiKeys,
+  userApiKeys,
+  widgetAnalytics,
+  apiLogs,
+  widgetLeads,
+  chatSessions,
+  messages as messagesTable,
+  customers,
+  workflowExecutions,
+  executionSteps,
+  projectLocalSessions,
+  projectIntegrations,
+  integrationTools,
+  browserCapabilities,
+  agentWorkflows,
+} from "@workspace/db/schema";
 import { eq, and, isNull, or, desc } from "drizzle-orm";
 import { emitActivityEvent } from "../services/activity";
 import { UniversalProviderAdapter } from "../services/llm-provider";
@@ -22,7 +42,7 @@ import {
 import { detectPromptInjection } from "../middlewares/prompt-firewall";
 import {
   validateWidgetOrigin,
-  checkProjectEntitlement,
+  checkProjectEntitlementWithContext,
   redactSensitiveContext,
   sendSafeError,
   getRequestId,
@@ -40,6 +60,51 @@ import { UniversalRouterService } from '../services/ai-router';
 interface WidgetKey { id?: string; type?: string; }
 const keyUsageStats: Record<string, any> = {};
 
+const CAPABILITY_CACHE_TTL_MS = 60_000;
+const executableCapabilityCache = new Map<string, { hasCapabilities: boolean; expiresAt: number }>();
+
+async function checkProjectHasExecutableCapabilities(projectId: string): Promise<boolean> {
+  const cached = executableCapabilityCache.get(projectId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.hasCapabilities;
+  }
+  try {
+    const [integRows, toolRows, browserRows, workflowRows] = await Promise.all([
+      db.select({ id: projectIntegrations.id }).from(projectIntegrations)
+        .where(and(eq(projectIntegrations.projectId, projectId), or(eq(projectIntegrations.status, "AUTHORIZED"), eq(projectIntegrations.status, "CONNECTED"))))
+        .limit(1),
+      db.select({ id: integrationTools.id }).from(integrationTools)
+        .where(and(eq(integrationTools.projectId, projectId), eq(integrationTools.isEnabled, true)))
+        .limit(1),
+      db.select({ id: browserCapabilities.id }).from(browserCapabilities)
+        .where(and(eq(browserCapabilities.projectId, projectId), eq(browserCapabilities.isEnabled, true)))
+        .limit(1),
+      db.select({ id: agentWorkflows.id }).from(agentWorkflows)
+        .where(eq(agentWorkflows.projectId, projectId))
+        .limit(1),
+    ]);
+    const hasCapabilities = integRows.length > 0 || toolRows.length > 0 || browserRows.length > 0 || workflowRows.length > 0;
+    if (executableCapabilityCache.size >= 1000) {
+      const oldestKey = executableCapabilityCache.keys().next().value;
+      if (oldestKey) executableCapabilityCache.delete(oldestKey);
+    }
+    executableCapabilityCache.set(projectId, { hasCapabilities, expiresAt: Date.now() + CAPABILITY_CACHE_TTL_MS });
+    return hasCapabilities;
+  } catch {
+    return true;
+  }
+}
+
+function looksLikeActionRequest(text: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (/^\s*(how\s+(do|can|to)|what\s+(is|are)|why|who|where|when|tell\s+me\s+about|explain|describe)\b/i.test(trimmed) &&
+      !/\b(click|press|tap|fill|navigate|go\s+to|submit|scroll|cancel\s+my|track\s+my|check\s+my|refund\s+my)\b/i.test(trimmed)) {
+    return false;
+  }
+  return /\b(click|press|tap|fill(\s+out|\s+in)?|navigate|go\s+to|redirect|open\s+(the\s+)?(page|link|form|modal|tab|dashboard|checkout)|submit(\s+the)?\s+form|create\s+(a|an|new)|update\s+(my|the)|delete\s+(my|the)|remove\s+(my|the)|cancel\s+(my|the|order)|refund\s+(my|the|order)|book\s+(a|an|the)|schedule\s+(a|an|the)|track\s+(my|the)\s+order|check\s+(my|the)\s+(order|booking|ticket|status)|execute|run\s+workflow)\b/i.test(trimmed);
+}
+
 async function fetchAndManageWidgetKeys(projectId: string, userId: string | null): Promise<WidgetKey[]> {
   return [{}];
 }
@@ -55,6 +120,9 @@ async function executeLlmWithFailover(
     maxRetries?: number;
     maxDelayMs?: number;
     signal?: AbortSignal;
+    preResolvedCandidates?: any[];
+    disableThinking?: boolean;
+    onTiming?: (stage: string, durationMs: number, meta?: Record<string, any>) => void;
   }
 ): Promise<{ result: any, keyUsed: WidgetKey }> {
   
@@ -63,23 +131,29 @@ async function executeLlmWithFailover(
     projectId,
     userId: userId || undefined,
     preferredModel: options.model,
-    operation: 'chat' as const
+    operation: 'chat' as const,
+    preResolvedCandidates: retryOpts?.preResolvedCandidates,
+    disableThinking: retryOpts?.disableThinking,
+    onTiming: retryOpts?.onTiming,
   };
 
   const chatMessages = (options.contents || []).map((m: any) => ({
-    role: m.role === 'model' ? 'assistant' : 'user',
+    role: (m.role === 'model' || m.role === 'assistant') ? 'assistant' : (m.role === 'system' ? 'system' : 'user'),
     content: m.parts?.[0]?.text || m.content || ''
   }));
 
-  const systemInst = options.config?.systemInstruction?.parts?.[0]?.text;
+  const rawSystemInst = options.config?.systemInstruction;
+  const systemInst = typeof rawSystemInst === 'string'
+    ? rawSystemInst
+    : rawSystemInst?.parts?.[0]?.text;
   if (systemInst) {
     chatMessages.unshift({ role: 'system', content: systemInst });
   }
 
   const routerOpts = {
-    deadlineMs: retryOpts?.deadlineMs ?? (method === 'generateContentStream' ? 14000 : 12000),
+    deadlineMs: retryOpts?.deadlineMs ?? (method === 'generateContentStream' ? 20000 : 12000),
     maxRetries: retryOpts?.maxRetries ?? 1,
-    maxDelayMs: retryOpts?.maxDelayMs ?? 1500,
+    maxDelayMs: retryOpts?.maxDelayMs ?? 1000,
     signal: retryOpts?.signal
   };
 
@@ -92,6 +166,7 @@ async function executeLlmWithFailover(
     return { 
       result: (async function*() {
         for await (const chunk of stream) {
+          if (retryOpts?.signal?.aborted) break;
           const text = chunk.text || '';
           yield { text, getText: () => text };
         }
@@ -106,6 +181,13 @@ const router = Router();
 
 // Middleware to validate origin and project entitlement for widget routes
 router.use(async (req: Request, res: Response, next): Promise<any> => {
+  const mwStart = Date.now();
+  const correlationId = getRequestId(req) || nodeCrypto.randomUUID();
+  res.setHeader("X-Request-Id", correlationId);
+  const widgetTimings: Record<string, any> = {
+    request_received_epoch_ms: mwStart,
+  };
+
   // Extract token from URL path robustly, ignoring any empty segments caused by double slashes
   const pathSegments = req.path.split('/').filter(Boolean);
   const pathToken = pathSegments[0] === "public" ? pathSegments[1] : pathSegments[0]; 
@@ -116,41 +198,40 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
   }
 
   try {
-    const settings = await withBypassRLS(async (tx: any) => {
-      const [s] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.widgetToken, widgetToken as string)).limit(1);
-      return s;
-    });
+    const rawOrigin = (req.headers.origin || req.headers.referer || "") as string;
+    const isLocalOrigin = isLocalhostOrigin(rawOrigin);
 
-    if (!settings || !settings.isEnabled) {
-      return sendSafeError(res, 403, "INVALID_WIDGET_TOKEN", "Invalid or disabled widget token", req);
-    }
+    const resolved = await withBypassRLS(async (tx: any) => {
+      const [settings] = await tx
+        .select()
+        .from(projectWidgetSettings)
+        .where(eq(projectWidgetSettings.widgetToken, widgetToken as string))
+        .limit(1);
 
-    // 1. Domain Authorization Check
-    let originCheck = validateWidgetOrigin(req, settings.allowedDomains || []);
-    if (!originCheck.valid) {
-      // If blocked by strict production allowedDomains, check if active local dev session exists for localhost testing
-      const rawOrigin = (req.headers.origin || req.headers.referer || "") as string;
-      if (isLocalhostOrigin(rawOrigin)) {
+      if (!settings || !settings.isEnabled) {
+        return { settings: settings || null, originCheck: null as any, entCtx: null as any };
+      }
+
+      // 1. Domain Authorization Check
+      let originCheck = validateWidgetOrigin(req, settings.allowedDomains || []);
+      if (!originCheck.valid && isLocalOrigin) {
         try {
-          const activeLocalSession = await withBypassRLS(async (tx: any) => {
-            const [session] = await tx
-              .select()
-              .from(projectLocalSessions)
-              .where(
-                and(
-                  eq(projectLocalSessions.projectId, settings.projectId),
-                  or(
-                    eq(projectLocalSessions.status, "CONNECTED"),
-                    eq(projectLocalSessions.status, "READY"),
-                    eq(projectLocalSessions.status, "TESTING")
-                  ),
-                  isNull(projectLocalSessions.revokedAt)
-                )
+          const [activeLocalSession] = await tx
+            .select()
+            .from(projectLocalSessions)
+            .where(
+              and(
+                eq(projectLocalSessions.projectId, settings.projectId),
+                or(
+                  eq(projectLocalSessions.status, "CONNECTED"),
+                  eq(projectLocalSessions.status, "READY"),
+                  eq(projectLocalSessions.status, "TESTING")
+                ),
+                isNull(projectLocalSessions.revokedAt)
               )
-              .orderBy(desc(projectLocalSessions.createdAt))
-              .limit(1);
-            return session;
-          });
+            )
+            .orderBy(desc(projectLocalSessions.createdAt))
+            .limit(1);
 
           if (activeLocalSession) {
             const isNotExpired = !activeLocalSession.expiresAt || new Date(activeLocalSession.expiresAt).getTime() > Date.now();
@@ -162,6 +243,20 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
           req.log.warn({ err: sessionCheckErr }, "Could not check project_local_sessions for widget origin");
         }
       }
+
+      if (!originCheck.valid) {
+        return { settings, originCheck, entCtx: null as any };
+      }
+
+      // 2. Server-side Entitlement Check (consolidated in same TX; returns project & license snapshot)
+      const entCtx = await checkProjectEntitlementWithContext(settings.projectId, false, tx);
+      return { settings, originCheck, entCtx };
+    });
+
+    const { settings, originCheck, entCtx } = resolved;
+
+    if (!settings || !settings.isEnabled) {
+      return sendSafeError(res, 403, "INVALID_WIDGET_TOKEN", "Invalid or disabled widget token", req);
     }
 
     if (!originCheck.valid) {
@@ -176,13 +271,17 @@ router.use(async (req: Request, res: Response, next): Promise<any> => {
       );
     }
 
-
-    // 2. Server-side Entitlement Check (with lazy trial activation)
-    const entitlement = await checkProjectEntitlement(settings.projectId);
+    const entitlement = entCtx.entitlement;
+    widgetTimings.tenant_resolution_ms = Date.now() - mwStart;
     
-    // Attach projectId and entitlement state to request
+    // Attach projectId, entitlement state, and preloaded snapshots to request
     (req as any).projectId = settings.projectId;
     (req as any).entitlement = entitlement;
+    (req as any).widgetSettings = settings;
+    (req as any).project = entCtx.project ?? null;
+    (req as any).license = entCtx.license ?? null;
+    (req as any).correlationId = correlationId;
+    (req as any).widgetTimings = widgetTimings;
 
     const isConfigRoute = req.path.endsWith("/config");
     if (!entitlement.allowed && !isConfigRoute) {
@@ -215,15 +314,20 @@ router.get(["/:widgetToken/config", "/public/:widgetToken/config"], async (req: 
     res.setHeader("Expires", "0");
 
     const projectId = (req as any).projectId;
-    const settings = await withBypassRLS(async (tx: any) => {
-      const [s] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.projectId, projectId)).limit(1);
-      return s;
-    });
+    const preloadedSettings = (req as any).widgetSettings;
 
-    const contextSettings = await withBypassRLS(async (tx: any) => {
-      const [cs] = await tx.select().from(projectContextSettings).where(eq(projectContextSettings.projectId, projectId)).limit(1);
-      return cs;
-    });
+    const [settings, contextSettings] = await Promise.all([
+      preloadedSettings
+        ? Promise.resolve(preloadedSettings)
+        : withBypassRLS(async (tx: any) => {
+            const [s] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.projectId, projectId)).limit(1);
+            return s;
+          }),
+      withBypassRLS(async (tx: any) => {
+        const [cs] = await tx.select().from(projectContextSettings).where(eq(projectContextSettings.projectId, projectId)).limit(1);
+        return cs;
+      }),
+    ]);
 
     if (!settings) {
       return res.status(404).json({ error: "Widget config not found" });
@@ -267,190 +371,229 @@ router.get(["/:widgetToken/config", "/public/:widgetToken/config"], async (req: 
 router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Request, res: Response): Promise<any> => {
   const { messages, websiteContext, sessionId } = req.body;
   if (!messages || !Array.isArray(messages)) {
-    req.log.error("EARLY RETURN: Invalid messages format", req.body);
+    req.log.error("EARLY RETURN: Invalid messages format");
     return res.status(400).json({ error: "Invalid messages format" });
   }
 
-  const lastUserMsg = messages[messages.length - 1]?.content || "";
+  const correlationId = (req as any).correlationId || getRequestId(req) || nodeCrypto.randomUUID();
+  const baseTimings = (req as any).widgetTimings || {};
+  const reqStart = typeof baseTimings.request_received_epoch_ms === "number"
+    ? baseTimings.request_received_epoch_ms
+    : Date.now();
+  const stageTimings: Record<string, any> = {
+    ...baseTimings,
+    correlationId,
+  };
+  const recordTiming = (stage: string, durationMs: number, meta?: Record<string, any>) => {
+    stageTimings[`${stage}_ms`] = durationMs;
+    if (meta && Object.keys(meta).length > 0) {
+      stageTimings[`${stage}_meta`] = meta;
+    }
+  };
+
+  // Track real client socket disconnects (res.on('close') with !res.writableEnded;
+  // note req.on('close') fires falsely in Node 24 once body parsing completes)
+  const requestAbortController = new AbortController();
+  let isClientDisconnected = false;
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      isClientDisconnected = true;
+      requestAbortController.abort();
+    }
+  });
+
+  // Defer SSE headers until first response chunk to prevent false HTTP 200 on pre-stream error
+  const ensureSseHeaders = () => {
+    if (!res.headersSent && !isClientDisconnected) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.setHeader("X-Request-Id", correlationId);
+      if (typeof (res as any).flushHeaders === "function") {
+        (res as any).flushHeaders();
+      }
+    }
+  };
+
+  const lastUserMsg = String(messages[messages.length - 1]?.content || "");
   if (detectPromptInjection(lastUserMsg)) {
-    req.log.warn({ lastUserMsg }, "[SECURITY] Public widget prompt injection blocked");
-    res.setHeader("Content-Type", "text/event-stream");
+    req.log.warn({ correlationId, msgLength: lastUserMsg.length }, "[SECURITY] Public widget prompt injection blocked");
+    ensureSseHeaders();
     res.write(`data: ${JSON.stringify({ content: "I cannot fulfill requests that attempt to bypass safety guidelines or access internal instructions." })}\n\n`);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
     return res;
   }
 
-  // Track client disconnection to avoid burning LLM compute if visitor closed chat
-  let isClientDisconnected = false;
-  req.on("close", () => {
-    isClientDisconnected = true;
-  });
-
-  // Defer SSE headers until first response chunk to prevent false HTTP 200 on error
-  const ensureSseHeaders = () => {
-    if (!res.headersSent && !isClientDisconnected) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-    }
-  };
-
   try {
     const projectId = (req as any).projectId;
-    req.log.info({ widgetToken: req.params.widgetToken, projectId }, "Widget incoming request");
+    const widgetSettings = (req as any).widgetSettings;
+    const license = (req as any).license;
+    let project = (req as any).project;
+    const hadPreloadedProject = Boolean(project);
 
-    // Get project details to know the owner's userId for key failover/rotation
-    let project;
-    try {
+    req.log.info({ correlationId, projectId }, "Widget incoming request");
+
+    if (!project) {
       project = await withBypassRLS(async (tx: any) => {
         const [p] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
-        return p;
+        return p || null;
       });
-      req.log.info({ projectId: project?.id }, "STEP 4: Loaded project");
-    } catch (err: any) {
-      req.log.error({ err }, "Failed Loading project...");
-      throw err;
     }
     const userId = project ? project.userId : null;
 
-    // Track Analytics
-    try {
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
-      const estimatedTokens = Math.floor(JSON.stringify(messages).length / 4);
+    const lastUserMessage = lastUserMsg;
+    const previousAssistantMessage = messages.length >= 2 ? String(messages[messages.length - 2]?.content || "") : "";
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuidSessionId = Boolean(sessionId && UUID_RE.test(sessionId));
 
-      const existingAnalytics = await db.query.widgetAnalytics.findFirst({
-        where: and(
-          eq(widgetAnalytics.projectId, projectId),
-          eq(widgetAnalytics.date, today)
-        )
-      });
+    // Pre-Flight Parallel Stage: quota + contextSettings + chatSession/message + key resolution
+    const preflightStart = Date.now();
+    const [quotaCheck, loadedContextSettings, sessionResult, preResolvedCandidates] = await Promise.all([
+      checkAndIncrementUsage(projectId, "message", 1, false, {
+        organizationId: project?.organizationId,
+        license,
+        hasLicenseSnapshot: hadPreloadedProject,
+      }),
+      withBypassRLS(async (tx: any) => {
+        const [cs] = await tx
+          .select()
+          .from(projectContextSettings)
+          .where(eq(projectContextSettings.projectId, projectId))
+          .limit(1);
+        return cs;
+      }),
+      (async () => {
+        let dbSessionId: string | null = null;
+        let customerId: string | undefined = undefined;
+        let customerVerified = false;
 
-      if (existingAnalytics) {
-        await db.update(widgetAnalytics)
-          .set({
-            messages: existingAnalytics.messages + 1,
-            conversations: messages.length <= 2 ? existingAnalytics.conversations + 1 : existingAnalytics.conversations,
-            tokenUsage: existingAnalytics.tokenUsage + estimatedTokens,
-            uniqueVisitors: messages.length <= 2 ? existingAnalytics.uniqueVisitors + 1 : existingAnalytics.uniqueVisitors
-          })
-          .where(eq(widgetAnalytics.id, existingAnalytics.id));
-      } else {
-        await db.insert(widgetAnalytics).values({
-          projectId,
-          date: today,
-          messages: 1,
-          conversations: 1,
-          tokenUsage: estimatedTokens,
-          uniqueVisitors: 1,
-          aiCosts: "0"
-        } as any);
-      }
-    } catch (e) {
-      req.log.error({ err: e }, "Failed to track analytics");
+        if (isUuidSessionId) {
+          try {
+            const existingSession = await db.query.chatSessions.findFirst({
+              where: and(eq(chatSessions.id, sessionId), eq(chatSessions.projectId, projectId))
+            });
+            if (existingSession) {
+              dbSessionId = existingSession.id;
+              customerId = existingSession.customerId || undefined;
+              const [, custRec] = await Promise.all([
+                db.update(chatSessions)
+                  .set({ expiresAt: new Date(Date.now() + 30 * 60 * 1000) })
+                  .where(eq(chatSessions.id, dbSessionId)),
+                customerId
+                  ? db.query.customers.findFirst({ where: eq(customers.id, customerId) })
+                  : Promise.resolve(null),
+              ]);
+              if (custRec) {
+                customerVerified = custRec.isVerified;
+              }
+            }
+          } catch (err) {
+            req.log.warn({ err, correlationId }, "Error checking existing chat session");
+          }
+        }
+
+        if (!dbSessionId) {
+          try {
+            const newSessionId = isUuidSessionId ? sessionId : nodeCrypto.randomUUID();
+            const [createdSession] = await db.insert(chatSessions).values({
+              id: newSessionId,
+              projectId,
+              userId: null, // Website widget visitor sessions belong to projectId (not personal user sessions)
+              title: lastUserMessage ? (lastUserMessage.slice(0, 50) + (lastUserMessage.length > 50 ? "..." : "")) : "Website Visitor Chat",
+              expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+            }).returning();
+            if (createdSession) {
+              dbSessionId = createdSession.id;
+              emitActivityEvent({
+                id: `session-${createdSession.id}`,
+                type: "conversation_started",
+                title: "New Visitor Conversation Started",
+                detail: createdSession.title || "Website visitor connected",
+                timestamp: createdSession.createdAt || new Date(),
+                projectId,
+                sessionId: createdSession.id,
+              });
+            }
+          } catch (err) {
+            req.log.error({ err, correlationId }, "Error inserting new widget chat session");
+          }
+        }
+
+        if (dbSessionId && lastUserMessage) {
+          try {
+            const [savedMsg] = await db.insert(messagesTable).values({
+              sessionId: dbSessionId,
+              sender: "user",
+              content: lastUserMessage,
+            }).returning();
+            if (savedMsg) {
+              emitActivityEvent({
+                id: `msg-${savedMsg.id}`,
+                type: "message",
+                title: "Incoming Visitor Query",
+                detail: lastUserMessage,
+                status: "DELIVERED",
+                timestamp: savedMsg.createdAt || new Date(),
+                projectId,
+                sessionId: dbSessionId,
+              });
+            }
+          } catch (err) {
+            req.log.error({ err, correlationId }, "Error saving widget user message");
+          }
+        }
+
+        return { dbSessionId, customerId, customerVerified };
+      })(),
+      (async () => {
+        const kStart = Date.now();
+        try {
+          const candidates = await UniversalRouterService.resolveCandidates({
+            capabilities: { textGeneration: true, streaming: true },
+            projectId,
+            userId: userId || undefined,
+            operation: "chat",
+          });
+          recordTiming("api_key_resolution", Date.now() - kStart, {
+            candidateCount: candidates.length,
+            primaryProvider: candidates[0]?.provider,
+          });
+          return candidates;
+        } catch (err) {
+          recordTiming("api_key_resolution", Date.now() - kStart, { candidateCount: 0, error: true });
+          return [] as any[];
+        }
+      })(),
+    ]);
+    recordTiming("preflight_parallel", Date.now() - preflightStart);
+
+    if (isClientDisconnected || requestAbortController.signal.aborted) {
+      return res.end();
     }
 
-    // Quota Usage Verification
-    const quotaCheck = await checkAndIncrementUsage(projectId, "message", 1);
+    const { dbSessionId, customerId, customerVerified } = sessionResult;
+
     if (!quotaCheck.allowed) {
-      req.log.warn({ projectId, reason: quotaCheck.reason }, "Quota limits exceeded for project chat widget");
+      req.log.warn({ correlationId, projectId, reason: quotaCheck.reason }, "Quota limits exceeded for project chat widget");
+      ensureSseHeaders();
       res.write(`data: ${JSON.stringify({ content: "Monthly message limits for this chatbot have been reached. Please contact the administrator or upgrade your subscription." })}\n\n`);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       return res;
     }
 
-    // Resolve & Manage Keys with Failover
     const keys = await fetchAndManageWidgetKeys(projectId, userId);
+    const resolvedCandidatesOpt = preResolvedCandidates.length > 0 ? preResolvedCandidates : undefined;
+    const geminiCandidate = preResolvedCandidates.find(
+      (c: any) => c?.provider === "gemini" && typeof c?.credential?.apiKey === "string" && c.credential.apiKey.length > 0
+    );
+    const embeddingApiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY
+      ? undefined
+      : geminiCandidate?.credential?.apiKey;
 
-    if (keys.length === 0) {
-      req.log.error("EARLY RETURN: No AI API keys configured");
-      res.write(`data: ${JSON.stringify({ content: "I'm temporarily having trouble connecting right now. Please try again in a few moments." })}\n\n`);
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
-      return res;
-    }
-
-    const lastUserMessage = messages[messages.length - 1]?.content || "";
-    const previousAssistantMessage = messages.length >= 2 ? messages[messages.length - 2]?.content : "";
-
-    // 1. Resolve or Create chatSession in Database for Widget Visitor
-    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let dbSessionId: string | null = null;
-    
-    if (sessionId && UUID_PATTERN.test(sessionId)) {
-      try {
-        const existingSession = await db.query.chatSessions.findFirst({
-          where: and(eq(chatSessions.id, sessionId), eq(chatSessions.projectId, projectId))
-        });
-        if (existingSession) {
-          dbSessionId = existingSession.id;
-          // Refresh session activity expiration (active for next 30 minutes)
-          await db.update(chatSessions)
-            .set({ expiresAt: new Date(Date.now() + 30 * 60 * 1000) })
-            .where(eq(chatSessions.id, dbSessionId));
-        }
-      } catch (err) {
-        req.log.warn({ err }, "Error checking existing chat session");
-      }
-    }
-    
-    if (!dbSessionId) {
-      try {
-        // Create new chat session for this widget interaction
-        const newSessionId = (sessionId && UUID_PATTERN.test(sessionId)) ? sessionId : nodeCrypto.randomUUID();
-        const [createdSession] = await db.insert(chatSessions).values({
-          id: newSessionId,
-          projectId: projectId,
-          userId: null, // Website widget visitor sessions belong to projectId (not personal user sessions)
-          title: lastUserMessage ? (lastUserMessage.slice(0, 50) + (lastUserMessage.length > 50 ? "..." : "")) : "Website Visitor Chat",
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000)
-        }).returning();
-        if (createdSession) {
-          dbSessionId = createdSession.id;
-          emitActivityEvent({
-            id: `session-${createdSession.id}`,
-            type: "conversation_started",
-            title: "New Visitor Conversation Started",
-            detail: createdSession.title || "Website visitor connected",
-            timestamp: createdSession.createdAt || new Date(),
-            projectId,
-            sessionId: createdSession.id,
-          });
-        }
-      } catch (err) {
-        req.log.error({ err }, "Error inserting new widget chat session");
-      }
-    }
-
-    // 2. Persist User Message to DB
-    if (dbSessionId && lastUserMessage) {
-      try {
-        const [savedMsg] = await db.insert(messagesTable).values({
-          sessionId: dbSessionId,
-          sender: "user",
-          content: lastUserMessage,
-        }).returning();
-        if (savedMsg) {
-          emitActivityEvent({
-            id: `msg-${savedMsg.id}`,
-            type: "message",
-            title: "Incoming Visitor Query",
-            detail: lastUserMessage,
-            status: "DELIVERED",
-            timestamp: savedMsg.createdAt || new Date(),
-            projectId,
-            sessionId: dbSessionId,
-          });
-        }
-      } catch (err) {
-        req.log.error({ err }, "Error saving widget user message");
-      }
-    }
-
-    // Helper to persist Assistant Message to DB
+    // Helper to persist Assistant Message & post-stream analytics cleanly after stream delivery
     const saveAssistantMessage = async (assistantText: string) => {
       if (dbSessionId && assistantText && assistantText.trim()) {
         try {
@@ -475,8 +618,46 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             });
           }
         } catch (err) {
-          req.log.error({ err }, "Error saving widget assistant message");
+          req.log.error({ err, correlationId }, "Error saving widget assistant message");
         }
+      }
+    };
+
+    const recordWidgetAnalytics = async (outputChars: number) => {
+      try {
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const estimatedTokens = Math.floor((JSON.stringify(messages).length + outputChars) / 4);
+
+        const existingAnalytics = await db.query.widgetAnalytics.findFirst({
+          where: and(
+            eq(widgetAnalytics.projectId, projectId),
+            eq(widgetAnalytics.date, today)
+          )
+        });
+
+        if (existingAnalytics) {
+          await db.update(widgetAnalytics)
+            .set({
+              messages: existingAnalytics.messages + 1,
+              conversations: messages.length <= 2 ? existingAnalytics.conversations + 1 : existingAnalytics.conversations,
+              tokenUsage: existingAnalytics.tokenUsage + estimatedTokens,
+              uniqueVisitors: messages.length <= 2 ? existingAnalytics.uniqueVisitors + 1 : existingAnalytics.uniqueVisitors
+            })
+            .where(eq(widgetAnalytics.id, existingAnalytics.id));
+        } else {
+          await db.insert(widgetAnalytics).values({
+            projectId,
+            date: today,
+            messages: 1,
+            conversations: 1,
+            tokenUsage: estimatedTokens,
+            uniqueVisitors: 1,
+            aiCosts: "0"
+          } as any);
+        }
+      } catch (e) {
+        req.log.error({ err: e, correlationId }, "Failed to track analytics");
       }
     };
 
@@ -484,20 +665,21 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
     if (lastUserMessage) {
       processAndSaveLead({
         projectId,
-        sessionId: dbSessionId || ((sessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) ? sessionId : undefined),
+        sessionId: dbSessionId || (isUuidSessionId ? sessionId : undefined),
         sourcePageUrl: websiteContext?.url,
         userMessage: lastUserMessage,
-      }).catch((e) => req.log.error({ err: e }, "Background lead processing error"));
+      }).catch((e) => req.log.error({ err: e, correlationId }, "Background lead processing error"));
 
       trackUserQuestion({
         projectId,
         questionText: lastUserMessage,
-      }).catch((e) => req.log.error({ err: e }, "Background question tracking error"));
+      }).catch((e) => req.log.error({ err: e, correlationId }, "Background question tracking error"));
     }
 
-    // 1. Check if the user is pointing out a mistake
+    // 1. Check if the user is explicitly pointing out an assistant mistake (tightened to avoid triggering on normal troubleshooting queries)
     let userIsPointingOutMistake = false;
-    const isCorrectionTriggerWord = lastUserMessage.match(/\b(wrong|mistake|incorrect|false|error|fix|correct|not right|bullshit|fake)\b/i);
+    const isCorrectionTriggerWord =
+      /\b(that(?:'s| is)\s+(?:wrong|incorrect|false|not right)|you(?:'re| are)\s+wrong|made\s+a\s+mistake|previous\s+answer\s+(?:is|was)\s+(?:wrong|incorrect)|wrong\s+(?:answer|info|information)|bullshit|that(?:'s| is)\s+fake)\b/i.test(lastUserMessage);
     
     if (isCorrectionTriggerWord && messages.length >= 3) {
       try {
@@ -515,9 +697,20 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             userIsPointingOutMistake = true;
           }
         } else {
-          const { result: confirmRes } = await executeLlmWithFailover(keys, 'generateContent', {
-            contents: confirmPrompt
-          });
+          const { result: confirmRes } = await executeLlmWithFailover(
+            keys,
+            "generateContent",
+            { contents: [{ role: "user", parts: [{ text: confirmPrompt }] }] },
+            projectId,
+            userId,
+            {
+              deadlineMs: 2500,
+              maxRetries: 0,
+              signal: requestAbortController.signal,
+              preResolvedCandidates: resolvedCandidatesOpt,
+              disableThinking: true,
+            }
+          );
           
           if (confirmRes.text) {
             await llmResponseCache.set(mistakeHash, confirmRes.text, 86400); // 24 hours
@@ -527,13 +720,14 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           }
         }
       } catch (err) {
-        req.log.error({ err }, "Error confirming correction");
+        req.log.error({ err, correlationId }, "Error confirming correction");
       }
     }
 
     // 2. Correction flow using Google Search
     if (userIsPointingOutMistake) {
-      res.write(`data: ${JSON.stringify({ content: "ðŸ” *Checking Google Search to verify and correct my answer...*\n\n" })}\n\n`);
+      ensureSseHeaders();
+      res.write(`data: ${JSON.stringify({ content: "🔍 *Checking Google Search to verify and correct my answer...*\n\n" })}\n\n`);
       if (typeof (res as any).flush === 'function') (res as any).flush();
 
       const verifyPrompt = `The user claims the assistant's previous answer was wrong or incomplete.
@@ -544,12 +738,23 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
       let verifiedText = "";
       try {
-        const { result: searchRes } = await executeLlmWithFailover(keys, 'generateContent', {
-          contents: verifyPrompt,
-          config: {
-            tools: [{ googleSearch: {} }]
+        const { result: searchRes } = await executeLlmWithFailover(
+          keys,
+          "generateContent",
+          {
+            contents: [{ role: "user", parts: [{ text: verifyPrompt }] }],
+            config: {
+              tools: [{ googleSearch: {} }]
+            }
+          },
+          projectId,
+          userId,
+          {
+            signal: requestAbortController.signal,
+            preResolvedCandidates: resolvedCandidatesOpt,
+            disableThinking: true,
           }
-        });
+        );
 
         verifiedText = searchRes.text || "";
 
@@ -566,185 +771,113 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
         });
 
         // Stream explanation & answer
-        const systemPrompt = `You are a helpful customer support chatbot. The user just corrected your previous answer, and you verified the correct info using Google Search.
+        const corrSystemPrompt = `You are a helpful customer support chatbot. The user just corrected your previous answer, and you verified the correct info using Google Search.
         
         Verified Information from Google:
         ${verifiedText}
         
         ${project?.systemPrompt ? `CRITICAL PROJECT RULES YOU MUST STRICTLY FOLLOW:\n${project.systemPrompt}\n\n` : ''}Explain the correction politely, state that you've updated your knowledge base so you won't make this mistake again, and answer their question based on the verified information.`;
 
-        const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
-          contents: [{ role: "user", parts: [{ text: systemPrompt }] }]
-        });
+        const { result: stream } = await executeLlmWithFailover(
+          keys,
+          "generateContentStream",
+          { contents: [{ role: "user", parts: [{ text: corrSystemPrompt }] }] },
+          projectId,
+          userId,
+          {
+            signal: requestAbortController.signal,
+            preResolvedCandidates: resolvedCandidatesOpt,
+            disableThinking: true,
+          }
+        );
 
         let correctionFullText = "";
         for await (const chunk of stream) {
+          if (isClientDisconnected || requestAbortController.signal.aborted) break;
           if (chunk.text) {
             correctionFullText += chunk.text;
             res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
             if (typeof (res as any).flush === 'function') (res as any).flush();
           }
         }
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+        }
         if (correctionFullText) {
-          await saveAssistantMessage(correctionFullText);
+          await Promise.all([
+            saveAssistantMessage(correctionFullText),
+            recordWidgetAnalytics(correctionFullText.length),
+          ]);
         }
       } catch (err) {
-        req.log.error({ err }, "Error in correction flow");
-        res.write(`data: ${JSON.stringify({ content: "Sorry, I encountered an error while verifying the information on Google." })}\n\n`);
+        req.log.error({ err, correlationId }, "Error in correction flow");
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ content: "Sorry, I encountered an error while verifying the information on Google." })}\n\n`);
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+        }
       }
-      res.end();
       return res;
     }
 
     // 3. Normal flow with Context Engine & Knowledge Base retrieval
-    let contextSettings;
-    try {
-      contextSettings = await withBypassRLS(async (tx: any) => {
-        const [cs] = await tx.select().from(projectContextSettings).where(eq(projectContextSettings.projectId, projectId)).limit(1);
-        return cs;
-      });
-      req.log.info({ found: !!contextSettings }, "Loaded context settings");
-    } catch (err: any) {
-      req.log.error({ err }, "Failed Loading context settings...");
-      throw err;
-    }
-    
-    // Default settings if not configured
-    if (!contextSettings) {
-      contextSettings = {
-        enabled: true,
-        dashboardAnalysis: true,
-        formAssistant: true,
-        tableAnalysis: true,
-        navigationAssistant: true,
-        knowledgeComparison: true,
-        mistakeDetection: true,
-        contextMemory: true,
-        developerDebugMode: false,
-        maxContextSizeBytes: 6144
-      } as any;
-    }
+    const contextStart = Date.now();
+    const contextSettings = loadedContextSettings || {
+      enabled: true,
+      dashboardAnalysis: true,
+      formAssistant: true,
+      tableAnalysis: true,
+      navigationAssistant: true,
+      knowledgeComparison: true,
+      mistakeDetection: true,
+      contextMemory: true,
+      developerDebugMode: false,
+      maxContextSizeBytes: 6144
+    } as any;
 
-    let finalWebsiteContext = null;
-    let sessionMemory = null;
+    let finalWebsiteContext: any = null;
+    let sessionMemory: any = null;
 
     try {
       if (contextSettings.enabled && websiteContext && sessionId) {
-        // Reconstruct first (handles delta merging and validates the final full context internally)
+        // Reconstruct synchronously (handles delta merging and validates final context)
         finalWebsiteContext = deltaReconstructor.reconstruct(sessionId, websiteContext);
         if (finalWebsiteContext && contextSettings.contextMemory) {
           sessionMemory = sessionMemoryStore.update(sessionId, finalWebsiteContext);
         }
       }
     } catch (err: any) {
-      req.log.error({ err }, "Failed processing website context...");
+      req.log.error({ err, correlationId }, "Failed processing website context...");
       throw err;
     }
 
-    // UUID v4 format validation — the widget's context engine sends a short
-    // client-generated ID (Math.random base-36) as sessionId which is used
-    // only for in-memory delta reconstruction / session memory.  We must NOT
-    // pass non-UUID values to the chat_sessions.id (uuid) column.
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const isUuidSessionId = sessionId && UUID_RE.test(sessionId);
-
-    let customerId: string | undefined = undefined;
-    let customerVerified = false;
-    try {
-      if (isUuidSessionId) {
-        const sessionRec = await db.query.chatSessions.findFirst({
-          where: and(eq(chatSessions.id, sessionId), eq(chatSessions.projectId, projectId))
-        });
-        if (sessionRec?.customerId) {
-          customerId = sessionRec.customerId;
-          const custRec = await db.query.customers.findFirst({
-            where: eq(customers.id, customerId)
-          });
-          if (custRec) {
-            customerVerified = custRec.isVerified;
-          }
-        }
-      } else if (sessionId) {
-        req.log.debug({ sessionId }, "Widget sessionId is not a UUID — skipping chat_sessions lookup (context-engine client ID)");
-      }
-    } catch (err) {
-      req.log.warn({ err }, "Could not resolve customer identity for widget session");
-    }
-
-    // Fuse context & KB with conversation coreference awareness
-    let fusedContext;
-    try {
-      fusedContext = await contextFuser.fuse({
-        userMessage: lastUserMessage,
-        websiteContext: finalWebsiteContext,
-        projectId,
-        userId,
-        customerId,
-        settings: contextSettings as any,
-        apiKeys: keys,
-        conversationHistory: messages
-      });
-    } catch (err: any) {
-      req.log.error({ err }, "Failed contextFuser() step...");
-      throw err;
-    }
-
-    let handoffInfo = "";
-    try {
-      const widgetSettings = await withBypassRLS(async (tx: any) => {
-        const [ws] = await tx.select().from(projectWidgetSettings).where(eq(projectWidgetSettings.projectId, projectId)).limit(1);
-        return ws;
-      });
-      req.log.info({ found: !!widgetSettings }, "STEP 5: Loaded widget settings");
-      if (widgetSettings?.humanHandoffLinks) {
-        const links = widgetSettings.humanHandoffLinks as Record<string, string>;
-        const details = [];
-        if (links.whatsapp) details.push(`WhatsApp: ${links.whatsapp}`);
-        if (links.phone) details.push(`Phone Number: ${links.phone}`);
-        if (links.email) details.push(`Email Address: ${links.email}`);
-        if (links.telegram) details.push(`Telegram: ${links.telegram}`);
-        
-        if (details.length > 0) {
-          handoffInfo = `\n\nCONTACT DETAILS (HUMAN HANDOFF):\nIf the user asks to speak to a human, contact support, or asks for contact details (like phone number, email, or whatsapp), you MUST provide these exact details directly to them:\n${details.join("\n")}\n`;
-        }
-      }
-    } catch (err) {
-      req.log.error({ err }, "Error fetching widget settings for handoff");
-    }
-
-    let systemPrompt;
-    try {
-      systemPrompt = buildContextAwarePrompt({
-        project: project as any,
-        fusedContext,
-        sessionMemory,
-        settings: contextSettings as any,
-        handoffInfo
-      });
-
-    } catch (err: any) {
-      req.log.error({ err }, "Failed buildContextAwarePrompt()...");
-      throw err;
-    }
-
-    const chatMessages = [
-      { role: "user", parts: [{ text: systemPrompt }] },
-      { role: "model", parts: [{ text: "Understood. I will act as the official AI assistant for this connected website, strictly answering using the provided knowledge base, website context, and project instructions." }] },
-      ...messages.map(m => ({
-        role: (m.role === "assistant" ? "model" : "user"),
-        parts: [{ text: m.content }]
-      }))
-    ];
-
-    // INTENT DETECTION (FOR SERVER ACTIONS & DOM TOOLS)
+    // Run Knowledge Base retrieval & gated ACTION_REQUEST classification in parallel
     let intentType = "GENERAL_QUESTION";
     let intentDetectionFailed = false;
     let intentFallbackReason: string | null = null;
+    const shouldCheckActionIntent = !req.body?.confirmationToken && looksLikeActionRequest(lastUserMessage);
 
-    if (req.body?.confirmationToken) {
-      intentType = "ACTION_REQUEST";
-    } else {
+    const detectIntentTask = async () => {
+      const intentStart = Date.now();
+      if (req.body?.confirmationToken) {
+        intentType = "ACTION_REQUEST";
+        recordTiming("intent_detection", 0, { mode: "confirmation_token" });
+        return;
+      }
+      if (!shouldCheckActionIntent) {
+        recordTiming("intent_detection", 0, { mode: "skipped_informational" });
+        return;
+      }
+
       try {
+        const hasCapabilities = await checkProjectHasExecutableCapabilities(projectId);
+        const hasDomContext = Boolean(finalWebsiteContext);
+        if (!hasCapabilities && !hasDomContext) {
+          recordTiming("intent_detection", Date.now() - intentStart, { mode: "skipped_no_capabilities" });
+          return;
+        }
+
         const intentPrompt = `Classify the user's intent based on their latest message: "${lastUserMessage}".
         
         Categories:
@@ -759,17 +892,15 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
         if (cachedIntent) {
           intentType = cachedIntent;
+          recordTiming("intent_detection", Date.now() - intentStart, { mode: "cache_hit", intentType });
         } else {
-          // Bounded intent detection with safe cancellation via AbortController
-          const INTENT_TIMEOUT_MS = 3000;
+          const INTENT_TIMEOUT_MS = 2000;
           const intentAbortController = new AbortController();
-
-          // Also abort if client disconnected
-          const onDisconnect = () => intentAbortController.abort();
-          req.once("close", onDisconnect);
+          const onParentAbort = () => intentAbortController.abort();
+          requestAbortController.signal.addEventListener("abort", onParentAbort, { once: true });
 
           let timeoutHandle: any;
-          const timeoutPromise = new Promise<{ result: any, keyUsed: any }>((_, reject) => {
+          const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutHandle = setTimeout(() => {
               intentAbortController.abort();
               reject(new Error("Intent detection deadline exceeded"));
@@ -778,7 +909,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
 
           const detectIntentPromise = executeLlmWithFailover(
             keys,
-            'generateContent',
+            "generateContent",
             {
               contents: [{ role: "user", parts: [{ text: intentPrompt }] }],
               config: { responseMimeType: "application/json" }
@@ -787,11 +918,12 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             userId,
             {
               deadlineMs: INTENT_TIMEOUT_MS,
-              maxRetries: 0, // Avoid retry storms on fast classifier
-              signal: intentAbortController.signal
+              maxRetries: 0,
+              signal: intentAbortController.signal,
+              preResolvedCandidates: resolvedCandidatesOpt,
+              disableThinking: true,
             }
           );
-          // Attach no-op handler to prevent unhandled rejection if timeout abandons the underlying promise
           detectIntentPromise.catch(() => {});
 
           let intentRes: any;
@@ -803,12 +935,12 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             intentFallbackReason = (e?.message?.includes("deadline exceeded") || intentAbortController.signal.aborted)
               ? "DEADLINE_EXCEEDED"
               : "PROVIDER_ERROR";
-            req.log.warn({ err: e, reason: intentFallbackReason }, "Intent detection deadline exceeded / failed, defaulting to GENERAL_QUESTION");
+            req.log.warn({ correlationId, reason: intentFallbackReason }, "Intent detection deadline exceeded / failed, defaulting to GENERAL_QUESTION");
           } finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
-            req.removeListener("close", onDisconnect);
+            requestAbortController.signal.removeEventListener("abort", onParentAbort);
           }
-          
+
           if (intentRes) {
             try {
               const raw = (intentRes.text || "").trim();
@@ -816,26 +948,98 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
               const parsed = JSON.parse(cleanText || "{}");
               if (parsed.intent) {
                 intentType = parsed.intent;
-                await llmResponseCache.set(intentHash, intentType, 300); // 5 minutes safe TTL
+                await llmResponseCache.set(intentHash, intentType, 300);
               }
             } catch (e) {
-              req.log.warn({ err: e }, "Failed to parse intent JSON, defaulting to GENERAL_QUESTION");
+              req.log.warn({ err: e, correlationId }, "Failed to parse intent JSON, defaulting to GENERAL_QUESTION");
               intentDetectionFailed = true;
               intentFallbackReason = "PARSE_ERROR";
             }
           }
+          recordTiming("intent_detection", Date.now() - intentStart, { mode: "llm", intentType, failed: intentDetectionFailed });
         }
       } catch (e: any) {
         intentDetectionFailed = true;
         intentFallbackReason = e?.message || "UNEXPECTED_ERROR";
-        req.log.warn({ err: e }, "Intent detection failed, defaulting to GENERAL_QUESTION");
+        req.log.warn({ err: e, correlationId }, "Intent detection failed, defaulting to GENERAL_QUESTION");
+        recordTiming("intent_detection", Date.now() - intentStart, { mode: "error" });
+      }
+    };
+
+    const fuseTask = (async () => {
+      try {
+        return await contextFuser.fuse({
+          userMessage: lastUserMessage,
+          websiteContext: finalWebsiteContext,
+          projectId,
+          userId,
+          customerId,
+          settings: contextSettings as any,
+          apiKeys: keys,
+          conversationHistory: messages,
+          signal: requestAbortController.signal,
+          embeddingApiKey,
+          onTiming: recordTiming,
+        });
+      } catch (err: any) {
+        req.log.error({ err, correlationId }, "Failed contextFuser() step...");
+        throw err;
+      }
+    })();
+
+    const [fusedContext] = await Promise.all([fuseTask, detectIntentTask()]);
+
+    if (isClientDisconnected || requestAbortController.signal.aborted) {
+      return res.end();
+    }
+
+    // Build human handoff info directly from middleware-preloaded widgetSettings (0 DB queries)
+    let handoffInfo = "";
+    if (widgetSettings?.humanHandoffLinks) {
+      const links = widgetSettings.humanHandoffLinks as Record<string, string>;
+      const details = [];
+      if (links.whatsapp) details.push(`WhatsApp: ${links.whatsapp}`);
+      if (links.phone) details.push(`Phone Number: ${links.phone}`);
+      if (links.email) details.push(`Email Address: ${links.email}`);
+      if (links.telegram) details.push(`Telegram: ${links.telegram}`);
+
+      if (details.length > 0) {
+        handoffInfo = `\n\nCONTACT DETAILS (HUMAN HANDOFF):\nIf the user asks to speak to a human, contact support, or asks for contact details (like phone number, email, or whatsapp), you MUST provide these exact details directly to them:\n${details.join("\n")}\n`;
       }
     }
-    
+
+    let systemPrompt: string;
+    try {
+      systemPrompt = buildContextAwarePrompt({
+        project: project as any,
+        fusedContext,
+        sessionMemory,
+        settings: contextSettings as any,
+        handoffInfo
+      });
+    } catch (err: any) {
+      req.log.error({ err, correlationId }, "Failed buildContextAwarePrompt()...");
+      throw err;
+    }
+
+    recordTiming("context_construction", Date.now() - contextStart, {
+      promptChars: systemPrompt.length,
+      kbChars: fusedContext?.kbContextString?.length ?? 0,
+      retrievedCount: fusedContext?.knowledgeChunks?.length ?? 0,
+    });
+
+    // Window recent history to avoid multi-turn token bloat and pass native systemInstruction
+    const MAX_HISTORY_TURNS = 14;
+    const windowedMessages = messages.slice(-MAX_HISTORY_TURNS);
+    const chatMessages = windowedMessages.map((m) => ({
+      role: (m.role === "assistant" ? "model" : "user"),
+      parts: [{ text: String(m.content || "") }]
+    }));
+
     if (intentDetectionFailed) {
-      req.log.info(`[WIDGET ROUTING] Intent detection fell back to default: ${intentType} (reason: ${intentFallbackReason})`);
+      req.log.info({ correlationId }, `[WIDGET ROUTING] Intent detection fell back to default: ${intentType} (reason: ${intentFallbackReason})`);
     } else {
-      req.log.info(`[WIDGET ROUTING] Detected Intent: ${intentType}`);
+      req.log.info({ correlationId }, `[WIDGET ROUTING] Detected Intent: ${intentType}`);
     }
 
     try {
@@ -847,6 +1051,7 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
           projectId,
           sessionId,
           userId: userId || "public_visitor",
+          signal: requestAbortController.signal,
           customerContext: {
             customerId,
             verified: customerVerified,
@@ -877,7 +1082,10 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             })}\n\n`);
             res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
             res.end();
-            await saveAssistantMessage(bData.response);
+            await Promise.all([
+              saveAssistantMessage(bData.response),
+              recordWidgetAnalytics((bData.response || "").length),
+            ]);
             return res;
           }
 
@@ -891,7 +1099,10 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             res.write(`data: ${JSON.stringify({ content: bData.response, toolExecuted: bData.toolExecuted, result: bData.result })}\n\n`);
             res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
             res.end();
-            await saveAssistantMessage(bData.response);
+            await Promise.all([
+              saveAssistantMessage(bData.response),
+              recordWidgetAnalytics((bData.response || "").length),
+            ]);
             return res;
           }
 
@@ -905,88 +1116,178 @@ router.post(["/:widgetToken/chat", "/public/:widgetToken/chat"], async (req: Req
             res.write(`data: ${JSON.stringify(payload)}\n\n`);
             res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
             res.end();
+            await recordWidgetAnalytics(0);
             return res;
           }
         }
       }
 
-      // 2. Fallback to conversational LLM stream with context
-      const llmPromptHash = nodeCrypto.createHash("sha256").update(JSON.stringify(chatMessages)).digest("hex");
+      // 2. Conversational LLM stream with context & native systemInstruction
+      const llmPromptHash = nodeCrypto
+        .createHash("sha256")
+        .update(`${projectId}:${customerId || "anon"}:${systemPrompt}:${JSON.stringify(chatMessages)}`)
+        .digest("hex");
       const cachedResponse = await llmResponseCache.get(llmPromptHash);
 
       let fullResponseText = "";
+      let cacheHit = false;
+      let backendStreamStart = 0;
+      let firstTokenSent = false;
 
       if (cachedResponse) {
-        req.log.info("[LLM_CACHE_HIT] Widget duplicate prompt detected, returning cached response");
+        cacheHit = true;
+        req.log.info({ correlationId }, "[LLM_CACHE_HIT] Widget duplicate prompt detected, returning cached response");
         ensureSseHeaders();
+        backendStreamStart = Date.now();
+        stageTimings.backend_ttft_ms = backendStreamStart - reqStart;
+        firstTokenSent = true;
         res.write(`data: ${JSON.stringify({ content: cachedResponse })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
         fullResponseText = cachedResponse;
       } else {
-        const { result: stream } = await executeLlmWithFailover(keys, 'generateContentStream', {
-          contents: chatMessages as any
-        }, projectId, userId);
+        const providerStartOffsetMs = Date.now() - reqStart;
+        stageTimings.provider_request_start_offset_ms = providerStartOffsetMs;
+
+        const { result: stream } = await executeLlmWithFailover(
+          keys,
+          "generateContentStream",
+          {
+            contents: chatMessages as any,
+            config: {
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+            },
+          },
+          projectId,
+          userId,
+          {
+            deadlineMs: 25000,
+            maxRetries: 1,
+            maxDelayMs: 800,
+            signal: requestAbortController.signal,
+            preResolvedCandidates: resolvedCandidatesOpt,
+            disableThinking: true,
+            onTiming: (stage, durationMs, meta) => {
+              if (stage === "provider_request_start") {
+                stageTimings.provider_request_start_offset_ms = Date.now() - reqStart;
+                if (meta) stageTimings.provider_meta = meta;
+              } else {
+                recordTiming(stage, durationMs, meta);
+              }
+            },
+          }
+        );
         
         for await (const chunk of stream) {
+          if (isClientDisconnected || requestAbortController.signal.aborted) break;
           if (chunk.text) {
             ensureSseHeaders();
+            if (!firstTokenSent) {
+              firstTokenSent = true;
+              backendStreamStart = Date.now();
+              stageTimings.backend_ttft_ms = backendStreamStart - reqStart;
+            }
             fullResponseText += chunk.text;
             res.write(`data: ${JSON.stringify({ content: chunk.text })}\n\n`);
             if (typeof (res as any).flush === 'function') (res as any).flush();
           }
         }
-        
-        if (fullResponseText) {
-          await llmResponseCache.set(llmPromptHash, fullResponseText, 300); // 5 minutes
-        }
       }
 
-      if (fullResponseText) {
-        await saveAssistantMessage(fullResponseText);
+      if (isClientDisconnected || requestAbortController.signal.aborted) {
+        stageTimings.total_duration_ms = Date.now() - reqStart;
+        req.log.info(
+          { event: "WIDGET_CHAT_METRICS", correlationId, projectId, aborted: true, timings: stageTimings },
+          "[WIDGET_CHAT_METRICS] Widget client disconnected before stream completion"
+        );
+        if (!res.writableEnded) res.end();
+        return res;
       }
 
-      // Track Knowledge Gap if AI returned fallback response or retrieved no context
-      if (isFallbackResponse(fullResponseText) || (!fusedContext?.knowledgeChunks || fusedContext.knowledgeChunks.length === 0)) {
-        trackKnowledgeGap({
+      if (!res.headersSent) {
+        ensureSseHeaders();
+      }
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
+      }
+
+      stageTimings.backend_streaming_ms = firstTokenSent ? Date.now() - backendStreamStart : 0;
+      stageTimings.total_duration_ms = Date.now() - reqStart;
+
+      req.log.info(
+        {
+          event: "WIDGET_CHAT_METRICS",
+          correlationId,
           projectId,
-          questionText: lastUserMessage,
-          sessionId: dbSessionId || (isUuidSessionId ? sessionId : undefined),
-          sourceUrl: websiteContext?.url,
-          confidence: "low",
-          reason: isFallbackResponse(fullResponseText) ? "AI_FALLBACK" : "NO_RAG_MATCH",
-        }).catch((e) => req.log.error({ err: e }, "Background knowledge gap tracking error"));
+          intentType,
+          cacheHit,
+          outputChars: fullResponseText.length,
+          timings: stageTimings,
+        },
+        "[WIDGET_CHAT_METRICS] Widget chat request completed"
+      );
+
+      const postTasks: Array<Promise<any>> = [
+        recordWidgetAnalytics(fullResponseText.length),
+      ];
+      if (fullResponseText) {
+        if (!cacheHit) {
+          postTasks.push(llmResponseCache.set(llmPromptHash, fullResponseText, 300));
+        }
+        postTasks.push(saveAssistantMessage(fullResponseText));
       }
+      if (isFallbackResponse(fullResponseText) || (!fusedContext?.knowledgeChunks || fusedContext.knowledgeChunks.length === 0)) {
+        postTasks.push(
+          trackKnowledgeGap({
+            projectId,
+            questionText: lastUserMessage,
+            sessionId: dbSessionId || (isUuidSessionId ? sessionId : undefined),
+            sourceUrl: websiteContext?.url,
+            confidence: "low",
+            reason: isFallbackResponse(fullResponseText) ? "AI_FALLBACK" : "NO_RAG_MATCH",
+          }).catch((e) => req.log.error({ err: e, correlationId }, "Background knowledge gap tracking error"))
+        );
+      }
+      await Promise.all(postTasks);
     } catch (err: any) {
-      req.log.error({ err }, "executeLlmWithFailover threw an error in widget chat");
+      if (isClientDisconnected || requestAbortController.signal.aborted) {
+        if (!res.writableEnded) res.end();
+        return res;
+      }
+      req.log.error({ err, correlationId }, "executeLlmWithFailover threw an error in widget chat");
       if (!res.headersSent) {
         return res.status(503).json({
           error: "AI service temporarily unavailable. Please try again later.",
           code: "PROVIDER_UNAVAILABLE"
         });
       }
-      res.write(`data: ${JSON.stringify({ content: "\n\nSorry, I encountered an issue connecting to the AI assistant. Please try again." })}\n\n`);
-      res.write(`event: error\ndata: ${JSON.stringify({ error: "AI service temporarily unavailable. Please try again later.", code: "PROVIDER_UNAVAILABLE" })}\n\n`);
-      res.end();
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ content: "\n\nSorry, I encountered an issue connecting to the AI assistant. Please try again." })}\n\n`);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: "AI service temporarily unavailable. Please try again later.", code: "PROVIDER_UNAVAILABLE" })}\n\n`);
+        res.end();
+      }
       return res;
     }
     
-    if (res.headersSent && !res.writableEnded) {
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
-    }
     return res;
 
   } catch (error: any) {
-    req.log.error({ err: error }, "Widget chat general error");
+    if (isClientDisconnected || requestAbortController.signal.aborted) {
+      if (!res.writableEnded) res.end();
+      return res;
+    }
+    req.log.error({ err: error, correlationId }, "Widget chat general error");
     if (!res.headersSent) {
       return res.status(503).json({
         error: "AI service temporarily unavailable. Please try again later.",
         code: "PROVIDER_UNAVAILABLE"
       });
     }
-    res.write(`data: ${JSON.stringify({ content: "\n\nSorry, I encountered an issue connecting to the AI assistant. Please try again." })}\n\n`);
-    res.write(`event: error\ndata: ${JSON.stringify({ error: "AI service temporarily unavailable. Please try again later.", code: "PROVIDER_UNAVAILABLE" })}\n\n`);
-    res.end();
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ content: "\n\nSorry, I encountered an issue connecting to the AI assistant. Please try again." })}\n\n`);
+      res.write(`event: error\ndata: ${JSON.stringify({ error: "AI service temporarily unavailable. Please try again later.", code: "PROVIDER_UNAVAILABLE" })}\n\n`);
+      res.end();
+    }
     return res;
   }
 });

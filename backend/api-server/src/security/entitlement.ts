@@ -43,29 +43,40 @@ export async function getEffectiveTrialDays(tx?: any, customTrialDays?: number |
   return 7;
 }
 
+export interface EntitlementContextResult {
+  entitlement: EntitlementCheckResult;
+  project?: typeof projects.$inferSelect | null;
+  license?: typeof projectLicenses.$inferSelect | null;
+}
+
 /**
- * Server-side single source of truth for project entitlement checks.
- * Combines project status, trial status, and manual/Stripe project licenses.
- * Handles race-safe atomic trial initialization on first access.
+ * Core entitlement check implementation returning both the public EntitlementCheckResult
+ * and the already-fetched project/license records for intra-request reuse.
+ * Keeps EntitlementCheckResult strictly free of internal DB rows.
  */
-export async function checkProjectEntitlement(
+export async function checkProjectEntitlementWithContext(
   projectId: string,
-  isSuperAdmin?: boolean
-): Promise<EntitlementCheckResult> {
+  isSuperAdmin?: boolean,
+  externalTx?: any
+): Promise<EntitlementContextResult> {
   try {
     if (isSuperAdmin) {
       return {
-        allowed: true,
-        status: "SUBSCRIPTION_ACTIVE",
-        message: "Super Admin override",
+        entitlement: {
+          allowed: true,
+          status: "SUBSCRIPTION_ACTIVE",
+          message: "Super Admin override",
+        },
       };
     }
 
     if (!projectId) {
       return {
-        allowed: false,
-        status: "TRIAL_EXPIRED",
-        message: "Invalid project ID.",
+        entitlement: {
+          allowed: false,
+          status: "TRIAL_EXPIRED",
+          message: "Invalid project ID.",
+        },
       };
     }
 
@@ -76,77 +87,98 @@ export async function checkProjectEntitlement(
       projectId.startsWith("22222222")
     ) {
       return {
-        allowed: true,
-        status: "SUBSCRIPTION_ACTIVE",
-        message: "Test project override",
+        entitlement: {
+          allowed: true,
+          status: "SUBSCRIPTION_ACTIVE",
+          message: "Test project override",
+        },
       };
     }
 
-    return await withBypassRLS(async (tx) => {
-      // 1. Fetch project record to verify project exists
-      const [project] = await tx
-        .select()
+    const runInTx = async (tx: any): Promise<EntitlementContextResult> => {
+      // Single roundtrip: fetch project, prioritized license, and entitlement record together
+      const rows = await tx
+        .select({
+          project: projects,
+          license: projectLicenses,
+          entitlement: projectEntitlements,
+        })
         .from(projects)
+        .leftJoin(projectLicenses, eq(projectLicenses.projectId, projects.id))
+        .leftJoin(projectEntitlements, eq(projectEntitlements.projectId, projects.id))
         .where(eq(projects.id, projectId))
+        .orderBy(
+          sql`CASE WHEN ${projectLicenses.licenseStatus} = 'active' AND ${projectLicenses.paymentStatus} = 'paid' THEN 0 WHEN ${projectLicenses.paymentStatus} = 'pending' THEN 1 ELSE 2 END`,
+          sql`${projectLicenses.createdAt} DESC NULLS LAST`
+        )
         .limit(1);
+
+      const row = rows[0];
+      const project = row?.project;
+      const license = row?.license ?? null;
+      const entitlement = row?.entitlement ?? null;
 
       if (!project) {
         return {
-          allowed: false,
-          status: "CANCELLED",
-          message: "Project not found.",
+          entitlement: {
+            allowed: false,
+            status: "CANCELLED",
+            message: "Project not found.",
+          },
         };
       }
 
       // Precedence Rule 1: Project deactivated or status is suspended
       if (project.isActive === false || project.status === "suspended") {
         return {
-          allowed: false,
-          status: "SUSPENDED",
-          message: "Project has been disabled or suspended.",
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "SUSPENDED",
+            message: "Project has been disabled or suspended.",
+          },
         };
       }
 
       // Precedence Rule 2: Project status is cancelled
       if (project.status === "cancelled") {
         return {
-          allowed: false,
-          status: "CANCELLED",
-          message: "Project subscription has been cancelled.",
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "CANCELLED",
+            message: "Project subscription has been cancelled.",
+          },
         };
       }
-
-      // 2. Fetch existing paid license record (manual UPI billing / Stripe/Razorpay)
-      const [license] = await tx
-        .select()
-        .from(projectLicenses)
-        .where(eq(projectLicenses.projectId, projectId))
-        .limit(1);
 
       // Precedence Rule 3: Valid active paid license/subscription
       if (license && license.licenseStatus === "active" && license.paymentStatus === "paid") {
         return {
-          allowed: true,
-          status: "SUBSCRIPTION_ACTIVE",
-          expiresAt: license.paymentDate ? new Date(license.paymentDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null,
+          project,
+          license,
+          entitlement: {
+            allowed: true,
+            status: "SUBSCRIPTION_ACTIVE",
+            expiresAt: license.paymentDate ? new Date(license.paymentDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null,
+          },
         };
       }
 
       // Precedence Rule 4: Pending payment verification
       if (license && license.paymentStatus === "pending") {
         return {
-          allowed: false,
-          status: "PAYMENT_PENDING",
-          message: "Payment verification is pending administrator approval.",
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "PAYMENT_PENDING",
+            message: "Payment verification is pending administrator approval.",
+          },
         };
       }
-
-      // 3. Fetch existing entitlement record to read trial dates
-      const [entitlement] = await tx
-        .select()
-        .from(projectEntitlements)
-        .where(eq(projectEntitlements.projectId, projectId))
-        .limit(1);
 
       // Double-check active subscription indicators in entitlement table
       if (
@@ -155,33 +187,49 @@ export async function checkProjectEntitlement(
         project.deploymentPaid === true
       ) {
         return {
-          allowed: true,
-          status: "SUBSCRIPTION_ACTIVE",
-          expiresAt: entitlement?.subscriptionEndsAt ?? null,
+          project,
+          license,
+          entitlement: {
+            allowed: true,
+            status: "SUBSCRIPTION_ACTIVE",
+            expiresAt: entitlement?.subscriptionEndsAt ?? null,
+          },
         };
       }
 
       // Check explicit SUSPENDED / CANCELLED status on entitlement record
       if (entitlement?.entitlementStatus === "SUSPENDED") {
         return {
-          allowed: false,
-          status: "SUSPENDED",
-          message: "Project entitlement is suspended.",
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "SUSPENDED",
+            message: "Project entitlement is suspended.",
+          },
         };
       }
       if (entitlement?.entitlementStatus === "CANCELLED") {
         return {
-          allowed: false,
-          status: "CANCELLED",
-          message: "Project entitlement is cancelled.",
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "CANCELLED",
+            message: "Project entitlement is cancelled.",
+          },
         };
       }
       if (entitlement?.entitlementStatus === "TRIAL_EXPIRED") {
         return {
-          allowed: false,
-          status: "TRIAL_EXPIRED",
-          message: "Project trial has expired.",
-          expiresAt: entitlement?.trialEndsAt ?? null,
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "TRIAL_EXPIRED",
+            message: "Project trial has expired.",
+            expiresAt: entitlement?.trialEndsAt ?? null,
+          },
         };
       }
 
@@ -257,25 +305,53 @@ export async function checkProjectEntitlement(
         }
 
         return {
-          allowed: false,
-          status: "TRIAL_EXPIRED",
-          expiresAt: currentTrialEndsAt,
-          message: "Your trial has expired. Please upgrade to continue.",
+          project,
+          license,
+          entitlement: {
+            allowed: false,
+            status: "TRIAL_EXPIRED",
+            expiresAt: currentTrialEndsAt,
+            message: "Your trial has expired. Please upgrade to continue.",
+          },
         };
       }
 
       return {
-        allowed: true,
-        status: "TRIAL_ACTIVE",
-        expiresAt: currentTrialEndsAt,
+        project,
+        license,
+        entitlement: {
+          allowed: true,
+          status: "TRIAL_ACTIVE",
+          expiresAt: currentTrialEndsAt,
+        },
       };
-    });
+    };
+
+    if (externalTx) {
+      return await runInTx(externalTx);
+    }
+    return await withBypassRLS(runInTx);
   } catch (err: any) {
     logger.error({ err, projectId }, "Error checking project entitlement");
     return {
-      allowed: false,
-      status: "SUSPENDED",
-      message: "Unable to verify project entitlement status.",
+      entitlement: {
+        allowed: false,
+        status: "SUSPENDED",
+        message: "Unable to verify project entitlement status.",
+      },
     };
   }
+}
+
+/**
+ * Server-side single source of truth for project entitlement checks.
+ * Combines project status, trial status, and manual/Stripe project licenses.
+ * Handles race-safe atomic trial initialization on first access.
+ */
+export async function checkProjectEntitlement(
+  projectId: string,
+  isSuperAdmin?: boolean
+): Promise<EntitlementCheckResult> {
+  const { entitlement } = await checkProjectEntitlementWithContext(projectId, isSuperAdmin);
+  return entitlement;
 }

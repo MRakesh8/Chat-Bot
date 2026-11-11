@@ -25,6 +25,9 @@ export interface RoutingRequirement {
   projectId?: string;
   userId?: string;
   operation: "chat" | "embed" | "agent";
+  preResolvedCandidates?: ResolvedModel[];
+  disableThinking?: boolean;
+  onTiming?: (stage: string, durationMs: number, meta?: Record<string, any>) => void;
 }
 
 export interface ResolvedModel {

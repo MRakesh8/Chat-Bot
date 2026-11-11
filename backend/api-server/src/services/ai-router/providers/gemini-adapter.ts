@@ -1,6 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
+import nodeCrypto from "crypto";
 import { BaseProviderAdapter, ChatCompletionRequest, ChatCompletionResponse } from "./base";
 import { NormalizedModel } from "../types";
+
+const MAX_CLIENT_CACHE = 100;
+const geminiClientCache = new Map<string, GoogleGenAI>();
 
 export class GeminiAdapter extends BaseProviderAdapter {
   readonly providerId = "gemini";
@@ -14,10 +18,53 @@ export class GeminiAdapter extends BaseProviderAdapter {
     return undefined;
   }
 
-  async discoverModels(apiKey: string, baseUrl?: string): Promise<NormalizedModel[]> {
+  private getClient(apiKey: string, baseUrl?: string): GoogleGenAI {
+    const httpOptions = this.getHttpOptions(baseUrl);
+    const keyHash = nodeCrypto.createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+    const cacheKey = `${keyHash}:${httpOptions?.baseUrl || "default"}`;
+    let client = geminiClientCache.get(cacheKey);
+    if (!client) {
+      if (geminiClientCache.size >= MAX_CLIENT_CACHE) {
+        const oldestKey = geminiClientCache.keys().next().value;
+        if (oldestKey) geminiClientCache.delete(oldestKey);
+      }
+      client = new GoogleGenAI({ apiKey, ...(httpOptions ? { httpOptions } : {}) });
+      geminiClientCache.set(cacheKey, client);
+    }
+    return client;
+  }
+
+  private buildRequestConfig(request: ChatCompletionRequest) {
+    const contents = request.messages.filter(m => m.role !== "system").map(m => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }]
+    }));
+    const systemInstruction = request.messages.find(m => m.role === "system")?.content;
+    const config: any = {
+      temperature: request.temperature ?? 0.7,
+      maxOutputTokens: request.maxTokens
+    };
+    if (systemInstruction) {
+      config.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+    if (request.signal) {
+      config.abortSignal = request.signal;
+    }
+    if (request.disableThinking && /^gemini-2\.5-flash/i.test(request.model.modelId)) {
+      config.thinkingConfig = { thinkingBudget: 0 };
+    }
+    return { contents, config };
+  }
+
+  async discoverModels(apiKey: string, baseUrl?: string, signal?: AbortSignal): Promise<NormalizedModel[]> {
     const rawUrl = baseUrl || process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || "https://generativelanguage.googleapis.com";
     const cleanUrl = rawUrl.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
-    const response = await fetch(`${cleanUrl}/v1beta/models?key=${apiKey}`);
+    const timeoutSignal = AbortSignal.timeout(5000);
+    const combinedSignal = signal
+      ? (typeof (AbortSignal as any).any === "function" ? (AbortSignal as any).any([signal, timeoutSignal]) : signal)
+      : timeoutSignal;
+
+    const response = await fetch(`${cleanUrl}/v1beta/models?key=${apiKey}`, { signal: combinedSignal });
     if (!response.ok) {
       if (response.status === 403 || response.status === 401 || response.status === 400) {
         throw new Error("INVALID_CREDENTIAL: The provided Gemini API key is invalid or malformed.");
@@ -69,27 +116,12 @@ export class GeminiAdapter extends BaseProviderAdapter {
   }
 
   async generateChat(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-    const httpOptions = this.getHttpOptions(request.model.credential.baseUrl);
-    const client = new GoogleGenAI({ apiKey: request.model.credential.apiKey, ...(httpOptions ? { httpOptions } : {}) });
-    const contents = request.messages.filter(m => m.role !== "system").map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    }));
-    const systemInstruction = request.messages.find(m => m.role === "system")?.content;
-    const body: any = {
-      contents,
-      config: {
-        temperature: request.temperature ?? 0.7,
-        maxOutputTokens: request.maxTokens
-      }
-    };
-    if (systemInstruction) {
-      body.config.systemInstruction = { parts: [{ text: systemInstruction }] };
-    }
-
     if (request.signal?.aborted) {
       throw new Error("Request was aborted");
     }
+
+    const client = this.getClient(request.model.credential.apiKey, request.model.credential.baseUrl);
+    const body = this.buildRequestConfig(request);
 
     try {
       const response = await client.models.generateContent({
@@ -118,23 +150,8 @@ export class GeminiAdapter extends BaseProviderAdapter {
     if (request.signal?.aborted) {
       return;
     }
-    const httpOptions = this.getHttpOptions(request.model.credential.baseUrl);
-    const client = new GoogleGenAI({ apiKey: request.model.credential.apiKey, ...(httpOptions ? { httpOptions } : {}) });
-    const contents = request.messages.filter(m => m.role !== "system").map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    }));
-    const systemInstruction = request.messages.find(m => m.role === "system")?.content;
-    const body: any = {
-      contents,
-      config: {
-        temperature: request.temperature ?? 0.7,
-        maxOutputTokens: request.maxTokens
-      }
-    };
-    if (systemInstruction) {
-      body.config.systemInstruction = { parts: [{ text: systemInstruction }] };
-    }
+    const client = this.getClient(request.model.credential.apiKey, request.model.credential.baseUrl);
+    const body = this.buildRequestConfig(request);
 
     try {
       const stream = await client.models.generateContentStream({
@@ -146,6 +163,7 @@ export class GeminiAdapter extends BaseProviderAdapter {
         if (chunk.text) yield { text: chunk.text };
       }
     } catch (e: any) {
+      if (request.signal?.aborted) return;
       throw e;
     }
   }

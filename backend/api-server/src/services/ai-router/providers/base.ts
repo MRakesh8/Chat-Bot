@@ -11,6 +11,7 @@ export interface ChatCompletionRequest {
   maxTokens?: number;
   model: ResolvedModel;
   signal?: AbortSignal;
+  disableThinking?: boolean;
 }
 
 export interface ChatCompletionResponse {
@@ -25,7 +26,7 @@ export interface ChatCompletionResponse {
 export abstract class BaseProviderAdapter {
   abstract readonly providerId: string;
 
-  abstract discoverModels(apiKey: string, baseUrl?: string): Promise<NormalizedModel[]>;
+  abstract discoverModels(apiKey: string, baseUrl?: string, signal?: AbortSignal): Promise<NormalizedModel[]>;
   
   abstract generateChat(request: ChatCompletionRequest): Promise<ChatCompletionResponse>;
   
