@@ -412,3 +412,16 @@
   background-clip: text;
   color: transparent;
 }
+
+/* ── Sidebar Conversation Item Actions Visibility ── */
+.conversation-actions {
+  transition: opacity 150ms ease-in-out;
+}
+
+.group:hover .conversation-actions,
+.group:focus-within .conversation-actions,
+.conversation-actions:hover {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+

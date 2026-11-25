@@ -12,6 +12,7 @@ import {
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { createNotification } from "./notifications";
+import { emitActivityEvent } from "./activity";
 
 export async function submitMessageFeedback(params: {
   projectId: string;
@@ -67,6 +68,18 @@ export async function submitMessageFeedback(params: {
   // 3. Process threshold notifications asynchronously
   processNotificationThresholds(params.projectId, params.type).catch(e => logger.error(e, "Threshold error"));
 
+  try {
+    emitActivityEvent({
+      projectId: params.projectId,
+      type: "feedback",
+      title: params.type === "LIKE" ? "Helpful AI Response (👍)" : "Unhelpful AI Response (👎)",
+      detail: params.comment ? `Visitor note: "${params.comment.slice(0, 80)}"` : `Visitor marked response as ${params.type}`,
+      metadata: { messageId: params.messageId, type: params.type }
+    });
+  } catch (err) {
+    logger.warn({ err }, "Failed to emit message feedback activity event");
+  }
+
   return { success: true };
 }
 
@@ -91,6 +104,18 @@ export async function submitProjectFeedback(params: {
   if (params.category === "SUGGESTION" || params.category === "Suggestion") {
     processSuggestionNotification(params.projectId, feedback.id, params.comment)
       .catch(e => logger.error({ err: e }, "Failed to process suggestion notification"));
+  }
+
+  try {
+    emitActivityEvent({
+      projectId: params.projectId,
+      type: "feedback",
+      title: `Visitor Feedback: ${params.category || "General"}`,
+      detail: params.comment.length > 80 ? params.comment.slice(0, 80) + "..." : params.comment,
+      metadata: { category: params.category, rating: params.rating, feedbackId: feedback.id }
+    });
+  } catch (err) {
+    logger.warn({ err }, "Failed to emit project feedback activity event");
   }
 
   return { success: true, feedback };

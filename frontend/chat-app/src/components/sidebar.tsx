@@ -91,10 +91,10 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
       {!isEditing && (
         <div
           className={cn(
-            "flex items-center gap-0.5 shrink-0 transition-opacity duration-150 ml-auto",
+            "conversation-actions flex items-center gap-0.5 shrink-0 transition-opacity duration-150 ml-auto",
             conv.isFavorite || isActive || isMenuOpen
               ? "opacity-100"
-              : "opacity-75 md:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+              : "opacity-75 md:opacity-40 group-hover:opacity-100 md:group-hover:opacity-100 group-focus-within:opacity-100"
           )}
           onClick={(e) => e.stopPropagation()}
         >
@@ -106,9 +106,9 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
             aria-label={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
             title={conv.isFavorite ? "Remove from favorites" : "Add to favorites"}
             className={cn(
-              "h-7 w-7 rounded-lg transition-colors flex items-center justify-center",
+              "h-6 w-6 rounded-lg transition-colors flex items-center justify-center",
               conv.isFavorite
-                ? "text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                ? "text-rose-500 hover:text-rose-400 hover:bg-rose-500/15"
                 : "text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10",
               pendingFavorite && "opacity-50 cursor-wait",
               "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus:outline-none"
@@ -123,6 +123,22 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
             />
           </Button>
 
+          {/* Quick Delete Button */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Delete conversation"
+            title="Delete conversation"
+            className={cn(
+              "h-6 w-6 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-colors flex items-center justify-center",
+              "focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-1 focus:outline-none"
+            )}
+            onClick={(e) => onDelete(conv.id, !!conv.isFavorite, e)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+
           {/* Three-Dot Menu */}
           <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
             <DropdownMenuTrigger asChild>
@@ -133,7 +149,7 @@ const MemoizedConversationItem = memo(function MemoizedConversationItem({
                 aria-label="Conversation actions"
                 title="Conversation actions"
                 className={cn(
-                  "h-7 w-7 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-foreground/10 transition-colors",
+                  "h-6 w-6 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-foreground/10 transition-colors flex items-center justify-center",
                   "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus:outline-none",
                   isMenuOpen && "opacity-100 bg-foreground/10 text-sidebar-foreground"
                 )}
