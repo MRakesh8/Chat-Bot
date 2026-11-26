@@ -195,6 +195,66 @@
               case 'type':
                 self._simulateType(element, actionParams.value || actionParams.actionValue || '');
                 break;
+              case 'fill_form':
+              case 'create_record':
+                var fields = actionParams.fields || {};
+                var fieldKeys = Object.keys(fields);
+                
+                function findInput(fieldName) {
+                  var lower = fieldName.toLowerCase();
+                  var selectors = [
+                    'input[name="' + fieldName + '"]',
+                    'input[id="' + fieldName + '"]',
+                    'input[name*="' + lower + '" i]',
+                    'input[id*="' + lower + '" i]',
+                    'input[placeholder*="' + lower + '" i]',
+                    'textarea[name*="' + lower + '" i]',
+                    'textarea[placeholder*="' + lower + '" i]'
+                  ];
+                  if (lower.includes('email')) selectors.unshift('input[type="email"]');
+                  if (lower.includes('phone') || lower.includes('tel')) selectors.unshift('input[type="tel"]');
+                  for (var s = 0; s < selectors.length; s++) {
+                    var inp = document.querySelector(selectors[s]);
+                    if (inp) return inp;
+                  }
+                  return null;
+                }
+
+                var firstInput = fieldKeys.length > 0 ? findInput(fieldKeys[0]) : null;
+                var openBtn = null;
+                if (!firstInput) {
+                  var buttons = Array.from(document.querySelectorAll('button, a'));
+                  openBtn = buttons.find(function(b) {
+                    var t = (b.textContent || '').trim().toLowerCase();
+                    return t.includes('add client') || t.includes('new client') || t.includes('add') || t.includes('create');
+                  });
+                  if (openBtn) {
+                    self._simulateClick(openBtn);
+                  }
+                }
+
+                setTimeout(function() {
+                  fieldKeys.forEach(function(key) {
+                    var targetInp = findInput(key);
+                    if (targetInp && fields[key]) {
+                      self._simulateType(targetInp, String(fields[key]));
+                    }
+                  });
+
+                  if (actionParams.submit !== false) {
+                    setTimeout(function() {
+                      var submitBtn = document.querySelector('button[type="submit"]') ||
+                        Array.from(document.querySelectorAll('button')).find(function(b) {
+                          var t = (b.textContent || '').trim().toLowerCase();
+                          return t === 'save' || t === 'create' || t === 'submit' || t === 'save client' || t === 'add client';
+                        });
+                      if (submitBtn) {
+                        self._simulateClick(submitBtn);
+                      }
+                    }, 400);
+                  }
+                }, openBtn ? 500 : 50);
+                break;
               default:
                 throw new Error('Unsupported action type: ' + actionType);
             }
